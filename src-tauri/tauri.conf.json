@@ -54,7 +54,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": "v1Compatible",
+    "createUpdaterArtifacts": false,
     "macOS": {
       "minimumSystemVersion": "10.15",
       "hardenedRuntime": true
@@ -79,7 +79,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/anthropics/voxink-desktop/releases/latest/download/latest.json"
+        "https://github.com/soanseng/voxink-desktop/releases/latest/download/latest.json"
       ],
       "pubkey": ""
     }

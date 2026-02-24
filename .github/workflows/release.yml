@@ -42,7 +42,6 @@ jobs:
             label: macOS-x64
           - platform: ubuntu-22.04
             args: ''
-            rust_target: ''
             label: Linux-x64
           - platform: windows-latest
             args: '--target x86_64-pc-windows-msvc'
@@ -80,7 +79,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target }}
+          targets: ${{ matrix.rust_target || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
