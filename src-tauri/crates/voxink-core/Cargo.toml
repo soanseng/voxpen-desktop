@@ -1,0 +1,17 @@
+[package]
+name = "voxink-core"
+version = "0.1.0"
+edition = "2021"
+description = "VoxInk core business logic — STT pipeline, audio encoding, LLM refinement"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
+thiserror = "2"
+
+[dev-dependencies]
+mockall = "0.13"
+wiremock = "0.6"
+tokio-test = "0.4"
