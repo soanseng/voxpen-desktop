@@ -24,37 +24,35 @@ System-tray voice dictation for every desktop app. Press a hotkey, speak, text a
 
 ---
 
-## Phase 0: Project Scaffold (Day 1-2)
+## Phase 0: Project Scaffold (Day 1-2) ✅ COMPLETE
 
 ### 0.1 Tauri Project Init
-- [ ] `pnpm create tauri-app voxink-desktop` with React + TypeScript template
-- [ ] Configure `tauri.conf.json`:
-  - App identifier: `com.voxink.desktop`
-  - Window: hidden by default (tray-only app)
-  - Permissions: microphone, accessibility, global-shortcut, clipboard
-- [ ] Add Tauri plugins:
-  - `tauri-plugin-global-shortcut`
-  - `tauri-plugin-store` (encrypted settings)
-  - `tauri-plugin-sql` (SQLite for history)
-  - `tauri-plugin-autostart` (launch at login)
-- [ ] Add Rust dependencies in `Cargo.toml`:
-  - `cpal` (audio capture)
-  - `hound` (WAV encoding)
-  - `reqwest` + `tokio` (HTTP + async)
-  - `serde` + `serde_json` (serialization)
-  - `arboard` (clipboard)
-  - `enigo` (key simulation)
-  - `thiserror` (error handling)
-  - `mockall` + `wiremock` + `tokio` (test deps)
-- [ ] Set up error types: `AppError` enum with `thiserror`
-- [ ] Set up `PipelineState` enum (7 states, matching Android's `ImeUiState`)
-- [ ] Verify: `cargo tauri dev` launches blank tray app
+- [x] Tauri v2 project with React + TypeScript + Tailwind frontend
+- [x] Configure `tauri.conf.json`: app id `com.voxink.desktop`, hidden settings window, tray icon
+- [x] Capabilities: global-shortcut, store, sql, autostart permissions
+- [x] All Rust dependencies in workspace `Cargo.toml` + `voxink-core/Cargo.toml`
+- [x] `AppError` enum with `thiserror` (6 variants, serializable for Tauri)
+- [x] `PipelineState` enum (7 states matching Android `ImeUiState`)
+- [x] `Language` enum with `code()` and `prompt()` methods
+- [x] `RecordingMode` enum (HoldToRecord default, Toggle)
+- [x] `audio::encoder::pcm_to_wav()` — 44-byte RIFF header, pure Rust
+- [x] `pipeline::prompts::for_language()` — 4 prompts verbatim from Android
+- [x] API constants: timeouts, base URL matching Android
 
 ### 0.2 Basic System Tray
-- [ ] Create tray icon (mic icon, idle state)
-- [ ] Tray menu: Settings / Quit
-- [ ] Click tray icon → open settings window
-- [ ] App starts minimized to tray (no dock/taskbar window)
+- [x] Tray icon (placeholder, idle state)
+- [x] Tray menu: Settings / Quit
+- [x] Click Settings → show settings window
+- [x] App starts with hidden window (tray-only)
+
+### Architecture Decision: Workspace Crate
+Created `src-tauri/crates/voxink-core/` as a separate workspace crate containing all business logic (types, encoder, prompts, API modules). This crate has **no Tauri dependency** and can be built/tested independently without Linux system libraries (libgtk, libwebkit, etc.). The Tauri app crate depends on `voxink-core` and handles only framework glue (tray, hotkey, IPC commands).
+
+### Verification
+- 41 unit tests passing
+- clippy clean (`-D warnings`)
+- Frontend builds (Vite + React + Tailwind)
+- Full Tauri binary build requires Linux dev libraries (libglib2.0-dev, libgtk-3-dev, libwebkit2gtk-4.1-dev, libasound2-dev)
 
 ### Deliverable
 Empty Tauri app living in system tray, with core types (`AppError`, `PipelineState`, `Language`, `RecordingMode`) defined and tested.
@@ -65,69 +63,100 @@ Empty Tauri app living in system tray, with core types (`AppError`, `PipelineSta
 
 This is the entire core loop. Get this working end-to-end first.
 
-### 1.1 Audio Module (Rust)
-- [ ] `audio/recorder.rs`: Initialize `cpal` with default input device
-  - PCM capture: 16kHz, mono, i16
-  - Start/stop recording, return `Vec<i16>` PCM data
-  - Handle: no microphone, permission denied, device disconnected
-  - Max recording duration: 5 minutes, auto-stop
-  - Min recording duration: <0.5s → discard
-- [ ] `audio/encoder.rs`: PCM → WAV encoding
-  - 44-byte RIFF header (same as Android `AudioEncoder.pcmToWav()`)
-  - Pure Rust, no external lib for header (or use `hound`)
-- [ ] Tests: encoder produces valid WAV headers, known PCM → expected bytes
+> **Note**: `audio/encoder.rs` (pcm_to_wav) already implemented and tested in Phase 0. Phase 1 focuses on the remaining pipeline modules.
+> All new modules go in `src-tauri/crates/voxink-core/src/` (framework-independent, testable without Tauri).
 
-### 1.2 API Module — Groq STT (Rust)
-- [ ] `api/groq.rs`: `reqwest` multipart POST to Groq Whisper API
-  - Send WAV audio, receive `WhisperResponse { text: String }`
-  - Per-call `"Bearer {api_key}"` header
-  - Models (user-selectable): `whisper-large-v3` / `whisper-large-v3-turbo` (default)
-  - Response format: `verbose_json`
-- [ ] `pipeline/transcribe.rs`: Orchestrate PCM → WAV → STT
-  - Compose `encoder::pcm_to_wav()` + `groq::transcribe()`
-  - Return `Result<String, AppError>`
-- [ ] Language handling:
-  - Auto: `language` = None, `prompt` = "繁體中文，可能夾雜英文。"
-  - Chinese: `language` = "zh", `prompt` = "繁體中文轉錄。"
-  - English: `language` = "en", `prompt` = "Transcribe the following English speech."
-  - Japanese: `language` = "ja", `prompt` = "以下の日本語音声を文字起こししてください。"
-- [ ] Error handling: 401 (bad key), 413 (too large), timeout, network error
-- [ ] Tests: `wiremock` mock server for STT responses, error cases
+### 1.1 Groq STT API Client
+**File**: `voxink-core/src/api/groq.rs`
+- [ ] Define `SttConfig` struct: `api_key`, `model` (default: `whisper-large-v3-turbo`), `language: Option<Language>`, `response_format` (default: `verbose_json`)
+- [ ] Define `WhisperResponse` struct matching Groq API response
+- [ ] Implement `pub async fn transcribe(config: &SttConfig, wav_data: &[u8]) -> Result<String, AppError>`
+  - Build `reqwest::Client` with `CONNECT_TIMEOUT` / `READ_WRITE_TIMEOUT`
+  - Multipart POST to `{GROQ_BASE_URL}openai/v1/audio/transcriptions`
+  - Per-call `Authorization: Bearer {api_key}` header
+  - Form fields: `file` (wav bytes), `model`, `response_format`, `language` (if set), `prompt` (from `Language::prompt()`)
+- [ ] Map HTTP errors: 401 → `AppError::ApiKeyMissing`, 413 → `AppError::Transcription("file too large")`, timeout → `AppError::Network`
+- [ ] Tests (wiremock):
+  - `should_return_transcription_when_api_responds_successfully`
+  - `should_return_api_key_error_on_401`
+  - `should_return_transcription_error_on_413`
+  - `should_include_language_param_when_set`
+  - `should_omit_language_param_for_auto`
 
-### 1.3 Global Hotkey
-- [ ] `hotkey.rs`: Register default hotkey via `tauri-plugin-global-shortcut`
-  - `Cmd+Shift+V` (macOS) / `Ctrl+Shift+V` (Windows/Linux)
-  - Detect press and release separately (hold-to-dictate)
-- [ ] Handle conflicts: notify user if hotkey is taken
-- [ ] macOS: request Accessibility permission on first run
+### 1.2 Transcription Pipeline
+**File**: `voxink-core/src/pipeline/transcribe.rs`
+- [ ] Define `TranscribeRequest` struct: `pcm_data: Vec<i16>`, `config: SttConfig`
+- [ ] Implement `pub async fn transcribe(request: TranscribeRequest) -> Result<String, AppError>`
+  - Compose: `encoder::pcm_to_wav(&request.pcm_data)` → `groq::transcribe(&config, &wav_data)`
+- [ ] Validate: empty PCM → `AppError::Audio("no audio data")`
+- [ ] Tests:
+  - `should_encode_pcm_and_call_stt_api`
+  - `should_reject_empty_pcm_data`
 
-### 1.4 Pipeline Controller (Rust)
-- [ ] `pipeline/controller.rs`: State machine orchestrating the full flow
-  - Mirrors Android's `RecordingController`
-  - `on_start_recording()`: validate API key → start capture → emit `Recording`
-  - `on_stop_recording()`: stop capture → emit `Processing` → transcribe → emit `Result`
-  - Broadcast state changes via `tokio::sync::watch` + Tauri `app.emit()`
-- [ ] Tests: verify state transition sequence (Idle → Recording → Processing → Result)
-- [ ] Tests: verify error states (missing API key, network failure)
+### 1.3 Pipeline Controller (State Machine)
+**File**: `voxink-core/src/pipeline/controller.rs`
+- [ ] Define `PipelineController` struct with:
+  - `state_tx: tokio::sync::watch::Sender<PipelineState>` (state broadcast)
+  - `state_rx: tokio::sync::watch::Receiver<PipelineState>` (for reading current state)
+  - `config: PipelineConfig` (API key, language, model, etc.)
+- [ ] Implement `PipelineController::new(config: PipelineConfig) -> Self`
+- [ ] Implement `pub async fn on_start_recording(&self) -> Result<(), AppError>`
+  - Validate API key present → emit `Recording`
+  - If API key missing → emit `Error` + return `Err(AppError::ApiKeyMissing)`
+- [ ] Implement `pub async fn on_stop_recording(&self, pcm_data: Vec<i16>) -> Result<String, AppError>`
+  - Emit `Processing`
+  - Call `pipeline::transcribe()` → on success emit `Result { text }`
+  - On failure → emit `Error { message }` + return Err
+- [ ] Implement `pub fn current_state(&self) -> PipelineState` (read from watch receiver)
+- [ ] Tests:
+  - `should_transition_idle_to_recording_on_start`
+  - `should_emit_error_when_api_key_missing`
+  - `should_transition_recording_to_processing_to_result`
+  - `should_emit_error_state_on_transcription_failure`
 
-### 1.5 Auto-Paste (Rust)
-- [ ] `input/clipboard.rs`: Save/restore clipboard content via `arboard`
-- [ ] `input/paste.rs`: Simulate `Cmd+V`/`Ctrl+V` via `enigo`
-- [ ] Paste strategy:
-  1. Save current clipboard
-  2. Write transcription to clipboard
-  3. Simulate paste keystroke
-  4. Wait 100ms
-  5. Restore original clipboard
-- [ ] Fallback: if simulation fails, clipboard-only + system notification
+### 1.4 Audio Recorder (cpal)
+**File**: `voxink-core/src/audio/recorder.rs` (trait + types only)
+**File**: `src-tauri/src/audio_recorder.rs` (cpal impl, Tauri-specific due to device access)
+- [ ] Define trait in voxink-core: `pub trait AudioRecorder: Send + Sync`
+  - `fn start(&self) -> Result<(), AppError>`
+  - `fn stop(&self) -> Result<Vec<i16>, AppError>`
+  - `fn is_recording(&self) -> bool`
+- [ ] cpal implementation (in Tauri crate):
+  - Default input device, 16kHz mono i16
+  - Accumulate samples in `Arc<Mutex<Vec<i16>>>`
+  - Handle: no microphone → `AppError::Audio("no input device")`
+  - Max duration: 5 min auto-stop
+  - Min duration: <0.5s → return empty (caller discards)
+- [ ] Tests (trait-based, mockable):
+  - `should_start_and_stop_recording`
+  - `should_return_pcm_data_on_stop`
 
-### 1.6 API Key Setup (Minimal)
-- [ ] `storage.rs`: Encrypted store for API keys via Tauri store plugin
-  - `get_api_key(provider)` / `set_api_key(provider, key)`
-  - Key name: `groq_api_key` (matching Android)
-- [ ] On first launch: open settings window prompting for Groq API key
-- [ ] Validate key with test API call
-- [ ] Masked display: first 4 + `••••` + last 4
+### 1.5 Auto-Paste (clipboard + key simulation)
+**File**: `voxink-core/src/input/clipboard.rs` (trait)
+**File**: `voxink-core/src/input/paste.rs` (orchestration)
+- [ ] Define trait: `pub trait ClipboardManager: Send + Sync`
+  - `fn get_text(&self) -> Result<Option<String>, AppError>`
+  - `fn set_text(&self, text: &str) -> Result<(), AppError>`
+- [ ] Define trait: `pub trait KeySimulator: Send + Sync`
+  - `fn paste(&self) -> Result<(), AppError>` (simulate Cmd+V / Ctrl+V)
+- [ ] Implement `pub fn paste_text(clipboard: &dyn ClipboardManager, keys: &dyn KeySimulator, text: &str) -> Result<(), AppError>`
+  - Save → Write → Paste → Sleep(100ms) → Restore
+- [ ] arboard + enigo impls in Tauri crate
+- [ ] Tests (with mocks):
+  - `should_save_and_restore_clipboard`
+  - `should_write_text_and_simulate_paste`
+  - `should_handle_clipboard_restore_failure_gracefully`
+
+### 1.6 Tauri Integration (wire everything together)
+**File**: `src-tauri/src/lib.rs` (update setup)
+**File**: `src-tauri/src/commands.rs` (Tauri IPC commands)
+- [ ] Register global hotkey in Tauri `setup()` via `tauri-plugin-global-shortcut`
+- [ ] On hotkey press → `PipelineController::on_start_recording()` + start audio capture
+- [ ] On hotkey release → stop capture → `PipelineController::on_stop_recording(pcm)` → auto-paste
+- [ ] Emit `pipeline-state` Tauri events on each state change
+- [ ] Tauri command: `save_api_key(provider, key)` → encrypted store
+- [ ] Tauri command: `get_api_key(provider)` → read from store
+- [ ] Tauri command: `test_api_key(provider, key)` → small test transcription
 
 ### 1.7 Minimal Visual Feedback
 - [ ] Tray icon state changes: idle → recording (red) → processing (yellow) → done (green → idle)
@@ -350,6 +379,13 @@ VoxInk Desktop v1.0 available for download on all platforms.
 ---
 
 ## Technical Decisions Log
+
+### Why a separate `voxink-core` crate?
+1. **Testability**: Core business logic (encoder, API client, state machine, prompts) can be tested without Linux system libraries (libgtk, libwebkit, etc.)
+2. **Separation of concerns**: Framework-agnostic code (pure Rust) vs framework glue (Tauri setup, IPC commands, device access)
+3. **Faster iteration**: `cargo test -p voxink-core` runs in seconds, no Tauri build needed
+4. **Trait boundaries**: Hardware-dependent code (audio, clipboard, keys) uses traits in voxink-core, with concrete impls in the Tauri crate
+5. **Future portability**: Core crate could be reused in CLI, other frameworks
 
 ### Why Tauri over Electron?
 1. **Bundle size**: Tauri ~5-15MB vs Electron ~150MB+
