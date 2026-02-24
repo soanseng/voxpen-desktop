@@ -1,1 +1,2 @@
-// Input modules (clipboard, paste) — implemented in Phase 1.5
+pub mod clipboard;
+pub mod paste;
