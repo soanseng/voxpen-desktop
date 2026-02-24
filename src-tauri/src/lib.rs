@@ -1,16 +1,24 @@
+mod audio;
+mod clipboard;
+mod commands;
+mod hotkey;
+mod keyboard;
+mod state;
+
+use std::sync::Arc;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Manager,
 };
+use tokio::sync::Mutex;
 
-// Re-export core library for use in Tauri commands
-pub use voxink_core;
+use voxink_core::pipeline::controller::{PipelineConfig, PipelineController};
+use voxink_core::pipeline::settings::Settings;
+use voxink_core::pipeline::state::Language;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! VoxInk Desktop is running.", name)
-}
+use state::{AppState, GroqLlmProvider, GroqSttProvider};
 
 pub fn run() {
     tauri::Builder::default()
@@ -22,14 +30,57 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            // Initialize shared settings
+            let settings = Arc::new(Mutex::new(Settings::default()));
+
+            // Initialize pipeline controller with concrete Groq providers
+            let config = PipelineConfig::new(None, Language::Auto);
+            let stt = GroqSttProvider::new(settings.clone());
+            let llm = GroqLlmProvider::new(settings.clone());
+            let controller = PipelineController::new(config, stt, llm);
+
+            // Initialize hardware implementations
+            let recorder = audio::CpalRecorder::new();
+            let clipboard_mgr =
+                clipboard::ArboardClipboard::new().expect("failed to init clipboard");
+            let keyboard_mgr =
+                keyboard::EnigoKeyboard::new().expect("failed to init keyboard simulator");
+
+            // Create shared app state
+            let app_state = AppState {
+                controller: Arc::new(Mutex::new(controller)),
+                settings,
+                recorder: Arc::new(recorder),
+                clipboard: Arc::new(clipboard_mgr),
+                keyboard: Arc::new(keyboard_mgr),
+            };
+            app.manage(app_state);
+
+            // Spawn background task to emit pipeline state changes to React
+            {
+                let app_handle = app.handle().clone();
+                let state: tauri::State<'_, AppState> = app.state();
+                let controller = state.controller.clone();
+                tauri::async_runtime::spawn(async move {
+                    let ctrl = controller.lock().await;
+                    let mut rx = ctrl.subscribe();
+                    drop(ctrl);
+                    while rx.changed().await.is_ok() {
+                        let pipeline_state = rx.borrow().clone();
+                        let _ = app_handle.emit("pipeline-state", &pipeline_state);
+                    }
+                });
+            }
+
             // Build system tray menu
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
+            let quit_item =
+                MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
 
-            // Build tray icon
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .menu_on_left_click(true)
@@ -48,9 +99,22 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Register global hotkey
+            if let Err(e) = hotkey::register_hotkey(app.handle()) {
+                eprintln!("failed to register hotkey: {e}");
+            }
+
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            commands::get_settings,
+            commands::save_settings,
+            commands::save_api_key,
+            commands::test_api_key,
+            commands::get_history,
+            commands::search_history,
+            commands::delete_history_entry,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
