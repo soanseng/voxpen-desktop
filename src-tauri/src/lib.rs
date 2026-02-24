@@ -1,6 +1,7 @@
 mod audio;
 mod clipboard;
 mod commands;
+mod dictionary;
 mod history;
 mod hotkey;
 mod keyboard;
