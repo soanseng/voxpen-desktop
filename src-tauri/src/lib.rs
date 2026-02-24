@@ -12,7 +12,7 @@ use tauri::{
     menu::{Menu, MenuItem},
     path::BaseDirectory,
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 use tokio::sync::Mutex;
 
@@ -85,7 +85,7 @@ pub fn run() {
 
                 let tray = TrayIconBuilder::new()
                     .menu(&menu)
-                    .menu_on_left_click(true)
+                    .show_menu_on_left_click(true)
                     .tooltip("VoxInk — Ready")
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "settings" => {
