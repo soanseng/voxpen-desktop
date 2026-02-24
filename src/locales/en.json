@@ -61,5 +61,11 @@
   "autoDetect": "Auto-detect",
   "chinese": "Chinese",
   "english": "English",
-  "japanese": "Japanese"
+  "japanese": "Japanese",
+  "update": {
+    "available": "Update v{{version}} available",
+    "install": "Install & Restart",
+    "downloading": "Downloading update...",
+    "error": "Update check failed: {{error}}"
+  }
 }

@@ -6,6 +6,7 @@ import SttSection from "./SttSection";
 import RefinementSection from "./RefinementSection";
 import AppearanceSection from "./AppearanceSection";
 import HistoryWindow from "../History/HistoryWindow";
+import { UpdateChecker } from "../UpdateChecker";
 
 type Tab = "general" | "speech" | "refinement" | "appearance" | "history";
 
@@ -151,7 +152,8 @@ export default function SettingsWindow() {
             </li>
           ))}
         </ul>
-        <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
+        <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700 space-y-3">
+          <UpdateChecker />
           <p className="text-xs text-gray-400 dark:text-gray-500">
             {t("version")}
           </p>

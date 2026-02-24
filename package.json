@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:debug": "tauri build --debug",
+    "test:core": "cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml",
+    "lint:core": "cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -15,6 +20,8 @@
     "@tauri-apps/plugin-global-shortcut": "^2",
     "@tauri-apps/plugin-sql": "^2",
     "@tauri-apps/plugin-store": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/plugin-process": "^2",
     "i18next": "^25.8.13",
     "react": "^19",
     "react-dom": "^19",

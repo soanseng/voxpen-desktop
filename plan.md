@@ -234,40 +234,51 @@ Production-ready app tested on all three platforms.
 
 ---
 
-## Phase 5: Distribution (Week 8)
+## Phase 5: Distribution (Week 8) — Infrastructure COMPLETE
 
-### 5.1 macOS Distribution
-- [ ] Apple Developer account
-- [ ] Code signing certificate
-- [ ] Notarization via `xcrun notarytool`
-- [ ] DMG with drag-to-Applications
-- [ ] Homebrew cask formula (optional)
-- [ ] Website download page
+### 5.1 Platform Icons ✅ COMPLETE
+- [x] Generated `icon.icns` (macOS), `icon.ico` (Windows) via `tauri icon`
+- [x] All icon sizes: 32x32, 128x128, 128x128@2x, icon.png
 
-### 5.2 Windows Distribution
-- [ ] Code signing certificate (optional but recommended)
-- [ ] NSIS installer or MSI
-- [ ] Website download page
-- [ ] Windows Defender SmartScreen: may need EV certificate for trust
+### 5.2 Bundle Configuration ✅ COMPLETE
+- [x] DMG with hardened runtime (macOS, min 10.15)
+- [x] NSIS installer with currentUser mode, WebView2 bootstrapper (Windows)
+- [x] AppImage + .deb (Linux)
+- [x] Updater artifacts enabled (`createUpdaterArtifacts: "v1Compatible"`)
 
-### 5.3 Linux Distribution
-- [ ] AppImage (universal)
-- [ ] .deb package for Debian/Ubuntu
-- [ ] Flathub (optional, future)
+### 5.3 Auto-Update ✅ COMPLETE
+- [x] `tauri-plugin-updater` + `tauri-plugin-process` added (Rust + JS)
+- [x] Updater plugin registered in `lib.rs`
+- [x] Updater + process permissions in `desktop.json` capabilities
+- [x] `UpdateChecker` React component with download progress bar
+- [x] i18n strings for update UI (en + zh-TW)
+- [ ] Updater signing key generation (first real release)
+- [ ] GitHub repo URL in updater endpoint (placeholder set)
 
-### 5.4 Auto-Update
-- [ ] Tauri updater plugin
-- [ ] Check for updates on launch (configurable)
-- [ ] Notify user, download in background, apply on restart
+### 5.4 CI/CD Pipelines ✅ COMPLETE
+- [x] `.github/workflows/ci.yml`: test core + build frontend on push/PR
+- [x] `.github/workflows/release.yml`: cross-platform build on tag push
+  - macOS (arm64 + x64), Windows (x64), Linux (x64)
+  - `tauri-apps/tauri-action` with Rust cache
+  - Code signing env vars ready (secrets need to be set)
+  - Draft releases with platform-specific asset descriptions
+- [ ] Apple Developer account + code signing certificate
+- [ ] Apple notarization credentials
+- [ ] Windows code signing certificate (optional)
 
-### 5.5 Website / Landing Page
+### 5.5 Build Scripts ✅ COMPLETE
+- [x] `pnpm test:core` — run voxink-core tests
+- [x] `pnpm lint:core` — run clippy on voxink-core
+- [x] `pnpm tauri:build` / `pnpm tauri:dev` convenience scripts
+
+### 5.6 Website / Landing Page (deferred)
 - [ ] Product page with demo GIF/video
 - [ ] Download links per platform
 - [ ] Setup guide (get API key, install, configure)
-- [ ] FAQ
+- [ ] Homebrew cask formula (optional)
 
 ### Deliverable
-VoxInk Desktop v1.0 available for download on all platforms.
+Distribution infrastructure ready. First release requires: signing keys, Apple Developer account, and GitHub repo configuration.
 
 ---
 

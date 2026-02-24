@@ -61,5 +61,11 @@
   "autoDetect": "自動偵測",
   "chinese": "中文",
   "english": "English",
-  "japanese": "日本語"
+  "japanese": "日本語",
+  "update": {
+    "available": "發現新版本 v{{version}}",
+    "install": "安裝並重啟",
+    "downloading": "正在下載更新...",
+    "error": "更新檢查失敗：{{error}}"
+  }
 }
