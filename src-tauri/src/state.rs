@@ -2,11 +2,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tauri::AppHandle;
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use voxink_core::api::groq::{self, ChatConfig, SttConfig};
 use voxink_core::error::AppError;
-use voxink_core::pipeline::controller::{LlmProvider, PipelineConfig, PipelineController, SttProvider};
+use voxink_core::pipeline::controller::{LlmProvider, PipelineController, SttProvider};
 use voxink_core::pipeline::refine;
 use voxink_core::pipeline::settings::Settings;
 use voxink_core::pipeline::state::Language;
@@ -18,11 +20,15 @@ use voxink_core::pipeline::transcribe;
 /// the latest API key and model configuration.
 pub struct GroqSttProvider {
     settings: Arc<Mutex<Settings>>,
+    app_handle: AppHandle,
 }
 
 impl GroqSttProvider {
-    pub fn new(settings: Arc<Mutex<Settings>>) -> Self {
-        Self { settings }
+    pub fn new(settings: Arc<Mutex<Settings>>, app_handle: AppHandle) -> Self {
+        Self {
+            settings,
+            app_handle,
+        }
     }
 }
 
@@ -32,9 +38,10 @@ impl SttProvider for GroqSttProvider {
         pcm_data: Vec<i16>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
+        let app_handle = self.app_handle.clone();
         Box::pin(async move {
             let s = settings.lock().await;
-            let api_key = get_api_key_from_provider(&s.stt_provider)?;
+            let api_key = get_api_key(&app_handle, &s.stt_provider)?;
             let config = SttConfig {
                 api_key,
                 model: s.stt_model.clone(),
@@ -50,11 +57,15 @@ impl SttProvider for GroqSttProvider {
 /// Concrete LlmProvider backed by Groq Chat Completion API.
 pub struct GroqLlmProvider {
     settings: Arc<Mutex<Settings>>,
+    app_handle: AppHandle,
 }
 
 impl GroqLlmProvider {
-    pub fn new(settings: Arc<Mutex<Settings>>) -> Self {
-        Self { settings }
+    pub fn new(settings: Arc<Mutex<Settings>>, app_handle: AppHandle) -> Self {
+        Self {
+            settings,
+            app_handle,
+        }
     }
 }
 
@@ -65,9 +76,10 @@ impl LlmProvider for GroqLlmProvider {
         language: Language,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
+        let app_handle = self.app_handle.clone();
         Box::pin(async move {
             let s = settings.lock().await;
-            let api_key = get_api_key_from_provider(&s.refinement_provider)?;
+            let api_key = get_api_key(&app_handle, &s.refinement_provider)?;
             let config = ChatConfig {
                 api_key,
                 model: s.refinement_model.clone(),
@@ -82,16 +94,29 @@ impl LlmProvider for GroqLlmProvider {
 
 /// Resolve the API key for a given provider.
 ///
-/// In a real implementation this reads from the encrypted Tauri store.
-/// For now, reads from the GROQ_API_KEY environment variable as a fallback.
-fn get_api_key_from_provider(provider: &str) -> Result<String, AppError> {
-    // Try environment variable first (for development)
+/// 1. Try the encrypted Tauri store (secrets.json) — set via save_api_key command
+/// 2. Fallback to environment variable (for development)
+fn get_api_key(app: &AppHandle, provider: &str) -> Result<String, AppError> {
+    // Try Tauri store first (encrypted secrets)
+    if let Ok(store) = app.store("secrets.json") {
+        let store_key = format!("{}_api_key", provider);
+        if let Some(value) = store.get(&store_key) {
+            if let Some(key) = value.as_str() {
+                if !key.is_empty() {
+                    return Ok(key.to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: environment variable (for development)
     let env_key = format!("{}_API_KEY", provider.to_uppercase());
     if let Ok(key) = std::env::var(&env_key) {
         if !key.is_empty() {
             return Ok(key);
         }
     }
+
     Err(AppError::ApiKeyMissing(provider.to_string()))
 }
 
@@ -102,4 +127,5 @@ pub struct AppState {
     pub recorder: Arc<crate::audio::CpalRecorder>,
     pub clipboard: Arc<crate::clipboard::ArboardClipboard>,
     pub keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    pub history: Arc<crate::history::HistoryDb>,
 }

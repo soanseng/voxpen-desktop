@@ -1,6 +1,7 @@
 mod audio;
 mod clipboard;
 mod commands;
+mod history;
 mod hotkey;
 mod keyboard;
 mod state;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use tauri::{
     menu::{Menu, MenuItem},
+    path::BaseDirectory,
     tray::TrayIconBuilder,
     Manager,
 };
@@ -16,7 +18,7 @@ use tokio::sync::Mutex;
 
 use voxink_core::pipeline::controller::{PipelineConfig, PipelineController};
 use voxink_core::pipeline::settings::Settings;
-use voxink_core::pipeline::state::Language;
+use voxink_core::pipeline::state::{Language, PipelineState};
 
 use state::{AppState, GroqLlmProvider, GroqSttProvider};
 
@@ -25,7 +27,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -37,8 +38,8 @@ pub fn run() {
 
             // Initialize pipeline controller with concrete Groq providers
             let config = PipelineConfig::new(None, Language::Auto);
-            let stt = GroqSttProvider::new(settings.clone());
-            let llm = GroqLlmProvider::new(settings.clone());
+            let stt = GroqSttProvider::new(settings.clone(), app.handle().clone());
+            let llm = GroqLlmProvider::new(settings.clone(), app.handle().clone());
             let controller = PipelineController::new(config, stt, llm);
 
             // Initialize hardware implementations
@@ -48,6 +49,16 @@ pub fn run() {
             let keyboard_mgr =
                 keyboard::EnigoKeyboard::new().expect("failed to init keyboard simulator");
 
+            // Initialize SQLite history database
+            let app_data_dir = app
+                .path()
+                .resolve("", BaseDirectory::AppData)
+                .expect("failed to resolve app data dir");
+            std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
+            let db_path = app_data_dir.join("voxink.db");
+            let history_db =
+                history::HistoryDb::open(db_path).expect("failed to open history DB");
+
             // Create shared app state
             let app_state = AppState {
                 controller: Arc::new(Mutex::new(controller)),
@@ -55,14 +66,41 @@ pub fn run() {
                 recorder: Arc::new(recorder),
                 clipboard: Arc::new(clipboard_mgr),
                 keyboard: Arc::new(keyboard_mgr),
+                history: Arc::new(history_db),
             };
             app.manage(app_state);
 
-            // Spawn background task to emit pipeline state changes to React
+            // Spawn background task to emit pipeline state changes to React + update tray
             {
                 let app_handle = app.handle().clone();
                 let state: tauri::State<'_, AppState> = app.state();
                 let controller = state.controller.clone();
+
+                // Build system tray menu
+                let settings_item =
+                    MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
+                let quit_item =
+                    MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
+
+                let tray = TrayIconBuilder::new()
+                    .menu(&menu)
+                    .menu_on_left_click(true)
+                    .tooltip("VoxInk — Ready")
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "settings" => {
+                            if let Some(window) = app.get_webview_window("settings") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .build(app)?;
+
                 tauri::async_runtime::spawn(async move {
                     let ctrl = controller.lock().await;
                     let mut rx = ctrl.subscribe();
@@ -70,34 +108,33 @@ pub fn run() {
                     while rx.changed().await.is_ok() {
                         let pipeline_state = rx.borrow().clone();
                         let _ = app_handle.emit("pipeline-state", &pipeline_state);
+
+                        // Update tray tooltip based on pipeline state
+                        let tooltip = match &pipeline_state {
+                            PipelineState::Idle => "VoxInk — Ready",
+                            PipelineState::Recording => "VoxInk — Recording...",
+                            PipelineState::Processing
+                            | PipelineState::Refining { .. } => "VoxInk — Processing...",
+                            PipelineState::Result { .. }
+                            | PipelineState::Refined { .. } => "VoxInk — Done",
+                            PipelineState::Error { .. } => "VoxInk — Error",
+                        };
+                        let _ = tray.set_tooltip(Some(tooltip));
+
+                        // Show/hide overlay window
+                        if let Some(overlay) = app_handle.get_webview_window("overlay") {
+                            match &pipeline_state {
+                                PipelineState::Idle => {
+                                    let _ = overlay.hide();
+                                }
+                                _ => {
+                                    let _ = overlay.show();
+                                }
+                            }
+                        }
                     }
                 });
             }
-
-            // Build system tray menu
-            let settings_item =
-                MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-            let quit_item =
-                MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
-
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
-                .menu_on_left_click(true)
-                .tooltip("VoxInk — Ready")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "settings" => {
-                        if let Some(window) = app.get_webview_window("settings") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .build(app)?;
 
             // Register global hotkey
             if let Err(e) = hotkey::register_hotkey(app.handle()) {

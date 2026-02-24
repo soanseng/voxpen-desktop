@@ -3,23 +3,42 @@ use tauri_plugin_store::StoreExt;
 use voxink_core::history::TranscriptionEntry;
 use voxink_core::pipeline::settings::Settings;
 
+use crate::state::AppState;
+
 /// Load settings from Tauri store, falling back to defaults.
+/// Also syncs the loaded settings to shared in-memory state.
 #[tauri::command]
-pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
+pub async fn get_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Settings, String> {
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
-    match store.get("settings") {
-        Some(value) => serde_json::from_value(value.clone()).map_err(|e| e.to_string()),
-        None => Ok(Settings::default()),
-    }
+    let settings = match store.get("settings") {
+        Some(value) => serde_json::from_value(value.clone()).map_err(|e| e.to_string())?,
+        None => Settings::default(),
+    };
+
+    // Sync to shared settings so providers use the latest values
+    *state.settings.lock().await = settings.clone();
+
+    Ok(settings)
 }
 
-/// Save settings to Tauri store.
+/// Save settings to Tauri store and sync to shared in-memory state.
 #[tauri::command]
-pub async fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String> {
+pub async fn save_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    settings: Settings,
+) -> Result<(), String> {
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     let value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
     store.set("settings", value);
     store.save().map_err(|e| e.to_string())?;
+
+    // Sync to shared settings so providers use the latest values
+    *state.settings.lock().await = settings;
+
     Ok(())
 }
 
@@ -68,29 +87,29 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
 /// Get transcription history with pagination.
 #[tauri::command]
 pub async fn get_history(
-    _app: tauri::AppHandle,
-    _limit: u32,
-    _offset: u32,
+    state: tauri::State<'_, AppState>,
+    limit: u32,
+    offset: u32,
 ) -> Result<Vec<TranscriptionEntry>, String> {
-    // TODO: Wire to SQLite via tauri-plugin-sql when DB is initialized
-    Ok(vec![])
+    state.history.query(limit, offset)
 }
 
 /// Search transcription history by text content.
 #[tauri::command]
 pub async fn search_history(
-    _app: tauri::AppHandle,
-    _query: String,
-    _limit: u32,
-    _offset: u32,
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: u32,
+    offset: u32,
 ) -> Result<Vec<TranscriptionEntry>, String> {
-    // TODO: Wire to SQLite via tauri-plugin-sql
-    Ok(vec![])
+    state.history.search(&query, limit, offset)
 }
 
 /// Delete a history entry by id.
 #[tauri::command]
-pub async fn delete_history_entry(_app: tauri::AppHandle, _id: String) -> Result<(), String> {
-    // TODO: Wire to SQLite via tauri-plugin-sql
-    Ok(())
+pub async fn delete_history_entry(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.history.delete(&id)
 }
