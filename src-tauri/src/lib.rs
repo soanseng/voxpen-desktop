@@ -58,7 +58,9 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
             let db_path = app_data_dir.join("voxink.db");
             let history_db =
-                history::HistoryDb::open(db_path).expect("failed to open history DB");
+                history::HistoryDb::open(db_path.clone()).expect("failed to open history DB");
+            let dictionary_db =
+                dictionary::DictionaryDb::open(db_path).expect("failed to open dictionary DB");
 
             // Create shared app state
             let app_state = AppState {
@@ -68,6 +70,7 @@ pub fn run() {
                 clipboard: Arc::new(clipboard_mgr),
                 keyboard: Arc::new(keyboard_mgr),
                 history: Arc::new(history_db),
+                dictionary: Arc::new(dictionary_db),
             };
             app.manage(app_state);
 
@@ -152,6 +155,10 @@ pub fn run() {
             commands::get_history,
             commands::search_history,
             commands::delete_history_entry,
+            commands::get_dictionary_entries,
+            commands::get_dictionary_count,
+            commands::add_dictionary_entry,
+            commands::delete_dictionary_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

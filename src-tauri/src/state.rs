@@ -36,6 +36,7 @@ impl SttProvider for GroqSttProvider {
     fn transcribe(
         &self,
         pcm_data: Vec<i16>,
+        vocabulary_hint: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
         let app_handle = self.app_handle.clone();
@@ -47,9 +48,10 @@ impl SttProvider for GroqSttProvider {
                 model: s.stt_model.clone(),
                 language: s.stt_language.clone(),
                 response_format: "verbose_json".to_string(),
+                prompt_override: None,
             };
             drop(s);
-            transcribe::transcribe(&pcm_data, &config).await
+            transcribe::transcribe(&pcm_data, &config, vocabulary_hint.as_deref()).await
         })
     }
 }
@@ -74,6 +76,7 @@ impl LlmProvider for GroqLlmProvider {
         &self,
         text: String,
         language: Language,
+        vocabulary: Vec<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
         let app_handle = self.app_handle.clone();
@@ -87,7 +90,7 @@ impl LlmProvider for GroqLlmProvider {
                 max_tokens: groq::LLM_MAX_TOKENS,
             };
             drop(s);
-            refine::refine(&text, &config, &language).await
+            refine::refine(&text, &config, &language, &vocabulary).await
         })
     }
 }
@@ -128,4 +131,5 @@ pub struct AppState {
     pub clipboard: Arc<crate::clipboard::ArboardClipboard>,
     pub keyboard: Arc<crate::keyboard::EnigoKeyboard>,
     pub history: Arc<crate::history::HistoryDb>,
+    pub dictionary: Arc<crate::dictionary::DictionaryDb>,
 }

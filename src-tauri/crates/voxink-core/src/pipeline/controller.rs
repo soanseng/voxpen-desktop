@@ -19,6 +19,7 @@ pub trait SttProvider: Send + Sync {
     fn transcribe(
         &self,
         pcm_data: Vec<i16>,
+        vocabulary_hint: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>>;
 }
 
@@ -33,6 +34,7 @@ pub trait LlmProvider: Send + Sync {
         &self,
         text: String,
         language: Language,
+        vocabulary: Vec<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>>;
 }
 
@@ -142,7 +144,12 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
     /// - Processing → STT → Result (if refinement enabled but fails — graceful fallback)
     ///
     /// LLM refinement has a 5s timeout. If exceeded, falls back to raw text.
-    pub async fn on_stop_recording(&self, pcm_data: Vec<i16>) -> Result<String, AppError> {
+    pub async fn on_stop_recording(
+        &self,
+        pcm_data: Vec<i16>,
+        vocabulary_hint: Option<String>,
+        vocabulary_words: Vec<String>,
+    ) -> Result<String, AppError> {
         // Guard against calling stop when not recording
         if !matches!(self.current_state(), PipelineState::Recording) {
             return Err(AppError::Audio("not currently recording".to_string()));
@@ -150,7 +157,7 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
 
         let _ = self.state_tx.send(PipelineState::Processing);
 
-        let raw_text = match self.stt.transcribe(pcm_data).await {
+        let raw_text = match self.stt.transcribe(pcm_data, vocabulary_hint).await {
             Ok(text) => text,
             Err(e) => {
                 let _ = self.state_tx.send(PipelineState::Error {
@@ -176,7 +183,8 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
         // Attempt refinement with timeout
         let refine_result = tokio::time::timeout(
             REFINEMENT_TIMEOUT,
-            self.llm.refine(raw_text.clone(), self.config.language.clone()),
+            self.llm
+                .refine(raw_text.clone(), self.config.language.clone(), vocabulary_words),
         )
         .await;
 
@@ -228,13 +236,13 @@ mod tests {
         let text = text.to_string();
         let mut mock = MockSttProvider::new();
         mock.expect_transcribe()
-            .returning(move |_| Box::pin(std::future::ready(Ok(text.clone()))));
+            .returning(move |_, _| Box::pin(std::future::ready(Ok(text.clone()))));
         mock
     }
 
     fn mock_stt_failure() -> MockSttProvider {
         let mut mock = MockSttProvider::new();
-        mock.expect_transcribe().returning(|_| {
+        mock.expect_transcribe().returning(|_, _| {
             Box::pin(std::future::ready(Err(AppError::Transcription(
                 "mock failure".to_string(),
             ))))
@@ -246,13 +254,13 @@ mod tests {
         let text = text.to_string();
         let mut mock = MockLlmProvider::new();
         mock.expect_refine()
-            .returning(move |_, _| Box::pin(std::future::ready(Ok(text.clone()))));
+            .returning(move |_, _, _| Box::pin(std::future::ready(Ok(text.clone()))));
         mock
     }
 
     fn mock_llm_failure() -> MockLlmProvider {
         let mut mock = MockLlmProvider::new();
-        mock.expect_refine().returning(|_, _| {
+        mock.expect_refine().returning(|_, _, _| {
             Box::pin(std::future::ready(Err(AppError::Refinement(
                 "mock failure".to_string(),
             ))))
@@ -262,7 +270,7 @@ mod tests {
 
     fn mock_llm_timeout() -> MockLlmProvider {
         let mut mock = MockLlmProvider::new();
-        mock.expect_refine().returning(|_, _| {
+        mock.expect_refine().returning(|_, _, _| {
             Box::pin(async {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 Ok("should not reach".to_string())
@@ -316,7 +324,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         assert_eq!(result.unwrap(), "你好世界");
         assert_eq!(
@@ -336,7 +344,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         assert!(matches!(result, Err(AppError::Transcription(_))));
         assert!(matches!(
@@ -353,7 +361,7 @@ mod tests {
             mock_llm_unused(),
         );
 
-        let result = controller.on_stop_recording(vec![100]).await;
+        let result = controller.on_stop_recording(vec![100], None, vec![]).await;
 
         match result {
             Err(AppError::Audio(msg)) => assert_eq!(msg, "not currently recording"),
@@ -417,7 +425,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         assert_eq!(result.unwrap(), "你好世界！");
         assert_eq!(
@@ -438,7 +446,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         // Should return raw text as fallback, not an error
         assert_eq!(result.unwrap(), "raw text");
@@ -459,7 +467,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         assert_eq!(result.unwrap(), "hello world");
         assert_eq!(
@@ -479,7 +487,7 @@ mod tests {
         );
         controller.on_start_recording().unwrap();
 
-        let result = controller.on_stop_recording(vec![100, 200]).await;
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         // Should fallback to raw text after timeout
         assert_eq!(result.unwrap(), "raw text");

@@ -76,6 +76,7 @@ pub fn register_hotkey(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
                     let keyboard = state.keyboard.clone();
                     let settings = state.settings.clone();
                     let history = state.history.clone();
+                    let dictionary = state.dictionary.clone();
                     let processing_flag = processing.clone();
 
                     tauri::async_runtime::spawn(async move {
@@ -99,9 +100,22 @@ pub fn register_hotkey(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
                             return;
                         }
 
+                        // Fetch vocabulary for prompt injection
+                        let vocab_words = dictionary.get_words(500).unwrap_or_default();
+                        let stt_lang = {
+                            let s = settings.lock().await;
+                            s.stt_language.clone()
+                        };
+                        let vocabulary_hint =
+                            voxink_core::pipeline::vocabulary::build_stt_hint(
+                                &vocab_words, &stt_lang,
+                            );
+
                         // Run pipeline: STT + optional LLM refinement
                         let ctrl = controller.lock().await;
-                        let result = ctrl.on_stop_recording(pcm_data).await;
+                        let result = ctrl
+                            .on_stop_recording(pcm_data, vocabulary_hint, vocab_words)
+                            .await;
                         let final_state = ctrl.current_state();
                         drop(ctrl);
 

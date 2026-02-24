@@ -1,5 +1,6 @@
 use tauri_plugin_store::StoreExt;
 
+use voxink_core::dictionary::DictionaryEntry;
 use voxink_core::history::TranscriptionEntry;
 use voxink_core::pipeline::settings::Settings;
 
@@ -75,6 +76,7 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
         model: groq::DEFAULT_STT_MODEL.to_string(),
         language: Language::Auto,
         response_format: "verbose_json".to_string(),
+        prompt_override: None,
     };
 
     match groq::transcribe(&config, &wav_data).await {
@@ -112,4 +114,38 @@ pub async fn delete_history_entry(
     id: String,
 ) -> Result<(), String> {
     state.history.delete(&id)
+}
+
+/// Get all dictionary entries.
+#[tauri::command]
+pub async fn get_dictionary_entries(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<DictionaryEntry>, String> {
+    state.dictionary.get_all()
+}
+
+/// Get dictionary entry count.
+#[tauri::command]
+pub async fn get_dictionary_count(
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    state.dictionary.count()
+}
+
+/// Add a word to the dictionary.
+#[tauri::command]
+pub async fn add_dictionary_entry(
+    state: tauri::State<'_, AppState>,
+    word: String,
+) -> Result<(), String> {
+    state.dictionary.add(&word)
+}
+
+/// Delete a dictionary entry by id.
+#[tauri::command]
+pub async fn delete_dictionary_entry(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    state.dictionary.delete(id)
 }
