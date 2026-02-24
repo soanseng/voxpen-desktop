@@ -1,3 +1,5 @@
+use std::fmt;
+
 use reqwest::multipart;
 use serde::Deserialize;
 
@@ -9,12 +11,24 @@ use crate::pipeline::state::Language;
 pub const DEFAULT_STT_MODEL: &str = "whisper-large-v3-turbo";
 
 /// Configuration for a single STT API call.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SttConfig {
     pub api_key: String,
     pub model: String,
     pub language: Language,
     pub response_format: String,
+}
+
+// Custom Debug that masks the API key
+impl fmt::Debug for SttConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SttConfig")
+            .field("api_key", &"****")
+            .field("model", &self.model)
+            .field("language", &self.language)
+            .field("response_format", &self.response_format)
+            .finish()
+    }
 }
 
 impl SttConfig {

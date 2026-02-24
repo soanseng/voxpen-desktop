@@ -22,10 +22,14 @@ const PASTE_DELAY: Duration = Duration::from_millis(100);
 /// 1. Save current clipboard content
 /// 2. Write transcription to clipboard
 /// 3. Simulate paste keystroke
-/// 4. Wait 100ms
+/// 4. Wait 100ms (for OS to process the paste)
 /// 5. Restore original clipboard
 ///
 /// If paste simulation fails, text remains on clipboard (fallback).
+///
+/// **Threading note**: This function uses `thread::sleep` because the underlying
+/// `enigo` and `arboard` APIs are synchronous and require OS event loop access.
+/// When called from async context, wrap in `tokio::task::spawn_blocking`.
 pub fn paste_text(
     clipboard: &dyn ClipboardManager,
     keys: &dyn KeySimulator,
