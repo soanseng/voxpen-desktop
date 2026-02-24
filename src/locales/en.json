@@ -67,5 +67,17 @@
     "install": "Install & Restart",
     "downloading": "Downloading update...",
     "error": "Update check failed: {{error}}"
+  },
+  "vocabulary": "Vocabulary",
+  "vocabularyDescription": "Manage custom vocabulary to improve voice recognition accuracy.",
+  "dictionary": {
+    "title": "Custom Vocabulary",
+    "description": "Add names, places, and terms to improve voice recognition accuracy.",
+    "addHint": "Add a word...",
+    "addButton": "Add",
+    "count": "{{count}} words",
+    "empty": "Add names, places, and terms to improve voice recognition accuracy.",
+    "duplicate": "Word already exists.",
+    "help": "Words you add here help the voice engine recognize names, places, and special terms more accurately."
   }
 }

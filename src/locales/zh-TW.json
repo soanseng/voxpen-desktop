@@ -67,5 +67,17 @@
     "install": "安裝並重啟",
     "downloading": "正在下載更新...",
     "error": "更新檢查失敗：{{error}}"
+  },
+  "vocabulary": "自定義詞彙",
+  "vocabularyDescription": "管理自定義詞彙以提升語音辨識準確度。",
+  "dictionary": {
+    "title": "自定義詞彙",
+    "description": "加入人名、地名、專有名詞，提升語音辨識準確度。",
+    "addHint": "輸入新詞彙...",
+    "addButton": "新增",
+    "count": "{{count}} 個詞彙",
+    "empty": "加入人名、地名、專有名詞，提升語音辨識準確度。",
+    "duplicate": "此詞彙已存在。",
+    "help": "加入的詞彙會協助語音引擎更準確地辨識人名、地名與專有名詞。"
   }
 }
