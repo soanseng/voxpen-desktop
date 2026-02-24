@@ -66,86 +66,41 @@ This is the entire core loop. Get this working end-to-end first.
 > **Note**: `audio/encoder.rs` (pcm_to_wav) already implemented and tested in Phase 0. Phase 1 focuses on the remaining pipeline modules.
 > All new modules go in `src-tauri/crates/voxink-core/src/` (framework-independent, testable without Tauri).
 
-### 1.1 Groq STT API Client
+### 1.1 Groq STT API Client ✅ COMPLETE
 **File**: `voxink-core/src/api/groq.rs`
-- [ ] Define `SttConfig` struct: `api_key`, `model` (default: `whisper-large-v3-turbo`), `language: Option<Language>`, `response_format` (default: `verbose_json`)
-- [ ] Define `WhisperResponse` struct matching Groq API response
-- [ ] Implement `pub async fn transcribe(config: &SttConfig, wav_data: &[u8]) -> Result<String, AppError>`
-  - Build `reqwest::Client` with `CONNECT_TIMEOUT` / `READ_WRITE_TIMEOUT`
-  - Multipart POST to `{GROQ_BASE_URL}openai/v1/audio/transcriptions`
-  - Per-call `Authorization: Bearer {api_key}` header
-  - Form fields: `file` (wav bytes), `model`, `response_format`, `language` (if set), `prompt` (from `Language::prompt()`)
-- [ ] Map HTTP errors: 401 → `AppError::ApiKeyMissing`, 413 → `AppError::Transcription("file too large")`, timeout → `AppError::Network`
-- [ ] Tests (wiremock):
-  - `should_return_transcription_when_api_responds_successfully`
-  - `should_return_api_key_error_on_401`
-  - `should_return_transcription_error_on_413`
-  - `should_include_language_param_when_set`
-  - `should_omit_language_param_for_auto`
+- [x] `SttConfig` struct with api_key, model, language, response_format
+- [x] `WhisperResponse` struct for Groq API response
+- [x] `transcribe()` async fn with reqwest multipart POST, per-call Bearer auth
+- [x] HTTP error mapping: 401 → ApiKeyMissing, 413 → Transcription, 500 → Transcription
+- [x] 5 wiremock tests: success, 401, 413, 500, custom model
 
-### 1.2 Transcription Pipeline
+### 1.2 Transcription Pipeline ✅ COMPLETE
 **File**: `voxink-core/src/pipeline/transcribe.rs`
-- [ ] Define `TranscribeRequest` struct: `pcm_data: Vec<i16>`, `config: SttConfig`
-- [ ] Implement `pub async fn transcribe(request: TranscribeRequest) -> Result<String, AppError>`
-  - Compose: `encoder::pcm_to_wav(&request.pcm_data)` → `groq::transcribe(&config, &wav_data)`
-- [ ] Validate: empty PCM → `AppError::Audio("no audio data")`
-- [ ] Tests:
-  - `should_encode_pcm_and_call_stt_api`
-  - `should_reject_empty_pcm_data`
+- [x] `transcribe()` composing encoder::pcm_to_wav + groq::transcribe
+- [x] Empty PCM validation → AppError::Audio
+- [x] 3 wiremock tests: encode+call, empty rejection, error propagation
 
-### 1.3 Pipeline Controller (State Machine)
+### 1.3 Pipeline Controller (State Machine) ✅ COMPLETE
 **File**: `voxink-core/src/pipeline/controller.rs`
-- [ ] Define `PipelineController` struct with:
-  - `state_tx: tokio::sync::watch::Sender<PipelineState>` (state broadcast)
-  - `state_rx: tokio::sync::watch::Receiver<PipelineState>` (for reading current state)
-  - `config: PipelineConfig` (API key, language, model, etc.)
-- [ ] Implement `PipelineController::new(config: PipelineConfig) -> Self`
-- [ ] Implement `pub async fn on_start_recording(&self) -> Result<(), AppError>`
-  - Validate API key present → emit `Recording`
-  - If API key missing → emit `Error` + return `Err(AppError::ApiKeyMissing)`
-- [ ] Implement `pub async fn on_stop_recording(&self, pcm_data: Vec<i16>) -> Result<String, AppError>`
-  - Emit `Processing`
-  - Call `pipeline::transcribe()` → on success emit `Result { text }`
-  - On failure → emit `Error { message }` + return Err
-- [ ] Implement `pub fn current_state(&self) -> PipelineState` (read from watch receiver)
-- [ ] Tests:
-  - `should_transition_idle_to_recording_on_start`
-  - `should_emit_error_when_api_key_missing`
-  - `should_transition_recording_to_processing_to_result`
-  - `should_emit_error_state_on_transcription_failure`
+- [x] `PipelineController` with `tokio::sync::watch` for state broadcast
+- [x] `PipelineConfig` struct (API key, language, model)
+- [x] `on_start_recording()`: validates API key → emits Recording (or Error)
+- [x] `on_stop_recording(pcm)`: emits Processing → transcribe → Result (or Error)
+- [x] `current_state()`, `subscribe()`, `update_config()`, `reset()`
+- [x] 7 tests: idle start, recording transition, error on missing key, processing on stop, empty pcm, reset, config update
 
-### 1.4 Audio Recorder (cpal)
-**File**: `voxink-core/src/audio/recorder.rs` (trait + types only)
-**File**: `src-tauri/src/audio_recorder.rs` (cpal impl, Tauri-specific due to device access)
-- [ ] Define trait in voxink-core: `pub trait AudioRecorder: Send + Sync`
-  - `fn start(&self) -> Result<(), AppError>`
-  - `fn stop(&self) -> Result<Vec<i16>, AppError>`
-  - `fn is_recording(&self) -> bool`
-- [ ] cpal implementation (in Tauri crate):
-  - Default input device, 16kHz mono i16
-  - Accumulate samples in `Arc<Mutex<Vec<i16>>>`
-  - Handle: no microphone → `AppError::Audio("no input device")`
-  - Max duration: 5 min auto-stop
-  - Min duration: <0.5s → return empty (caller discards)
-- [ ] Tests (trait-based, mockable):
-  - `should_start_and_stop_recording`
-  - `should_return_pcm_data_on_stop`
+### 1.4 Audio Recorder Trait ✅ COMPLETE
+**File**: `voxink-core/src/audio/recorder.rs`
+- [x] `AudioRecorder` trait: start/stop/is_recording (mockall automock)
+- [ ] cpal implementation (requires Tauri crate + system audio libs)
 
-### 1.5 Auto-Paste (clipboard + key simulation)
-**File**: `voxink-core/src/input/clipboard.rs` (trait)
-**File**: `voxink-core/src/input/paste.rs` (orchestration)
-- [ ] Define trait: `pub trait ClipboardManager: Send + Sync`
-  - `fn get_text(&self) -> Result<Option<String>, AppError>`
-  - `fn set_text(&self, text: &str) -> Result<(), AppError>`
-- [ ] Define trait: `pub trait KeySimulator: Send + Sync`
-  - `fn paste(&self) -> Result<(), AppError>` (simulate Cmd+V / Ctrl+V)
-- [ ] Implement `pub fn paste_text(clipboard: &dyn ClipboardManager, keys: &dyn KeySimulator, text: &str) -> Result<(), AppError>`
-  - Save → Write → Paste → Sleep(100ms) → Restore
-- [ ] arboard + enigo impls in Tauri crate
-- [ ] Tests (with mocks):
-  - `should_save_and_restore_clipboard`
-  - `should_write_text_and_simulate_paste`
-  - `should_handle_clipboard_restore_failure_gracefully`
+### 1.5 Auto-Paste ✅ COMPLETE
+**File**: `voxink-core/src/input/clipboard.rs` + `input/paste.rs`
+- [x] `ClipboardManager` trait: get_text/set_text (mockall automock)
+- [x] `KeySimulator` trait: paste (mockall automock)
+- [x] `paste_text()` orchestration: save → write → paste → sleep(100ms) → restore
+- [x] 4 mock tests: save/restore, write+paste, graceful restore failure, paste failure propagation
+- [ ] arboard + enigo concrete implementations (requires Tauri crate + system libs)
 
 ### 1.6 Tauri Integration (wire everything together)
 **File**: `src-tauri/src/lib.rs` (update setup)
