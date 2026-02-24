@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { TranscriptionEntry } from "../../types/history";
 import HistoryEntry from "./HistoryEntry";
 
@@ -7,6 +8,8 @@ interface HistoryListProps {
 }
 
 export default function HistoryList({ entries, onDelete }: HistoryListProps) {
+  const { t } = useTranslation();
+
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -24,10 +27,10 @@ export default function HistoryList({ entries, onDelete }: HistoryListProps) {
           />
         </svg>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          No transcriptions yet
+          {t("noEntries")}
         </p>
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-          Use the global hotkey to start recording.
+          {t("noEntriesHint")}
         </p>
       </div>
     );

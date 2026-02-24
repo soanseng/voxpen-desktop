@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
 import { saveApiKey } from "../../lib/tauri";
 
@@ -13,12 +14,14 @@ const STT_PROVIDERS = [
   { value: "custom", label: "Custom Server" },
 ];
 
-const LANGUAGES: { value: Settings["stt_language"]; label: string }[] = [
-  { value: "Auto", label: "Auto-detect" },
-  { value: "Chinese", label: "Chinese" },
-  { value: "English", label: "English" },
-  { value: "Japanese", label: "Japanese" },
-];
+function getLanguageOptions(t: (key: string) => string): { value: Settings["stt_language"]; label: string }[] {
+  return [
+    { value: "Auto", label: t("autoDetect") },
+    { value: "Chinese", label: t("chinese") },
+    { value: "English", label: t("english") },
+    { value: "Japanese", label: t("japanese") },
+  ];
+}
 
 function getModelsForProvider(provider: string) {
   switch (provider) {
@@ -38,6 +41,7 @@ function getModelsForProvider(provider: string) {
 }
 
 export default function SttSection({ settings, onUpdate }: SttSectionProps) {
+  const { t } = useTranslation();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,6 +50,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
   );
 
   const models = getModelsForProvider(settings.stt_provider);
+  const languages = getLanguageOptions(t);
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return;
@@ -77,10 +82,10 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
     <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Speech-to-Text
+          {t("speech")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Configure the STT provider, API key, language, and model.
+          {t("speechDescription")}
         </p>
       </div>
 
@@ -90,7 +95,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
           htmlFor="stt-provider"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Provider
+          {t("provider")}
         </label>
         <select
           id="stt-provider"
@@ -117,7 +122,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
           htmlFor="stt-api-key"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          API Key
+          {t("apiKey")}
         </label>
         <div className="flex max-w-md items-center gap-2">
           <div className="relative flex-1">
@@ -126,7 +131,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key"
+              placeholder={t("apiKeyPlaceholder")}
               className={
                 "w-full rounded-lg border border-gray-300 bg-white " +
                 "px-3 py-2 pr-10 text-sm text-gray-900 " +
@@ -192,17 +197,17 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
               "dark:bg-blue-600 dark:hover:bg-blue-700"
             }
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
         {saveStatus === "saved" && (
           <p className="text-xs text-green-600 dark:text-green-400">
-            API key saved successfully.
+            {t("saved")}
           </p>
         )}
         {saveStatus === "error" && (
           <p className="text-xs text-red-600 dark:text-red-400">
-            Failed to save API key. Please try again.
+            {t("saveFailed")}
           </p>
         )}
       </div>
@@ -213,7 +218,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
           htmlFor="stt-language"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Language
+          {t("language")}
         </label>
         <select
           id="stt-language"
@@ -231,7 +236,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
             "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           }
         >
-          {LANGUAGES.map((l) => (
+          {languages.map((l) => (
             <option key={l.value} value={l.value}>
               {l.label}
             </option>
@@ -246,7 +251,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
             htmlFor="stt-model"
             className="block text-sm font-medium text-gray-700 dark:text-gray-300"
           >
-            Model
+            {t("model")}
           </label>
           <select
             id="stt-model"

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { TranscriptionEntry } from "../../types/history";
 import { deleteHistoryEntry, getHistory, searchHistory } from "../../lib/tauri";
 import HistoryList from "./HistoryList";
@@ -6,6 +7,7 @@ import HistoryList from "./HistoryList";
 const PAGE_SIZE = 50;
 
 export default function HistoryWindow() {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<TranscriptionEntry[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -58,10 +60,10 @@ export default function HistoryWindow() {
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          History
+          {t("history")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Browse and search your past transcriptions.
+          {t("historyDescription")}
         </p>
       </div>
 
@@ -84,7 +86,7 @@ export default function HistoryWindow() {
           type="text"
           value={query}
           onChange={(e) => handleSearchChange(e.target.value)}
-          placeholder="Search transcriptions..."
+          placeholder={t("search")}
           className={
             "w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm " +
             "text-gray-900 placeholder:text-gray-400 " +

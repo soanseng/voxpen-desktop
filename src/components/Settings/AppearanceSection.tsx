@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
 
 interface AppearanceSectionProps {
@@ -39,27 +40,34 @@ export default function AppearanceSection({
   settings,
   onUpdate,
 }: AppearanceSectionProps) {
+  const { t, i18n } = useTranslation();
+
+  function handleLanguageChange(value: string) {
+    onUpdate("ui_language", value);
+    i18n.changeLanguage(value);
+  }
+
   return (
     <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Appearance
+          {t("appearance")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Customize the look and language of VoxInk.
+          {t("appearanceDescription")}
         </p>
       </div>
 
       {/* Theme */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Theme
+          {t("theme")}
         </label>
         <SegmentedControl
           options={[
-            { label: "System", value: "system" as const },
-            { label: "Light", value: "light" as const },
-            { label: "Dark", value: "dark" as const },
+            { label: t("system"), value: "system" as const },
+            { label: t("light"), value: "light" as const },
+            { label: t("dark"), value: "dark" as const },
           ]}
           value={settings.theme}
           onChange={(v) => onUpdate("theme", v)}
@@ -72,12 +80,12 @@ export default function AppearanceSection({
           htmlFor="ui-language"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Interface Language
+          {t("uiLanguage")}
         </label>
         <select
           id="ui-language"
           value={settings.ui_language}
-          onChange={(e) => onUpdate("ui_language", e.target.value)}
+          onChange={(e) => handleLanguageChange(e.target.value)}
           className={
             "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
             "px-3 py-2 text-sm text-gray-900 " +

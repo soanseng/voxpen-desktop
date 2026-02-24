@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
 import { saveApiKey } from "../../lib/tauri";
 
@@ -71,6 +72,7 @@ export default function RefinementSection({
   settings,
   onUpdate,
 }: RefinementSectionProps) {
+  const { t } = useTranslation();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,10 +115,10 @@ export default function RefinementSection({
     <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Refinement
+          {t("refinement")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Use an LLM to clean up transcribed text before pasting.
+          {t("refinementDescription")}
         </p>
       </div>
 
@@ -124,10 +126,10 @@ export default function RefinementSection({
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Enable Refinement
+            {t("enable")}
           </label>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Remove filler words, fix grammar, and add punctuation.
+            {t("enableHint")}
           </p>
         </div>
         <ToggleSwitch
@@ -143,7 +145,7 @@ export default function RefinementSection({
           htmlFor="refinement-provider"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Provider
+          {t("provider")}
         </label>
         <select
           id="refinement-provider"
@@ -172,7 +174,7 @@ export default function RefinementSection({
           htmlFor="refinement-api-key"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          API Key
+          {t("apiKey")}
         </label>
         <div className="flex max-w-md items-center gap-2">
           <div className="relative flex-1">
@@ -181,7 +183,7 @@ export default function RefinementSection({
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key"
+              placeholder={t("apiKeyPlaceholder")}
               disabled={disabled}
               className={
                 "w-full rounded-lg border border-gray-300 bg-white " +
@@ -252,17 +254,17 @@ export default function RefinementSection({
               "dark:bg-blue-600 dark:hover:bg-blue-700"
             }
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
         {saveStatus === "saved" && (
           <p className="text-xs text-green-600 dark:text-green-400">
-            API key saved successfully.
+            {t("saved")}
           </p>
         )}
         {saveStatus === "error" && (
           <p className="text-xs text-red-600 dark:text-red-400">
-            Failed to save API key. Please try again.
+            {t("saveFailed")}
           </p>
         )}
       </div>
@@ -274,7 +276,7 @@ export default function RefinementSection({
             htmlFor="refinement-model"
             className="block text-sm font-medium text-gray-700 dark:text-gray-300"
           >
-            Model
+            {t("model")}
           </label>
           <select
             id="refinement-model"

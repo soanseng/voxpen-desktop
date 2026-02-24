@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 
 interface PipelineEvent {
@@ -18,19 +19,19 @@ interface PipelineEvent {
   };
 }
 
-function RecordingIndicator() {
+function RecordingIndicator({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3">
       <span className="relative flex h-4 w-4">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
         <span className="relative inline-flex h-4 w-4 rounded-full bg-red-500" />
       </span>
-      <span className="text-sm font-medium text-white">Recording...</span>
+      <span className="text-sm font-medium text-white">{label}</span>
     </div>
   );
 }
 
-function ProcessingIndicator() {
+function ProcessingIndicator({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3">
       <svg
@@ -52,12 +53,12 @@ function ProcessingIndicator() {
           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
         />
       </svg>
-      <span className="text-sm font-medium text-white">Processing...</span>
+      <span className="text-sm font-medium text-white">{label}</span>
     </div>
   );
 }
 
-function DoneIndicator() {
+function DoneIndicator({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3">
       <svg
@@ -73,7 +74,7 @@ function DoneIndicator() {
           d="M4.5 12.75l6 6 9-13.5"
         />
       </svg>
-      <span className="text-sm font-medium text-white">Done</span>
+      <span className="text-sm font-medium text-white">{label}</span>
     </div>
   );
 }
@@ -102,6 +103,7 @@ function ErrorIndicator({ message }: { message: string }) {
 }
 
 export default function Overlay() {
+  const { t } = useTranslation();
   const [state, setState] = useState<PipelineEvent>({ type: "Idle" });
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -143,14 +145,14 @@ export default function Overlay() {
   return (
     <div className="flex h-screen w-screen items-center justify-center">
       <div className="rounded-2xl bg-gray-900/80 px-5 py-3 shadow-lg backdrop-blur-md">
-        {state.type === "Recording" && <RecordingIndicator />}
-        {state.type === "Processing" && <ProcessingIndicator />}
-        {state.type === "Refining" && <ProcessingIndicator />}
+        {state.type === "Recording" && <RecordingIndicator label={t("recording")} />}
+        {state.type === "Processing" && <ProcessingIndicator label={t("processing")} />}
+        {state.type === "Refining" && <ProcessingIndicator label={t("processing")} />}
         {(state.type === "Result" || state.type === "Refined") && (
-          <DoneIndicator />
+          <DoneIndicator label={t("done")} />
         )}
         {state.type === "Error" && (
-          <ErrorIndicator message={state.data?.message ?? "Unknown error"} />
+          <ErrorIndicator message={state.data?.message ?? t("error")} />
         )}
       </div>
     </div>

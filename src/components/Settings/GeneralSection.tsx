@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
 
 interface GeneralSectionProps {
@@ -70,21 +71,23 @@ export default function GeneralSection({
   settings,
   onUpdate,
 }: GeneralSectionProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          General
+          {t("general")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Configure hotkey, recording mode, and system behavior.
+          {t("generalDescription")}
         </p>
       </div>
 
       {/* Hotkey */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Global Hotkey
+          {t("hotkey")}
         </label>
         <div
           className={
@@ -96,27 +99,27 @@ export default function GeneralSection({
           {settings.hotkey}
         </div>
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Hotkey configuration will be available in a future update.
+          {t("hotkeyHint")}
         </p>
       </div>
 
       {/* Recording Mode */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Recording Mode
+          {t("recordingMode")}
         </label>
         <SegmentedControl
           options={[
-            { label: "Hold to Record", value: "HoldToRecord" as const },
-            { label: "Toggle", value: "Toggle" as const },
+            { label: t("holdToRecord"), value: "HoldToRecord" as const },
+            { label: t("toggle"), value: "Toggle" as const },
           ]}
           value={settings.recording_mode}
           onChange={(v) => onUpdate("recording_mode", v)}
         />
         <p className="text-xs text-gray-400 dark:text-gray-500">
           {settings.recording_mode === "HoldToRecord"
-            ? "Press and hold the hotkey to record, release to stop."
-            : "Press the hotkey once to start recording, press again to stop."}
+            ? t("holdToRecordHint")
+            : t("toggleHint")}
         </p>
       </div>
 
@@ -124,10 +127,10 @@ export default function GeneralSection({
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Auto-paste
+            {t("autoPaste")}
           </label>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Automatically paste transcribed text at cursor position.
+            {t("autoPasteHint")}
           </p>
         </div>
         <ToggleSwitch
@@ -141,10 +144,10 @@ export default function GeneralSection({
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Launch at Login
+            {t("launchAtLogin")}
           </label>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Start VoxInk automatically when you log in.
+            {t("launchAtLoginHint")}
           </p>
         </div>
         <ToggleSwitch

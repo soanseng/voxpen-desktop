@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSettings } from "../../hooks/useSettings";
 import GeneralSection from "./GeneralSection";
 import SttSection from "./SttSection";
@@ -8,12 +9,12 @@ import HistoryWindow from "../History/HistoryWindow";
 
 type Tab = "general" | "speech" | "refinement" | "appearance" | "history";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "general", label: "General" },
-  { id: "speech", label: "Speech" },
-  { id: "refinement", label: "Refinement" },
-  { id: "appearance", label: "Appearance" },
-  { id: "history", label: "History" },
+const TAB_IDS: Tab[] = [
+  "general",
+  "speech",
+  "refinement",
+  "appearance",
+  "history",
 ];
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -110,12 +111,13 @@ function TabIcon({ tab }: { tab: Tab }) {
 export default function SettingsWindow() {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const { settings, updateSetting, loading } = useSettings();
+  const { t } = useTranslation();
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-white dark:bg-gray-900">
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          Loading settings...
+          {t("loadingSettings")}
         </div>
       </div>
     );
@@ -127,31 +129,31 @@ export default function SettingsWindow() {
       <nav className="flex w-[180px] flex-col border-r border-gray-200 bg-gray-50 pt-6 dark:border-gray-700 dark:bg-gray-850">
         <div className="mb-6 px-5">
           <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Settings
+            {t("settings")}
           </h1>
         </div>
         <ul className="flex-1 space-y-0.5 px-2">
-          {TABS.map((tab) => (
-            <li key={tab.id}>
+          {TAB_IDS.map((id) => (
+            <li key={id}>
               <button
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(id)}
                 className={
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors " +
-                  (activeTab === tab.id
+                  (activeTab === id
                     ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                     : "text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200")
                 }
               >
-                <TabIcon tab={tab.id} />
-                {tab.label}
+                <TabIcon tab={id} />
+                {t(id)}
               </button>
             </li>
           ))}
         </ul>
         <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            VoxInk v0.1.0
+            {t("version")}
           </p>
         </div>
       </nav>

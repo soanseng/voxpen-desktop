@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { TranscriptionEntry } from "../../types/history";
 
 interface HistoryEntryProps {
@@ -71,6 +72,7 @@ function truncate(text: string, maxLen: number): string {
 }
 
 export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -83,7 +85,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => {
-      // clipboard access denied — silent
+      // clipboard access denied -- silent
     });
   }
 
@@ -103,7 +105,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
         "dark:border-gray-700 dark:bg-gray-800"
       }
     >
-      {/* Collapsed header — always visible */}
+      {/* Collapsed header -- always visible */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -162,7 +164,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
             {/* Original text */}
             <div>
               <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Original
+                {t("original")}
               </h4>
               <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
                 {entry.original_text}
@@ -173,7 +175,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
             {entry.refined_text && (
               <div>
                 <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  Refined
+                  {t("refined")}
                 </h4>
                 <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
                   {entry.refined_text}
@@ -205,7 +207,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
                 e.stopPropagation();
                 handleCopy();
               }}
-              title="Copy to clipboard"
+              title={copied ? t("copied") : t("copy")}
               className={
                 "rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 " +
                 "dark:hover:bg-gray-700 dark:hover:text-gray-300"
@@ -249,7 +251,7 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
                 e.stopPropagation();
                 handleDelete();
               }}
-              title={confirmDelete ? "Click again to confirm" : "Delete"}
+              title={confirmDelete ? t("confirmDelete") : t("delete")}
               className={
                 "rounded p-1.5 transition-colors " +
                 (confirmDelete
