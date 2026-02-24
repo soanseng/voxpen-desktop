@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Settings } from "../types/settings";
 import type { TranscriptionEntry } from "../types/history";
+import type { DictionaryEntry } from "../types/dictionary";
 
 export async function getSettings(): Promise<Settings> {
   return invoke<Settings>("get_settings");
@@ -45,4 +46,20 @@ export async function searchHistory(
     limit,
     offset,
   });
+}
+
+export async function getDictionaryEntries(): Promise<DictionaryEntry[]> {
+  return invoke<DictionaryEntry[]>("get_dictionary_entries");
+}
+
+export async function getDictionaryCount(): Promise<number> {
+  return invoke<number>("get_dictionary_count");
+}
+
+export async function addDictionaryEntry(word: string): Promise<void> {
+  return invoke("add_dictionary_entry", { word });
+}
+
+export async function deleteDictionaryEntry(id: number): Promise<void> {
+  return invoke("delete_dictionary_entry", { id });
 }
