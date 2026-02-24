@@ -10,6 +10,11 @@ pub struct ArboardClipboard {
     clipboard: Mutex<Clipboard>,
 }
 
+// SAFETY: ArboardClipboard wraps arboard::Clipboard (which may contain non-Send
+// platform handles) inside a std::sync::Mutex, ensuring all access is synchronized.
+unsafe impl Send for ArboardClipboard {}
+unsafe impl Sync for ArboardClipboard {}
+
 impl ArboardClipboard {
     pub fn new() -> Result<Self, AppError> {
         let clipboard = Clipboard::new()

@@ -10,6 +10,11 @@ pub struct EnigoKeyboard {
     enigo: Mutex<Enigo>,
 }
 
+// SAFETY: EnigoKeyboard wraps Enigo (which may contain non-Send platform handles)
+// inside a std::sync::Mutex, ensuring all access is synchronized.
+unsafe impl Send for EnigoKeyboard {}
+unsafe impl Sync for EnigoKeyboard {}
+
 impl EnigoKeyboard {
     pub fn new() -> Result<Self, AppError> {
         let enigo = Enigo::new(&EnigoSettings::default())

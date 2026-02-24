@@ -14,6 +14,12 @@ pub struct CpalRecorder {
     stream: Mutex<Option<Stream>>,
 }
 
+// SAFETY: CpalRecorder wraps cpal::Stream (which contains raw pointers and is
+// not Send) inside a std::sync::Mutex, ensuring all access is synchronized.
+// The Stream itself is safe to use from any thread when access is serialized.
+unsafe impl Send for CpalRecorder {}
+unsafe impl Sync for CpalRecorder {}
+
 impl CpalRecorder {
     pub fn new() -> Self {
         Self {
