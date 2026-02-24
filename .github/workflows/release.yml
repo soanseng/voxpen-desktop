@@ -63,7 +63,8 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libasound2-dev
+            libasound2-dev \
+            libxdo-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
