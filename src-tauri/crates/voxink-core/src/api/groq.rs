@@ -26,6 +26,9 @@ pub struct SttConfig {
     pub model: String,
     pub language: Language,
     pub response_format: String,
+    /// If set, overrides `language.prompt()` for the Whisper `prompt` parameter.
+    /// Used to inject vocabulary hints.
+    pub prompt_override: Option<String>,
 }
 
 // Custom Debug that masks the API key
@@ -36,6 +39,7 @@ impl fmt::Debug for SttConfig {
             .field("model", &self.model)
             .field("language", &self.language)
             .field("response_format", &self.response_format)
+            .field("prompt_override", &self.prompt_override)
             .finish()
     }
 }
@@ -47,6 +51,7 @@ impl SttConfig {
             model: DEFAULT_STT_MODEL.to_string(),
             language,
             response_format: "verbose_json".to_string(),
+            prompt_override: None,
         }
     }
 }
@@ -92,8 +97,12 @@ pub(crate) async fn transcribe_with_base_url(
         form = form.text("language", code.to_string());
     }
 
-    // Always add prompt hint
-    form = form.text("prompt", config.language.prompt().to_string());
+    // Add prompt hint — use override (with vocabulary) if available
+    let prompt = config
+        .prompt_override
+        .as_deref()
+        .unwrap_or(config.language.prompt());
+    form = form.text("prompt", prompt.to_string());
 
     let url = format!("{base_url}openai/v1/audio/transcriptions");
 

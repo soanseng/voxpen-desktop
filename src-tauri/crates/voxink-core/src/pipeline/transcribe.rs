@@ -6,13 +6,25 @@ use crate::error::AppError;
 ///
 /// Composes `encoder::pcm_to_wav()` + `groq::transcribe()`.
 /// Mirrors Android's `TranscribeAudioUseCase`.
-pub async fn transcribe(pcm_data: &[i16], config: &SttConfig) -> Result<String, AppError> {
+///
+/// If `vocabulary_hint` is provided, it overrides the default language prompt
+/// sent to Whisper, allowing custom vocabulary words to bias transcription.
+pub async fn transcribe(
+    pcm_data: &[i16],
+    config: &SttConfig,
+    vocabulary_hint: Option<&str>,
+) -> Result<String, AppError> {
     if pcm_data.is_empty() {
         return Err(AppError::Audio("no audio data".to_string()));
     }
 
+    let mut config = config.clone();
+    if let Some(hint) = vocabulary_hint {
+        config.prompt_override = Some(hint.to_string());
+    }
+
     let wav_data = encoder::pcm_to_wav(pcm_data);
-    groq::transcribe(config, &wav_data).await
+    groq::transcribe(&config, &wav_data).await
 }
 
 /// Internal: transcribe with configurable base URL (for testing with wiremock).
@@ -40,7 +52,7 @@ mod tests {
     #[tokio::test]
     async fn should_reject_empty_pcm_data() {
         let config = SttConfig::new("key".to_string(), Language::Auto);
-        let result = transcribe(&[], &config).await;
+        let result = transcribe(&[], &config, None).await;
 
         match result {
             Err(AppError::Audio(msg)) => assert_eq!(msg, "no audio data"),
