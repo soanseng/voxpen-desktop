@@ -1,0 +1,113 @@
+use crate::api::groq::{self, ChatConfig};
+use crate::error::AppError;
+use crate::pipeline::prompts;
+use crate::pipeline::state::Language;
+
+/// Orchestrate text refinement via LLM.
+///
+/// Composes `prompts::for_language()` + `groq::chat_completion()`.
+/// Mirrors Android's `RefineTextUseCase`.
+pub async fn refine(text: &str, config: &ChatConfig, language: &Language) -> Result<String, AppError> {
+    if text.is_empty() {
+        return Err(AppError::Refinement("no text to refine".to_string()));
+    }
+
+    let system_prompt = prompts::for_language(language);
+    groq::chat_completion(config, system_prompt, text).await
+}
+
+/// Internal: refine with configurable base URL (for testing with wiremock).
+#[cfg(test)]
+async fn refine_with_base_url(
+    text: &str,
+    config: &ChatConfig,
+    language: &Language,
+    base_url: &str,
+) -> Result<String, AppError> {
+    if text.is_empty() {
+        return Err(AppError::Refinement("no text to refine".to_string()));
+    }
+
+    let system_prompt = prompts::for_language(language);
+    groq::chat_completion_with_base_url(config, system_prompt, text, base_url).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_config(api_key: &str) -> ChatConfig {
+        ChatConfig::new(api_key.to_string())
+    }
+
+    fn chat_response(content: &str) -> serde_json::Value {
+        serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": content
+                }
+            }]
+        })
+    }
+
+    #[tokio::test]
+    async fn should_refine_text_using_correct_language_prompt() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response("你好世界！")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("test-key");
+        let result = refine_with_base_url(
+            "嗯 那個 你好世界",
+            &config,
+            &Language::Chinese,
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        assert_eq!(result.unwrap(), "你好世界！");
+    }
+
+    #[tokio::test]
+    async fn should_reject_empty_text() {
+        let config = test_config("key");
+        let result = refine("", &config, &Language::Auto).await;
+
+        match result {
+            Err(AppError::Refinement(msg)) => assert_eq!(msg, "no text to refine"),
+            other => panic!("expected Refinement error, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_propagate_api_errors() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let config = test_config("bad-key");
+        let result = refine_with_base_url(
+            "some text",
+            &config,
+            &Language::English,
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        assert!(matches!(result, Err(AppError::ApiKeyMissing(_))));
+    }
+}
