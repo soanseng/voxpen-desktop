@@ -4,14 +4,16 @@ import GeneralSection from "./GeneralSection";
 import SttSection from "./SttSection";
 import RefinementSection from "./RefinementSection";
 import AppearanceSection from "./AppearanceSection";
+import HistoryWindow from "../History/HistoryWindow";
 
-type Tab = "general" | "speech" | "refinement" | "appearance";
+type Tab = "general" | "speech" | "refinement" | "appearance" | "history";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "general", label: "General" },
   { id: "speech", label: "Speech" },
   { id: "refinement", label: "Refinement" },
   { id: "appearance", label: "Appearance" },
+  { id: "history", label: "History" },
 ];
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -86,6 +88,22 @@ function TabIcon({ tab }: { tab: Tab }) {
           />
         </svg>
       );
+    case "history":
+      return (
+        <svg
+          className={cls}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
   }
 }
 
@@ -153,6 +171,7 @@ export default function SettingsWindow() {
           {activeTab === "appearance" && (
             <AppearanceSection settings={settings} onUpdate={updateSetting} />
           )}
+          {activeTab === "history" && <HistoryWindow />}
         </div>
       </main>
     </div>
