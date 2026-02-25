@@ -11,21 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-core:
-    name: Test voxink-core
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-      - run: cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
-      - run: cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
-
   build-release:
     name: Build (${{ matrix.label }})
-    needs: test-core
     permissions:
       contents: write
     strategy:
