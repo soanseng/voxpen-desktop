@@ -20,15 +20,29 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: '--target x86_64-pc-windows-msvc'
+            args: '--target x86_64-pc-windows-msvc --bundles nsis'
             rust_target: x86_64-pc-windows-msvc
             label: Windows-x64
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin --bundles dmg'
+            rust_target: aarch64-apple-darwin
+            label: macOS-arm64
+          - platform: ubuntu-22.04
+            args: '--bundles appimage deb'
+            rust_target: ''
+            label: Linux-x64
 
     runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -62,9 +76,63 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'VoxInk Desktop v__VERSION__'
           releaseBody: |
-            ## VoxInk Desktop v__VERSION__
+            ## What's New / 更新內容
 
-            - **Windows**: `.exe` (NSIS installer) / `.msi`
+            ### Dual Hotkeys / 雙快捷鍵
+            - Separate **Push-to-Talk** (hold to record) and **Hands-free** (toggle on/off) hotkeys
+            - 獨立的**按住錄音** (Push-to-Talk) 和**免持模式** (Toggle) 快捷鍵
+
+            ### 11 Languages / 11 種語言
+            - Added French, German, Spanish, Korean, Vietnamese, Indonesian, Thai
+            - 新增法語、德語、西班牙語、韓語、越南語、印尼語、泰語
+
+            ### Microphone Selection / 麥克風選擇
+            - Choose a specific input device in Settings or the system tray
+            - 在設定或系統匣選擇特定麥克風裝置
+
+            ### Custom Dictionary / 自定義詞典
+            - Add names, places, and special terms to improve voice recognition accuracy
+            - 新增人名、地名、專有名詞以提升語音辨識準確度
+
+            ### Enhanced System Tray / 增強系統匣
+            - Quick language switch, microphone selection, check for updates
+            - 快速切換語言、選擇麥克風、檢查更新
+
+            ### Other / 其他
+            - Dynamic version display / 動態版本號顯示
+            - Windows stability fixes (thread safety, paste timing) / Windows 穩定性修復
+
+            ---
+
+            ## Downloads / 下載
+
+            | Platform / 平台 | File / 檔案 | Notes / 說明 |
+            |----------|------|-------|
+            | **Windows x64** | `.exe` (NSIS installer) | 不需管理員權限 / No admin required |
+            | **macOS arm64** | `.dmg` (Apple Silicon) | M1 / M2 / M3+ |
+            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 (含 Arch) |
+
+            ### ⚠️ Windows Security / Windows 安全提示
+            This app is **not code-signed**. Windows SmartScreen may show a warning.
+            Click **"More info"** → **"Run anyway"** to proceed.
+
+            此應用**未經程式碼簽章**。Windows SmartScreen 可能顯示警告。
+            點擊「**更多資訊**」→「**仍要執行**」即可繼續安裝。
+
+            ### ⚠️ macOS Security / macOS 安全提示
+            This app is **not notarized**. macOS Gatekeeper may block it.
+            Right-click the app → **Open** → **Open** to bypass.
+            If it shows "damaged", run in Terminal:
+            ```
+            xattr -cr /Applications/VoxInk\ Desktop.app
+            ```
+
+            此應用**未經 Apple 公證**。macOS Gatekeeper 可能阻擋開啟。
+            對應用程式右鍵 →「**打開**」→「**打開**」即可繞過。
+            如顯示「已損壞」，請在終端機執行：
+            ```
+            xattr -cr /Applications/VoxInk\ Desktop.app
+            ```
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
