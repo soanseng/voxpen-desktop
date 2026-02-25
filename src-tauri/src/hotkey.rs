@@ -9,7 +9,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use voxink_core::audio::recorder::AudioRecorder;
 use voxink_core::input::paste::paste_text;
-use voxink_core::pipeline::state::PipelineState;
+use voxink_core::pipeline::state::{PipelineState, RecordingMode};
 
 use crate::state::AppState;
 
@@ -110,28 +110,7 @@ impl HotkeyManager {
             .on_shortcut(shortcut, move |_app, _shortcut, event| {
                 let app = app_handle.clone();
                 let state: tauri::State<'_, AppState> = app.state();
-
-                // On Windows, RegisterHotKey only fires WM_HOTKEY on key press —
-                // ShortcutState::Released never arrives.  We therefore treat every
-                // Pressed event as a toggle: if recording_started is true, this press
-                // means "stop"; otherwise it means "start".
-                // Non-Windows platforms still get Released events, so for them we
-                // pass through the original event.state as-is.
-                let effective_state = if cfg!(target_os = "windows") {
-                    if event.state == ShortcutState::Pressed {
-                        if state.recording_started.load(Ordering::SeqCst) {
-                            ShortcutState::Released
-                        } else {
-                            ShortcutState::Pressed
-                        }
-                    } else {
-                        ShortcutState::Released
-                    }
-                } else {
-                    event.state
-                };
-
-                handle_hotkey_event(&app, &state, effective_state, &processing);
+                handle_hotkey_event(&app, &state, event.state, &processing, true);
             })
             .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
 
@@ -183,6 +162,7 @@ impl HotkeyManager {
                                     &app_state,
                                     ShortcutState::Pressed,
                                     &rdev_state.processing,
+                                    false,
                                 );
                             }
                         }
@@ -195,6 +175,7 @@ impl HotkeyManager {
                                     &app_state,
                                     ShortcutState::Released,
                                     &rdev_state.processing,
+                                    false,
                                 );
                             }
                         }
@@ -238,15 +219,89 @@ fn parse_rdev_key(name: &str) -> Option<rdev::Key> {
     }
 }
 
+/// Resolved action after considering recording mode and platform quirks.
+enum HotkeyAction {
+    Start,
+    Stop,
+    Ignore,
+}
+
+/// Determine what action to take given the raw shortcut state, the current
+/// recording mode, and whether we are currently recording.
+///
+/// Platform note: on Windows, `tauri-plugin-global-shortcut` combo keys use
+/// `RegisterHotKey` which **only fires Pressed** — Released never arrives.
+/// Single keys via rdev get real Press/Release events on all platforms.
+/// We therefore treat combo keys on Windows the same as Toggle: every Press
+/// toggles between Start and Stop.
+fn resolve_action(
+    shortcut_state: ShortcutState,
+    mode: &RecordingMode,
+    is_recording: bool,
+    is_combo: bool,
+) -> HotkeyAction {
+    // On Windows, combo shortcuts only fire Pressed — we must toggle on Press
+    // regardless of the user's recording mode setting.
+    let force_toggle = cfg!(target_os = "windows") && is_combo;
+
+    match mode {
+        RecordingMode::Toggle => {
+            // Toggle: only act on Press events — ignore Release entirely.
+            if shortcut_state == ShortcutState::Pressed {
+                if is_recording {
+                    HotkeyAction::Stop
+                } else {
+                    HotkeyAction::Start
+                }
+            } else {
+                HotkeyAction::Ignore
+            }
+        }
+        RecordingMode::HoldToRecord => {
+            if force_toggle {
+                // Windows combo: emulate hold-to-record as toggle since
+                // Release events never arrive.
+                if shortcut_state == ShortcutState::Pressed {
+                    if is_recording {
+                        HotkeyAction::Stop
+                    } else {
+                        HotkeyAction::Start
+                    }
+                } else {
+                    HotkeyAction::Ignore
+                }
+            } else {
+                // Normal hold: Press=Start, Release=Stop
+                match shortcut_state {
+                    ShortcutState::Pressed => HotkeyAction::Start,
+                    ShortcutState::Released => HotkeyAction::Stop,
+                }
+            }
+        }
+    }
+}
+
 /// Shared press/release handler used by both combo and single-key backends.
 fn handle_hotkey_event(
     app: &AppHandle,
     state: &tauri::State<'_, AppState>,
     shortcut_state: ShortcutState,
     processing: &Arc<AtomicBool>,
+    is_combo: bool,
 ) {
-    match shortcut_state {
-        ShortcutState::Pressed => {
+    // Read recording mode from settings (non-async, try_lock with fallback)
+    let mode = state
+        .settings
+        .try_lock()
+        .map(|s| s.recording_mode.clone())
+        .unwrap_or_default();
+
+    let is_recording = state.recording_started.load(Ordering::SeqCst);
+    let action = resolve_action(shortcut_state, &mode, is_recording, is_combo);
+
+    match action {
+        HotkeyAction::Ignore => {}
+        HotkeyAction::Start => {
             if processing
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                 .is_err()
@@ -293,7 +348,7 @@ fn handle_hotkey_event(
                 }
             });
         }
-        ShortcutState::Released => {
+        HotkeyAction::Stop => {
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
             let clipboard = state.clipboard.clone();
