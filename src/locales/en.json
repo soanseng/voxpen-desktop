@@ -71,12 +71,6 @@
   "chinese": "Chinese",
   "english": "English",
   "japanese": "Japanese",
-  "update": {
-    "available": "Update v{{version}} available",
-    "install": "Install & Restart",
-    "downloading": "Downloading update...",
-    "error": "Update check failed: {{error}}"
-  },
   "vocabulary": "Vocabulary",
   "vocabularyDescription": "Manage custom vocabulary to improve voice recognition accuracy.",
   "dictionary": {

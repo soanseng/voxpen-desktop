@@ -72,12 +72,5 @@
       }
     }
   },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/soanseng/voxink-desktop/releases/latest/download/latest.json"
-      ],
-      "pubkey": ""
-    }
-  }
+  "plugins": {}
 }

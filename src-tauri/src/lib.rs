@@ -7,6 +7,7 @@ mod hotkey;
 mod keyboard;
 mod state;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use tauri::{
@@ -27,7 +28,6 @@ use state::{AppState, GroqLlmProvider, GroqSttProvider};
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -74,6 +74,7 @@ pub fn run() {
                 history: Arc::new(history_db),
                 dictionary: Arc::new(dictionary_db),
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
+                recording_started: Arc::new(AtomicBool::new(false)),
             };
             app.manage(app_state);
 

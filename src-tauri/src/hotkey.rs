@@ -173,8 +173,12 @@ fn handle_hotkey_event(
 
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
+            let recording_started = state.recording_started.clone();
             let app_for_err = app.clone();
             let processing_flag = processing.clone();
+
+            // Reset the signal before starting
+            recording_started.store(false, Ordering::SeqCst);
 
             tauri::async_runtime::spawn(async move {
                 let ctrl = controller.lock().await;
@@ -189,15 +193,20 @@ fn handle_hotkey_event(
                     return;
                 }
                 drop(ctrl);
-                if let Err(e) = recorder.start() {
-                    eprintln!("audio start error: {e}");
-                    let _ = app_for_err.emit(
-                        "pipeline-state",
-                        &PipelineState::Error {
-                            message: e.to_string(),
-                        },
-                    );
-                    processing_flag.store(false, Ordering::SeqCst);
+                match recorder.start() {
+                    Ok(()) => {
+                        // Signal that recording has actually started
+                        recording_started.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        let msg = format_audio_error(&e);
+                        eprintln!("audio start error: {e}");
+                        let _ = app_for_err.emit(
+                            "pipeline-state",
+                            &PipelineState::Error { message: msg },
+                        );
+                        processing_flag.store(false, Ordering::SeqCst);
+                    }
                 }
             });
         }
@@ -209,13 +218,37 @@ fn handle_hotkey_event(
             let settings = state.settings.clone();
             let history = state.history.clone();
             let dictionary = state.dictionary.clone();
+            let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
 
             tauri::async_runtime::spawn(async move {
+                // Wait for recording to actually start before stopping.
+                // Without this, the release can race ahead of the press async task,
+                // calling recorder.stop() before start() completes, leaving the
+                // recorder in a permanent Recording state.
+                let deadline =
+                    tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+                while !recording_started.load(Ordering::SeqCst) {
+                    if tokio::time::Instant::now() >= deadline {
+                        eprintln!("recording never started, aborting release handler");
+                        let ctrl = controller.lock().await;
+                        ctrl.reset();
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                // Clear the signal for the next cycle
+                recording_started.store(false, Ordering::SeqCst);
+
                 let pcm_data = match recorder.stop() {
                     Ok(data) => data,
                     Err(e) => {
                         eprintln!("audio stop error: {e}");
+                        let ctrl = controller.lock().await;
+                        ctrl.reset();
+                        drop(ctrl);
                         processing_flag.store(false, Ordering::SeqCst);
                         return;
                     }
@@ -299,4 +332,37 @@ fn handle_hotkey_event(
             });
         }
     }
+}
+
+/// Produce a user-friendly error message for audio failures.
+///
+/// On Windows, microphone permission denied surfaces as a generic WASAPI error.
+/// We detect common patterns and suggest remediation steps.
+fn format_audio_error(err: &voxink_core::error::AppError) -> String {
+    let msg = err.to_string();
+    let lower = msg.to_lowercase();
+
+    if lower.contains("access") || lower.contains("denied") || lower.contains("permission") {
+        return format!(
+            "Microphone access denied. Please enable microphone access in \
+             Settings > Privacy & Security > Microphone. ({})",
+            msg
+        );
+    }
+
+    if lower.contains("no input device") {
+        return "No microphone found. Please connect a microphone and try again.".to_string();
+    }
+
+    // WASAPI errors on Windows when mic permission is off
+    if lower.contains("wasapi") || lower.contains("not activated") || lower.contains("0x80070005")
+    {
+        return format!(
+            "Microphone access may be disabled. Please check \
+             Settings > Privacy & Security > Microphone. ({})",
+            msg
+        );
+    }
+
+    msg
 }

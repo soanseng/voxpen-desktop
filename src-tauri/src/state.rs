@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use tauri::AppHandle;
@@ -133,4 +134,7 @@ pub struct AppState {
     pub history: Arc<crate::history::HistoryDb>,
     pub dictionary: Arc<crate::dictionary::DictionaryDb>,
     pub hotkey_manager: Arc<Mutex<crate::hotkey::HotkeyManager>>,
+    /// Signal set after recorder.start() succeeds so the release handler can
+    /// wait for recording to actually begin before calling recorder.stop().
+    pub recording_started: Arc<AtomicBool>,
 }
