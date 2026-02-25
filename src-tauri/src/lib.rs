@@ -141,6 +141,10 @@ pub fn run() {
                                 }
                                 _ => {
                                     let _ = overlay.show();
+                                    // Ensure it stays above fullscreen/terminal windows
+                                    let _ = overlay.set_always_on_top(true);
+                                    // Click-through so it never steals focus
+                                    let _ = overlay.set_ignore_cursor_events(true);
                                 }
                             }
                         }

@@ -13,23 +13,33 @@ pub trait KeySimulator: Send + Sync {
     fn paste(&self) -> Result<(), AppError>;
 }
 
-/// Delay between clipboard write and paste simulation.
+/// Small delay after writing to the clipboard to let the OS finish processing
+/// the clipboard-change notification chain before we simulate Ctrl+V.
+#[cfg(target_os = "windows")]
+const PRE_PASTE_DELAY: Duration = Duration::from_millis(60);
+
+#[cfg(not(target_os = "windows"))]
+const PRE_PASTE_DELAY: Duration = Duration::from_millis(10);
+
+/// Delay after the paste keystroke before restoring the original clipboard.
+/// The target app must have time to read the clipboard contents.
 /// Windows needs more time due to clipboard chain processing and
 /// potential antivirus scanning. macOS/Linux are faster.
 #[cfg(target_os = "windows")]
-const PASTE_DELAY: Duration = Duration::from_millis(200);
+const POST_PASTE_DELAY: Duration = Duration::from_millis(350);
 
 #[cfg(not(target_os = "windows"))]
-const PASTE_DELAY: Duration = Duration::from_millis(100);
+const POST_PASTE_DELAY: Duration = Duration::from_millis(100);
 
 /// Paste text at cursor position using clipboard + key simulation.
 ///
 /// Strategy (same as Typeless/Wispr Flow/1Password):
 /// 1. Save current clipboard content
 /// 2. Write transcription to clipboard
-/// 3. Simulate paste keystroke
-/// 4. Wait for OS to process the paste (100ms on macOS/Linux, 200ms on Windows)
-/// 5. Restore original clipboard
+/// 3. Wait briefly for clipboard to settle
+/// 4. Simulate paste keystroke
+/// 5. Wait for target app to process the paste (100ms on macOS/Linux, 350ms on Windows)
+/// 6. Restore original clipboard
 ///
 /// If paste simulation fails, text remains on clipboard (fallback).
 ///
@@ -47,13 +57,16 @@ pub fn paste_text(
     // 2. Write transcription to clipboard
     clipboard.set_text(text)?;
 
-    // 3. Simulate paste
+    // 3. Let the OS finish clipboard-change notifications before simulating paste
+    thread::sleep(PRE_PASTE_DELAY);
+
+    // 4. Simulate paste
     let paste_result = keys.paste();
 
-    // 4. Wait for paste to complete
-    thread::sleep(PASTE_DELAY);
+    // 5. Wait for the target app to read the clipboard before restoring
+    thread::sleep(POST_PASTE_DELAY);
 
-    // 5. Restore original clipboard (best-effort, don't fail if this fails)
+    // 6. Restore original clipboard (best-effort, don't fail if this fails)
     if let Some(ref orig) = original {
         let _ = clipboard.set_text(orig);
     }
