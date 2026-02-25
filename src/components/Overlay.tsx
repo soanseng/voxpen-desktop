@@ -19,85 +19,49 @@ interface PipelineEvent {
   };
 }
 
-function RecordingIndicator({ label }: { label: string }) {
+/** Animated waveform bars — 5 bars with staggered animation. */
+function Waveform({ color }: { color: string }) {
+  const bars = [0, 1, 2, 3, 4];
+  // Each bar gets a different animation delay for organic feel
+  const delays = ["0s", "0.15s", "0.3s", "0.12s", "0.24s"];
+  const heights = ["60%", "90%", "100%", "80%", "70%"];
+
   return (
-    <div className="flex items-center gap-3">
-      <span className="relative flex h-4 w-4">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-        <span className="relative inline-flex h-4 w-4 rounded-full bg-red-500" />
-      </span>
-      <span className="text-sm font-medium text-white">{label}</span>
+    <div className="flex items-center gap-[3px]" style={{ height: 24 }}>
+      {bars.map((i) => (
+        <div
+          key={i}
+          className="w-[3px] rounded-full"
+          style={{
+            backgroundColor: color,
+            height: heights[i],
+            animation: "waveform 0.8s ease-in-out infinite alternate",
+            animationDelay: delays[i],
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-function ProcessingIndicator({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <svg
-        className="h-5 w-5 animate-spin text-blue-400"
-        viewBox="0 0 24 24"
-        fill="none"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
-      <span className="text-sm font-medium text-white">{label}</span>
-    </div>
-  );
-}
+/** Pulsing dot animation for processing states. */
+function PulsingDots({ color }: { color: string }) {
+  const dots = [0, 1, 2];
+  const delays = ["0s", "0.2s", "0.4s"];
 
-function DoneIndicator({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <svg
-        className="h-5 w-5 text-green-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M4.5 12.75l6 6 9-13.5"
+    <div className="flex items-center gap-1">
+      {dots.map((i) => (
+        <div
+          key={i}
+          className="h-[6px] w-[6px] rounded-full"
+          style={{
+            backgroundColor: color,
+            animation: "pulse-dot 1.2s ease-in-out infinite",
+            animationDelay: delays[i],
+          }}
         />
-      </svg>
-      <span className="text-sm font-medium text-white">{label}</span>
-    </div>
-  );
-}
-
-function ErrorIndicator({ message }: { message: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <svg
-        className="h-5 w-5 text-red-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M6 18L18 6M6 6l12 12"
-        />
-      </svg>
-      <span className="max-w-[140px] truncate text-sm font-medium text-white">
-        {message}
-      </span>
+      ))}
     </div>
   );
 }
@@ -142,17 +106,97 @@ export default function Overlay() {
     return null;
   }
 
+  const isRecording = state.type === "Recording";
+  const isProcessing =
+    state.type === "Processing" || state.type === "Refining";
+  const isDone = state.type === "Result" || state.type === "Refined";
+  const isError = state.type === "Error";
+
   return (
-    <div className="flex h-screen w-screen items-center justify-center">
-      <div className="rounded-2xl bg-gray-900/80 px-5 py-3 shadow-lg backdrop-blur-md">
-        {state.type === "Recording" && <RecordingIndicator label={t("recording")} />}
-        {state.type === "Processing" && <ProcessingIndicator label={t("processing")} />}
-        {state.type === "Refining" && <ProcessingIndicator label={t("processing")} />}
-        {(state.type === "Result" || state.type === "Refined") && (
-          <DoneIndicator label={t("done")} />
+    <div className="flex h-screen w-screen items-end justify-center pb-0">
+      <style>{`
+        @keyframes waveform {
+          0% { transform: scaleY(0.3); }
+          100% { transform: scaleY(1); }
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 0.3; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+      `}</style>
+      <div
+        className={
+          "flex items-center gap-3 rounded-full px-5 py-2 shadow-lg backdrop-blur-md " +
+          "transition-all duration-300 " +
+          (isRecording
+            ? "bg-red-900/80"
+            : isProcessing
+              ? "bg-blue-900/80"
+              : isDone
+                ? "bg-green-900/80"
+                : "bg-gray-900/80")
+        }
+      >
+        {isRecording && (
+          <>
+            <Waveform color="#f87171" />
+            <span className="text-xs font-medium text-red-300">
+              {t("recording")}
+            </span>
+            <Waveform color="#f87171" />
+          </>
         )}
-        {state.type === "Error" && (
-          <ErrorIndicator message={state.data?.message ?? t("error")} />
+
+        {isProcessing && (
+          <>
+            <PulsingDots color="#60a5fa" />
+            <span className="text-xs font-medium text-blue-300">
+              {t("processing")}
+            </span>
+            <PulsingDots color="#60a5fa" />
+          </>
+        )}
+
+        {isDone && (
+          <>
+            <svg
+              className="h-4 w-4 text-green-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4.5 12.75l6 6 9-13.5"
+              />
+            </svg>
+            <span className="text-xs font-medium text-green-300">
+              {t("done")}
+            </span>
+          </>
+        )}
+
+        {isError && (
+          <>
+            <svg
+              className="h-4 w-4 text-red-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            <span className="max-w-[160px] truncate text-xs font-medium text-red-300">
+              {state.data?.message ?? t("error")}
+            </span>
+          </>
         )}
       </div>
     </div>

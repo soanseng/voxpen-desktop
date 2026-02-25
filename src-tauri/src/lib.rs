@@ -140,10 +140,20 @@ pub fn run() {
                                     let _ = overlay.hide();
                                 }
                                 _ => {
+                                    // Position at bottom-center of current monitor
+                                    if let Ok(Some(monitor)) = overlay.current_monitor() {
+                                        let screen = monitor.size();
+                                        let scale = monitor.scale_factor();
+                                        let win_w = 280.0;
+                                        let win_h = 56.0;
+                                        let x = (screen.width as f64 / scale - win_w) / 2.0;
+                                        let y = screen.height as f64 / scale - win_h - 48.0;
+                                        let _ = overlay.set_position(
+                                            tauri::LogicalPosition::new(x, y),
+                                        );
+                                    }
                                     let _ = overlay.show();
-                                    // Ensure it stays above fullscreen/terminal windows
                                     let _ = overlay.set_always_on_top(true);
-                                    // Click-through so it never steals focus
                                     let _ = overlay.set_ignore_cursor_events(true);
                                 }
                             }
