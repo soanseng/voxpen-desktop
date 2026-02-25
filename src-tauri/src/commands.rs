@@ -2,9 +2,23 @@ use tauri_plugin_store::StoreExt;
 
 use voxink_core::dictionary::DictionaryEntry;
 use voxink_core::history::TranscriptionEntry;
+use voxink_core::pipeline::controller::PipelineConfig;
 use voxink_core::pipeline::settings::Settings;
 
 use crate::state::AppState;
+
+/// Build a PipelineConfig from the current Settings.
+/// API keys are resolved at call time by the providers, so they stay None here.
+fn config_from_settings(settings: &Settings) -> PipelineConfig {
+    PipelineConfig {
+        groq_api_key: None, // resolved by provider at call time
+        language: settings.stt_language.clone(),
+        stt_model: settings.stt_model.clone(),
+        refinement_enabled: settings.refinement_enabled,
+        llm_api_key: None, // resolved by provider at call time
+        llm_model: settings.refinement_model.clone(),
+    }
+}
 
 /// Change the global hotkey at runtime.
 #[tauri::command]
@@ -53,6 +67,11 @@ pub async fn get_settings(
     // Sync to shared settings so providers use the latest values
     *state.settings.lock().await = settings.clone();
 
+    // Sync pipeline controller config (refinement_enabled, language, models)
+    let mut ctrl = state.controller.lock().await;
+    ctrl.update_config(config_from_settings(&settings));
+    drop(ctrl);
+
     Ok(settings)
 }
 
@@ -69,7 +88,12 @@ pub async fn save_settings(
     store.save().map_err(|e| e.to_string())?;
 
     // Sync to shared settings so providers use the latest values
-    *state.settings.lock().await = settings;
+    *state.settings.lock().await = settings.clone();
+
+    // Sync pipeline controller config (refinement_enabled, language, models)
+    let mut ctrl = state.controller.lock().await;
+    ctrl.update_config(config_from_settings(&settings));
+    drop(ctrl);
 
     Ok(())
 }

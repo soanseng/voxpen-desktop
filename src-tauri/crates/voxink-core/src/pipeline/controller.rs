@@ -123,15 +123,10 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
 
     /// Called when the user presses the hotkey to start recording.
     ///
-    /// Validates that an API key is configured, then transitions to Recording state.
+    /// Transitions to Recording state. API key validation is deferred
+    /// to the provider's `transcribe()` call, which reads the key
+    /// directly from the encrypted store at call time.
     pub fn on_start_recording(&self) -> Result<(), AppError> {
-        if self.config.groq_api_key.is_none() {
-            let _ = self.state_tx.send(PipelineState::Error {
-                message: "API key not configured for groq".to_string(),
-            });
-            return Err(AppError::ApiKeyMissing("groq".to_string()));
-        }
-
         let _ = self.state_tx.send(PipelineState::Recording);
         Ok(())
     }
@@ -300,7 +295,8 @@ mod tests {
     }
 
     #[test]
-    fn should_emit_error_when_api_key_missing() {
+    fn should_start_recording_even_without_config_key() {
+        // API key validation is deferred to the provider's transcribe() call
         let controller = PipelineController::new(
             config_without_key(),
             mock_stt_success(""),
@@ -308,11 +304,8 @@ mod tests {
         );
         let result = controller.on_start_recording();
 
-        assert!(matches!(result, Err(AppError::ApiKeyMissing(_))));
-        assert!(matches!(
-            controller.current_state(),
-            PipelineState::Error { .. }
-        ));
+        assert!(result.is_ok());
+        assert_eq!(controller.current_state(), PipelineState::Recording);
     }
 
     #[tokio::test]
@@ -388,10 +381,11 @@ mod tests {
             mock_llm_unused(),
         );
 
-        assert!(controller.on_start_recording().is_err());
+        // Config starts without refinement
+        assert!(!controller.config.refinement_enabled);
 
-        controller.update_config(config_with_key());
-        assert!(controller.on_start_recording().is_ok());
+        controller.update_config(config_with_refinement());
+        assert!(controller.config.refinement_enabled);
     }
 
     #[test]

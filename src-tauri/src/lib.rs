@@ -166,8 +166,17 @@ pub fn run() {
                 }
             }
 
-            // Show settings window on launch so users can configure the app
+            // Intercept close event on settings window: hide instead of destroy
+            // so it can be re-shown from the tray menu.
             if let Some(window) = app.get_webview_window("settings") {
+                let win = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+                // Show settings window on launch so users can configure the app
                 let _ = window.show();
                 let _ = window.set_focus();
             }
