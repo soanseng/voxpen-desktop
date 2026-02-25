@@ -58,6 +58,7 @@ pub fn build_stt_hint(words: &[String], language: &Language) -> Option<String> {
 /// Returns a localized suffix like:
 /// - Chinese: `\n\n術語表（請優先使用這些詞彙）：語墨, Anthropic`
 /// - English: `\n\nVocabulary (prefer these terms): VoxInk, Anthropic`
+///
 /// Returns `None` if vocabulary is empty.
 pub fn build_llm_suffix(words: &[String], language: &Language) -> Option<String> {
     if words.is_empty() {
