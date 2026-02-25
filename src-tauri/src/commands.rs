@@ -151,15 +151,16 @@ pub async fn check_microphone() -> Result<String, String> {
             .default_input_device()
             .ok_or_else(|| "No microphone found. Please connect a microphone.".to_string())?;
         let name = device.name().unwrap_or_else(|_| "Unknown device".to_string());
-        // Verify the device supports our capture format
+        // Use the device's preferred config — avoids "unsupported config"
+        // on Windows devices that don't natively support 16 kHz mono.
+        let default_cfg = device
+            .default_input_config()
+            .map_err(|e| format!("Cannot access microphone: {e}"))?;
         let config = cpal::StreamConfig {
-            channels: 1,
-            sample_rate: cpal::SampleRate(16000),
+            channels: default_cfg.channels(),
+            sample_rate: default_cfg.sample_rate(),
             buffer_size: cpal::BufferSize::Default,
         };
-        device
-            .supported_input_configs()
-            .map_err(|e| format!("Cannot access microphone: {e}"))?;
         // Try building a short-lived stream to verify permissions
         let stream = device
             .build_input_stream(
