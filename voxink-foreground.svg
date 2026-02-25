@@ -1,0 +1,66 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fgGold" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f5ede0"/>
+      <stop offset="35%" stop-color="#d4c49e"/>
+      <stop offset="100%" stop-color="#8a7a5c"/>
+    </linearGradient>
+    <linearGradient id="brushFade" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#c9b896"/>
+      <stop offset="100%" stop-color="#6b5d48" stop-opacity="0.15"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="inkSpread">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <!-- INK POOL -->
+  <g filter="url(#inkSpread)" opacity="0.22">
+    <ellipse cx="500" cy="765" rx="120" ry="38" fill="#d4c49e"/>
+    <ellipse cx="488" cy="775" rx="75" ry="24" fill="#b0a07a"/>
+  </g>
+
+  <!-- Subtle ink drip trails -->
+  <g opacity="0.2">
+    <path d="M498 670 Q494 710 488 755" stroke="#a09070" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M526 670 Q530 715 536 758" stroke="#a09070" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- MICROPHONE -->
+  <g filter="url(#glow)">
+    <rect x="445" y="192" width="134" height="192" rx="67" ry="67"
+          fill="none" stroke="url(#fgGold)" stroke-width="14"/>
+    <line x1="485" y1="266" x2="485" y2="335" stroke="#d4c49e" stroke-width="7" stroke-linecap="round" opacity="0.4"/>
+    <line x1="512" y1="246" x2="512" y2="355" stroke="#d4c49e" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+    <line x1="539" y1="266" x2="539" y2="335" stroke="#d4c49e" stroke-width="7" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- LEFT arm + U + stand + brush (one continuous path) -->
+    <path d="M434 318
+             L434 392
+             Q434 522 512 522
+             L512 595
+             C510 620, 504 648, 494 675
+             C484 702, 470 726, 458 748
+             Q452 762 454 772
+             Q456 778 460 774"
+          fill="none" stroke="url(#fgGold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- RIGHT arm -->
+    <path d="M590 318
+             L590 392
+             Q590 522 512 522"
+          fill="none" stroke="url(#fgGold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Ink splatter -->
+  <circle cx="536" cy="750" r="6" fill="#d4c49e" opacity="0.22"/>
+  <circle cx="548" cy="762" r="3.5" fill="#d4c49e" opacity="0.15"/>
+  <circle cx="472" cy="765" r="5" fill="#b0a07a" opacity="0.15"/>
+</svg>
