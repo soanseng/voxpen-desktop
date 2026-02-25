@@ -25,6 +25,9 @@ pub struct Settings {
     pub refinement_provider: String,
     /// LLM model identifier
     pub refinement_model: String,
+    /// Custom refinement system prompt (empty = use built-in per-language default)
+    #[serde(default)]
+    pub refinement_prompt: String,
     /// UI theme: "system", "light", or "dark"
     pub theme: String,
     /// UI language: "en" or "zh-TW"
@@ -44,6 +47,7 @@ impl Default for Settings {
             refinement_enabled: false,
             refinement_provider: "groq".to_string(),
             refinement_model: crate::api::groq::DEFAULT_LLM_MODEL.to_string(),
+            refinement_prompt: String::new(),
             theme: "system".to_string(),
             ui_language: "en".to_string(),
         }

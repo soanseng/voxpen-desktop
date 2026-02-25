@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
-import { getApiKeyStatus, saveApiKey } from "../../lib/tauri";
+import { getApiKeyStatus, getDefaultRefinementPrompt, saveApiKey } from "../../lib/tauri";
 
 interface RefinementSectionProps {
   settings: Settings;
@@ -80,6 +80,9 @@ export default function RefinementSection({
     "idle",
   );
   const [keyStatus, setKeyStatus] = useState<string | null>(null);
+
+  const [defaultPrompt, setDefaultPrompt] = useState("");
+  const [promptResetMsg, setPromptResetMsg] = useState(false);
 
   const models = getModelsForProvider(settings.refinement_provider);
   const disabled = !settings.refinement_enabled;
@@ -327,6 +330,75 @@ export default function RefinementSection({
           </select>
         </div>
       )}
+
+      {/* System Prompt */}
+      <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>
+        <div className="flex items-center justify-between">
+          <label
+            htmlFor="refinement-prompt"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            {t("systemPrompt")}
+          </label>
+          <button
+            type="button"
+            onClick={async () => {
+              const lang = settings.stt_language;
+              const prompt = await getDefaultRefinementPrompt(lang);
+              setDefaultPrompt(prompt);
+              onUpdate("refinement_prompt", "");
+              setPromptResetMsg(true);
+              setTimeout(() => setPromptResetMsg(false), 2000);
+            }}
+            disabled={disabled || !settings.refinement_prompt}
+            className={
+              "rounded px-2 py-1 text-xs font-medium " +
+              "text-blue-600 hover:bg-blue-50 " +
+              "disabled:cursor-not-allowed disabled:opacity-50 " +
+              "dark:text-blue-400 dark:hover:bg-gray-800"
+            }
+            title={t("resetPromptHint")}
+          >
+            {t("resetPrompt")}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          {t("systemPromptHint")}
+        </p>
+        <textarea
+          id="refinement-prompt"
+          value={settings.refinement_prompt}
+          onChange={(e) => onUpdate("refinement_prompt", e.target.value)}
+          onFocus={async () => {
+            if (!defaultPrompt) {
+              const prompt = await getDefaultRefinementPrompt(settings.stt_language);
+              setDefaultPrompt(prompt);
+            }
+          }}
+          placeholder={defaultPrompt || t("systemPromptPlaceholder")}
+          disabled={disabled}
+          rows={5}
+          className={
+            "w-full rounded-lg border border-gray-300 bg-white " +
+            "px-3 py-2 text-sm text-gray-900 " +
+            "placeholder:text-gray-400 " +
+            "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+            "disabled:cursor-not-allowed " +
+            "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+            "dark:placeholder:text-gray-500"
+          }
+        />
+        {promptResetMsg && (
+          <p className="text-xs text-green-600 dark:text-green-400">
+            {t("promptReset")}
+          </p>
+        )}
+        {!settings.refinement_prompt && !promptResetMsg && (
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            {t("usingDefault")}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

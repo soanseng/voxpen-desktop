@@ -199,6 +199,7 @@ pub fn run() {
             commands::get_history,
             commands::search_history,
             commands::delete_history_entry,
+            commands::get_default_refinement_prompt,
             commands::get_dictionary_entries,
             commands::get_dictionary_count,
             commands::add_dictionary_entry,

@@ -8,18 +8,24 @@ use crate::pipeline::vocabulary;
 ///
 /// Composes `prompts::for_language()` + optional vocabulary suffix + `groq::chat_completion()`.
 /// Mirrors Android's `RefineTextUseCase`.
+/// If `custom_prompt` is non-empty, it replaces the built-in per-language prompt.
 /// If `vocab_words` is non-empty, appends a vocabulary suffix to the system prompt.
 pub async fn refine(
     text: &str,
     config: &ChatConfig,
     language: &Language,
     vocab_words: &[String],
+    custom_prompt: &str,
 ) -> Result<String, AppError> {
     if text.is_empty() {
         return Err(AppError::Refinement("no text to refine".to_string()));
     }
 
-    let mut system_prompt = prompts::for_language(language).to_string();
+    let mut system_prompt = if custom_prompt.is_empty() {
+        prompts::for_language(language).to_string()
+    } else {
+        custom_prompt.to_string()
+    };
     if let Some(suffix) = vocabulary::build_llm_suffix(vocab_words, language) {
         system_prompt.push_str(&suffix);
     }
@@ -33,13 +39,18 @@ async fn refine_with_base_url(
     config: &ChatConfig,
     language: &Language,
     base_url: &str,
+    custom_prompt: &str,
 ) -> Result<String, AppError> {
     if text.is_empty() {
         return Err(AppError::Refinement("no text to refine".to_string()));
     }
 
-    let system_prompt = prompts::for_language(language);
-    groq::chat_completion_with_base_url(config, system_prompt, text, base_url).await
+    let system_prompt = if custom_prompt.is_empty() {
+        prompts::for_language(language).to_string()
+    } else {
+        custom_prompt.to_string()
+    };
+    groq::chat_completion_with_base_url(config, &system_prompt, text, base_url).await
 }
 
 #[cfg(test)]
@@ -82,6 +93,7 @@ mod tests {
             &config,
             &Language::Chinese,
             &format!("{}/", server.uri()),
+            "",
         )
         .await;
 
@@ -91,7 +103,7 @@ mod tests {
     #[tokio::test]
     async fn should_reject_empty_text() {
         let config = test_config("key");
-        let result = refine("", &config, &Language::Auto, &[]).await;
+        let result = refine("", &config, &Language::Auto, &[], "").await;
 
         match result {
             Err(AppError::Refinement(msg)) => assert_eq!(msg, "no text to refine"),
@@ -103,7 +115,7 @@ mod tests {
     async fn should_reject_empty_text_with_vocabulary() {
         let config = test_config("key");
         let vocab = vec!["語墨".to_string()];
-        let result = refine("", &config, &Language::Auto, &vocab).await;
+        let result = refine("", &config, &Language::Auto, &vocab, "").await;
         assert!(matches!(result, Err(AppError::Refinement(_))));
     }
 
@@ -123,6 +135,7 @@ mod tests {
             &config,
             &Language::English,
             &format!("{}/", server.uri()),
+            "",
         )
         .await;
 

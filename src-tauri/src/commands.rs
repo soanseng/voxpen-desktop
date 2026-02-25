@@ -1,9 +1,11 @@
 use tauri_plugin_store::StoreExt;
 
 use voxink_core::dictionary::DictionaryEntry;
+use voxink_core::pipeline::prompts;
 use voxink_core::history::TranscriptionEntry;
 use voxink_core::pipeline::controller::PipelineConfig;
 use voxink_core::pipeline::settings::Settings;
+use voxink_core::pipeline::state::Language;
 
 use crate::state::AppState;
 
@@ -241,6 +243,14 @@ pub async fn delete_history_entry(
     id: String,
 ) -> Result<(), String> {
     state.history.delete(&id)
+}
+
+/// Return the built-in refinement system prompt for a given language.
+///
+/// Used by the frontend to show the default and to implement the "Reset" button.
+#[tauri::command]
+pub async fn get_default_refinement_prompt(language: Language) -> String {
+    prompts::for_language(&language).to_string()
 }
 
 /// Get all dictionary entries.

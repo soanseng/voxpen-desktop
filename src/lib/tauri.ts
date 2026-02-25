@@ -58,6 +58,12 @@ export async function searchHistory(
   });
 }
 
+export async function getDefaultRefinementPrompt(
+  language: string,
+): Promise<string> {
+  return invoke<string>("get_default_refinement_prompt", { language });
+}
+
 export async function getDictionaryEntries(): Promise<DictionaryEntry[]> {
   return invoke<DictionaryEntry[]>("get_dictionary_entries");
 }

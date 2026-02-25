@@ -9,6 +9,7 @@ export interface Settings {
   refinement_enabled: boolean;
   refinement_provider: string;
   refinement_model: string;
+  refinement_prompt: string;
   theme: "system" | "light" | "dark";
   ui_language: string;
 }
@@ -24,6 +25,7 @@ export const defaultSettings: Settings = {
   refinement_enabled: false,
   refinement_provider: "groq",
   refinement_model: "openai/gpt-oss-120b",
+  refinement_prompt: "",
   theme: "system",
   ui_language: "en",
 };
