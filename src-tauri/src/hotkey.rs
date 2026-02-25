@@ -38,12 +38,13 @@ const RDEV_KEY_TABLE: &[rdev::Key] = &[
 
 /// Shared state for the persistent rdev listener thread.
 struct RdevState {
-    /// 1-based index into RDEV_KEY_TABLE. 0 = disabled (no key active).
-    target_key_index: AtomicU8,
+    /// 1-based index into RDEV_KEY_TABLE for PTT key. 0 = disabled.
+    ptt_key_index: AtomicU8,
+    /// 1-based index into RDEV_KEY_TABLE for Toggle key. 0 = disabled.
+    toggle_key_index: AtomicU8,
     /// Whether the listener thread has already been spawned.
     thread_spawned: AtomicBool,
     /// Debounce flag shared with the hotkey event handler.
-    /// Persists across re-registrations so the single thread can reuse it.
     processing: Arc<AtomicBool>,
 }
 
@@ -56,80 +57,121 @@ fn rdev_key_index(name: &str) -> Option<u8> {
         .map(|i| (i + 1) as u8)
 }
 
-/// Tracks the active hotkey registration so it can be swapped at runtime.
+/// Tracks active hotkey registrations for both PTT and Toggle modes.
 pub struct HotkeyManager {
-    /// The currently registered shortcut string.
-    current_shortcut: Option<String>,
-    /// Shared state for the persistent rdev listener thread.
+    registered_ptt: Option<String>,
+    registered_toggle: Option<String>,
     rdev_state: Arc<RdevState>,
 }
 
 impl HotkeyManager {
     pub fn new() -> Self {
         Self {
-            current_shortcut: None,
+            registered_ptt: None,
+            registered_toggle: None,
             rdev_state: Arc::new(RdevState {
-                target_key_index: AtomicU8::new(0),
+                ptt_key_index: AtomicU8::new(0),
+                toggle_key_index: AtomicU8::new(0),
                 thread_spawned: AtomicBool::new(false),
                 processing: Arc::new(AtomicBool::new(false)),
             }),
         }
     }
 
-    /// Register a hotkey. Unregisters any previous hotkey first.
-    pub fn register(&mut self, app: &AppHandle, shortcut: &str) -> Result<(), String> {
-        self.unregister(app);
+    /// Register both PTT and Toggle hotkeys. Either can be empty to skip.
+    pub fn register_dual(
+        &mut self,
+        app: &AppHandle,
+        ptt_shortcut: &str,
+        toggle_shortcut: &str,
+    ) -> Result<(), String> {
+        self.unregister_all(app);
 
-        if is_combo_shortcut(shortcut) {
-            self.register_combo(app, shortcut)?;
-        } else {
-            self.register_single_key(app, shortcut)?;
+        if !ptt_shortcut.is_empty() {
+            if is_combo_shortcut(ptt_shortcut) {
+                self.register_combo(app, ptt_shortcut, RecordingMode::HoldToRecord)?;
+            } else {
+                self.register_single_key(ptt_shortcut, RecordingMode::HoldToRecord)?;
+            }
+            self.registered_ptt = Some(ptt_shortcut.to_string());
         }
 
-        self.current_shortcut = Some(shortcut.to_string());
+        if !toggle_shortcut.is_empty() {
+            if is_combo_shortcut(toggle_shortcut) {
+                self.register_combo(app, toggle_shortcut, RecordingMode::Toggle)?;
+            } else {
+                self.register_single_key(toggle_shortcut, RecordingMode::Toggle)?;
+            }
+            self.registered_toggle = Some(toggle_shortcut.to_string());
+        }
+
+        // Ensure rdev listener thread is running if any single keys are registered
+        self.ensure_rdev_thread(app);
+
         Ok(())
     }
 
-    /// Unregister the current hotkey.
-    pub fn unregister(&mut self, app: &AppHandle) {
-        if let Some(ref shortcut) = self.current_shortcut {
-            if is_combo_shortcut(shortcut) {
-                let _ = app.global_shortcut().unregister_all();
-            }
-            // Disable the rdev key — the thread stays alive but ignores all events
-            self.rdev_state.target_key_index.store(0, Ordering::SeqCst);
+    fn unregister_all(&mut self, app: &AppHandle) {
+        if self.registered_ptt.is_some() || self.registered_toggle.is_some() {
+            let _ = app.global_shortcut().unregister_all();
         }
-        self.current_shortcut = None;
+        self.rdev_state.ptt_key_index.store(0, Ordering::SeqCst);
+        self.rdev_state
+            .toggle_key_index
+            .store(0, Ordering::SeqCst);
+        self.registered_ptt = None;
+        self.registered_toggle = None;
     }
 
-    fn register_combo(&self, app: &AppHandle, shortcut: &str) -> Result<(), String> {
+    fn register_combo(
+        &self,
+        app: &AppHandle,
+        shortcut: &str,
+        mode: RecordingMode,
+    ) -> Result<(), String> {
         let app_handle = app.clone();
-        let processing = Arc::new(AtomicBool::new(false));
+        let processing = self.rdev_state.processing.clone();
 
         app.global_shortcut()
             .on_shortcut(shortcut, move |_app, _shortcut, event| {
                 let app = app_handle.clone();
                 let state: tauri::State<'_, AppState> = app.state();
-                handle_hotkey_event(&app, &state, event.state, &processing, true);
+                handle_hotkey_event(&app, &state, event.state, &processing, true, &mode);
             })
             .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
 
         Ok(())
     }
 
-    fn register_single_key(&self, app: &AppHandle, key_name: &str) -> Result<(), String> {
+    fn register_single_key(
+        &self,
+        key_name: &str,
+        mode: RecordingMode,
+    ) -> Result<(), String> {
         let index =
             rdev_key_index(key_name).ok_or_else(|| format!("Unknown key: {}", key_name))?;
 
-        // Atomically swap the target key — the existing thread picks it up immediately
-        self.rdev_state
-            .target_key_index
-            .store(index, Ordering::SeqCst);
+        match mode {
+            RecordingMode::HoldToRecord => {
+                self.rdev_state
+                    .ptt_key_index
+                    .store(index, Ordering::SeqCst);
+            }
+            RecordingMode::Toggle => {
+                self.rdev_state
+                    .toggle_key_index
+                    .store(index, Ordering::SeqCst);
+            }
+        }
 
         // Reset processing flag so a fresh registration starts clean
         self.rdev_state.processing.store(false, Ordering::SeqCst);
 
-        // Only spawn the listener thread once for the lifetime of the app
+        Ok(())
+    }
+
+    /// Ensure the persistent rdev listener thread is running.
+    fn ensure_rdev_thread(&self, app: &AppHandle) {
         if self
             .rdev_state
             .thread_spawned
@@ -140,52 +182,95 @@ impl HotkeyManager {
             let rdev_state = self.rdev_state.clone();
 
             thread::spawn(move || {
-                let key_down = AtomicBool::new(false);
+                let ptt_down = AtomicBool::new(false);
+                let toggle_down = AtomicBool::new(false);
 
                 let _ = rdev::listen(move |event| {
-                    let idx = rdev_state.target_key_index.load(Ordering::SeqCst);
-                    if idx == 0 {
-                        // Disabled — reset key_down so a future activation starts clean
-                        key_down.store(false, Ordering::SeqCst);
-                        return;
-                    }
-
-                    let target = RDEV_KEY_TABLE[(idx - 1) as usize];
+                    let ptt_idx = rdev_state.ptt_key_index.load(Ordering::SeqCst);
+                    let toggle_idx = rdev_state.toggle_key_index.load(Ordering::SeqCst);
 
                     match event.event_type {
-                        rdev::EventType::KeyPress(k) if k == target => {
-                            if !key_down.swap(true, Ordering::SeqCst) {
-                                let app = app_handle.clone();
-                                let app_state: tauri::State<'_, AppState> = app.state();
-                                handle_hotkey_event(
-                                    &app,
-                                    &app_state,
-                                    ShortcutState::Pressed,
-                                    &rdev_state.processing,
-                                    false,
-                                );
+                        rdev::EventType::KeyPress(k) => {
+                            // Check PTT key
+                            if ptt_idx > 0 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize] {
+                                if !ptt_down.swap(true, Ordering::SeqCst) {
+                                    let app = app_handle.clone();
+                                    let s: tauri::State<'_, AppState> = app.state();
+                                    handle_hotkey_event(
+                                        &app,
+                                        &s,
+                                        ShortcutState::Pressed,
+                                        &rdev_state.processing,
+                                        false,
+                                        &RecordingMode::HoldToRecord,
+                                    );
+                                }
+                            }
+                            // Check Toggle key
+                            if toggle_idx > 0
+                                && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
+                            {
+                                if !toggle_down.swap(true, Ordering::SeqCst) {
+                                    let app = app_handle.clone();
+                                    let s: tauri::State<'_, AppState> = app.state();
+                                    handle_hotkey_event(
+                                        &app,
+                                        &s,
+                                        ShortcutState::Pressed,
+                                        &rdev_state.processing,
+                                        false,
+                                        &RecordingMode::Toggle,
+                                    );
+                                }
                             }
                         }
-                        rdev::EventType::KeyRelease(k) if k == target => {
-                            if key_down.swap(false, Ordering::SeqCst) {
-                                let app = app_handle.clone();
-                                let app_state: tauri::State<'_, AppState> = app.state();
-                                handle_hotkey_event(
-                                    &app,
-                                    &app_state,
-                                    ShortcutState::Released,
-                                    &rdev_state.processing,
-                                    false,
-                                );
+                        rdev::EventType::KeyRelease(k) => {
+                            // Check PTT key
+                            if ptt_idx > 0 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize] {
+                                if ptt_down.swap(false, Ordering::SeqCst) {
+                                    let app = app_handle.clone();
+                                    let s: tauri::State<'_, AppState> = app.state();
+                                    handle_hotkey_event(
+                                        &app,
+                                        &s,
+                                        ShortcutState::Released,
+                                        &rdev_state.processing,
+                                        false,
+                                        &RecordingMode::HoldToRecord,
+                                    );
+                                }
+                            }
+                            // Check Toggle key
+                            if toggle_idx > 0
+                                && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
+                            {
+                                if toggle_down.swap(false, Ordering::SeqCst) {
+                                    let app = app_handle.clone();
+                                    let s: tauri::State<'_, AppState> = app.state();
+                                    handle_hotkey_event(
+                                        &app,
+                                        &s,
+                                        ShortcutState::Released,
+                                        &rdev_state.processing,
+                                        false,
+                                        &RecordingMode::Toggle,
+                                    );
+                                }
                             }
                         }
                         _ => {}
                     }
+
+                    // Reset key_down flags when respective key is disabled
+                    if ptt_idx == 0 {
+                        ptt_down.store(false, Ordering::SeqCst);
+                    }
+                    if toggle_idx == 0 {
+                        toggle_down.store(false, Ordering::SeqCst);
+                    }
                 });
             });
         }
-
-        Ok(())
     }
 }
 
@@ -282,22 +367,17 @@ fn resolve_action(
 }
 
 /// Shared press/release handler used by both combo and single-key backends.
+/// The recording `mode` is determined by which hotkey was pressed (PTT vs Toggle).
 fn handle_hotkey_event(
     app: &AppHandle,
     state: &tauri::State<'_, AppState>,
     shortcut_state: ShortcutState,
     processing: &Arc<AtomicBool>,
     is_combo: bool,
+    mode: &RecordingMode,
 ) {
-    // Read recording mode from settings (non-async, try_lock with fallback)
-    let mode = state
-        .settings
-        .try_lock()
-        .map(|s| s.recording_mode.clone())
-        .unwrap_or_default();
-
     let is_recording = state.recording_started.load(Ordering::SeqCst);
-    let action = resolve_action(shortcut_state, &mode, is_recording, is_combo);
+    let action = resolve_action(shortcut_state, mode, is_recording, is_combo);
 
     match action {
         HotkeyAction::Ignore => {}
@@ -312,6 +392,7 @@ fn handle_hotkey_event(
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
             let recording_started = state.recording_started.clone();
+            let settings = state.settings.clone();
             let app_for_err = app.clone();
             let processing_flag = processing.clone();
 
@@ -319,6 +400,13 @@ fn handle_hotkey_event(
             recording_started.store(false, Ordering::SeqCst);
 
             tauri::async_runtime::spawn(async move {
+                // Set preferred microphone device before starting
+                let mic_device = {
+                    let s = settings.lock().await;
+                    s.microphone_device.clone()
+                };
+                recorder.set_preferred_device(mic_device);
+
                 let ctrl = controller.lock().await;
                 if let Err(e) = ctrl.on_start_recording() {
                     let _ = app_for_err.emit(

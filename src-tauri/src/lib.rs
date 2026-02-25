@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     path::BaseDirectory,
     tray::TrayIconBuilder,
     Emitter, Manager,
@@ -25,6 +25,80 @@ use voxink_core::pipeline::settings::Settings;
 use voxink_core::pipeline::state::{Language, PipelineState};
 
 use state::{AppState, GroqLlmProvider, GroqSttProvider};
+
+/// All supported languages for the tray submenu.
+const ALL_LANGUAGES: &[(&str, Language)] = &[
+    ("Auto-detect", Language::Auto),
+    ("中文", Language::Chinese),
+    ("English", Language::English),
+    ("日本語", Language::Japanese),
+    ("한국어", Language::Korean),
+    ("Français", Language::French),
+    ("Deutsch", Language::German),
+    ("Español", Language::Spanish),
+    ("Tiếng Việt", Language::Vietnamese),
+    ("Bahasa Indonesia", Language::Indonesian),
+    ("ภาษาไทย", Language::Thai),
+];
+
+/// Build the tray menu with language submenu and microphone submenu.
+fn build_tray_menu(
+    app: &tauri::App,
+    current_lang: &Language,
+    mic_devices: &[String],
+    current_mic: &Option<String>,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    // Language submenu
+    let mut lang_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for (label, lang) in ALL_LANGUAGES {
+        let id = format!("lang_{}", serde_json::to_string(lang).unwrap_or_default().trim_matches('"'));
+        let checked = lang == current_lang;
+        let item = CheckMenuItem::with_id(app, &id, *label, true, checked, None::<&str>)?;
+        lang_items.push(item);
+    }
+    let lang_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        lang_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let lang_submenu = Submenu::with_items(app, "Language", true, &lang_refs)?;
+
+    // Microphone submenu
+    let default_mic = CheckMenuItem::with_id(
+        app,
+        "mic_default",
+        "System Default",
+        true,
+        current_mic.is_none(),
+        None::<&str>,
+    )?;
+    let mut mic_items: Vec<CheckMenuItem<tauri::Wry>> = vec![default_mic];
+    for name in mic_devices {
+        let id = format!("mic_{name}");
+        let checked = current_mic.as_deref() == Some(name);
+        let item = CheckMenuItem::with_id(app, &id, name, true, checked, None::<&str>)?;
+        mic_items.push(item);
+    }
+    let mic_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        mic_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
+
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
+
+    Menu::with_items(
+        app,
+        &[
+            &lang_submenu,
+            &mic_submenu,
+            &sep1,
+            &update_item,
+            &settings_item,
+            &sep2,
+            &quit_item,
+        ],
+    )
+}
 
 pub fn run() {
     tauri::Builder::default()
@@ -85,11 +159,8 @@ pub fn run() {
                 let controller = state.controller.clone();
 
                 // Build system tray menu
-                let settings_item =
-                    MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-                let quit_item =
-                    MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
+                let mic_devices = audio::list_input_devices();
+                let menu = build_tray_menu(app, &Language::Auto, &mic_devices, &None)?;
 
                 let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("failed to load tray icon");
@@ -99,17 +170,93 @@ pub fn run() {
                     .menu(&menu)
                     .show_menu_on_left_click(true)
                     .tooltip("VoxInk — Ready")
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "settings" => {
-                            if let Some(window) = app.get_webview_window("settings") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                    .on_menu_event(|app, event| {
+                        let id = event.id.as_ref();
+                        match id {
+                            "settings" => {
+                                if let Some(window) = app.get_webview_window("settings") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
                             }
+                            "quit" => {
+                                app.exit(0);
+                            }
+                            "check_update" => {
+                                tauri::async_runtime::spawn(async move {
+                                    match commands::check_for_update().await {
+                                        Ok(info) if info.update_available => {
+                                            let _ = open::that(&info.download_url);
+                                        }
+                                        Ok(_) => {
+                                            eprintln!("VoxInk is up to date");
+                                        }
+                                        Err(e) => {
+                                            eprintln!("update check failed: {e}");
+                                        }
+                                    }
+                                });
+                            }
+                            _ if id.starts_with("lang_") => {
+                                let lang_str = id.strip_prefix("lang_").unwrap_or("");
+                                let lang: Option<Language> =
+                                    serde_json::from_str(&format!("\"{lang_str}\"")).ok();
+                                if let Some(lang) = lang {
+                                    let app = app.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        let state: tauri::State<'_, AppState> = app.state();
+                                        let mut s = state.settings.lock().await;
+                                        s.stt_language = lang;
+                                        let settings_clone = s.clone();
+                                        drop(s);
+
+                                        // Sync controller config
+                                        let mut ctrl = state.controller.lock().await;
+                                        ctrl.update_config(PipelineConfig {
+                                            groq_api_key: None,
+                                            language: settings_clone.stt_language.clone(),
+                                            stt_model: settings_clone.stt_model.clone(),
+                                            refinement_enabled: settings_clone.refinement_enabled,
+                                            llm_api_key: None,
+                                            llm_model: settings_clone.refinement_model.clone(),
+                                        });
+                                        drop(ctrl);
+
+                                        // Persist
+                                        if let Ok(store) = app.store("settings.json") {
+                                            if let Ok(value) = serde_json::to_value(&settings_clone) {
+                                                store.set("settings", value);
+                                                let _ = store.save();
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            _ if id.starts_with("mic_") => {
+                                let mic_name = if id == "mic_default" {
+                                    None
+                                } else {
+                                    Some(id.strip_prefix("mic_").unwrap_or("").to_string())
+                                };
+                                let app = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state: tauri::State<'_, AppState> = app.state();
+                                    let mut s = state.settings.lock().await;
+                                    s.microphone_device = mic_name;
+                                    let settings_clone = s.clone();
+                                    drop(s);
+
+                                    // Persist
+                                    if let Ok(store) = app.store("settings.json") {
+                                        if let Ok(value) = serde_json::to_value(&settings_clone) {
+                                            store.set("settings", value);
+                                            let _ = store.save();
+                                        }
+                                    }
+                                });
+                            }
+                            _ => {}
                         }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     })
                     .build(app)?;
 
@@ -162,22 +309,23 @@ pub fn run() {
                 });
             }
 
-            // Register global hotkey from saved settings
+            // Register dual hotkeys from saved settings
             {
-                let saved_hotkey = app
+                let saved_settings: Settings = app
                     .store("settings.json")
                     .ok()
                     .and_then(|s| s.get("settings"))
-                    .and_then(|v: serde_json::Value| {
-                        v.get("hotkey")
-                            .and_then(|h| h.as_str().map(String::from))
-                    })
-                    .unwrap_or_else(|| "CommandOrControl+Shift+V".to_string());
+                    .and_then(|v: serde_json::Value| serde_json::from_value(v).ok())
+                    .unwrap_or_default();
 
                 let state: tauri::State<'_, AppState> = app.state();
                 let mut mgr = state.hotkey_manager.blocking_lock();
-                if let Err(e) = mgr.register(app.handle(), &saved_hotkey) {
-                    eprintln!("failed to register hotkey: {e}");
+                if let Err(e) = mgr.register_dual(
+                    app.handle(),
+                    &saved_settings.hotkey_ptt,
+                    &saved_settings.hotkey_toggle,
+                ) {
+                    eprintln!("failed to register hotkeys: {e}");
                 }
             }
 
@@ -214,6 +362,8 @@ pub fn run() {
             commands::get_dictionary_count,
             commands::add_dictionary_entry,
             commands::delete_dictionary_entry,
+            commands::list_input_devices,
+            commands::check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

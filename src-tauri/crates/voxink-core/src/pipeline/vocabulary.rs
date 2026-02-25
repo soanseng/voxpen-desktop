@@ -69,6 +69,13 @@ pub fn build_llm_suffix(words: &[String], language: &Language) -> Option<String>
     let suffix = match language {
         Language::English => format!("\n\nVocabulary (prefer these terms): {joined}"),
         Language::Japanese => format!("\n\n用語集（以下の用語を優先してください）：{joined}"),
+        Language::Korean => format!("\n\n용어집 (다음 용어를 우선 사용하세요): {joined}"),
+        Language::French => format!("\n\nVocabulaire (utilisez ces termes de préférence) : {joined}"),
+        Language::German => format!("\n\nWortliste (bevorzugen Sie diese Begriffe): {joined}"),
+        Language::Spanish => format!("\n\nVocabulario (use preferentemente estos términos): {joined}"),
+        Language::Vietnamese => format!("\n\nThuật ngữ (ưu tiên sử dụng các từ sau): {joined}"),
+        Language::Indonesian => format!("\n\nDaftar istilah (gunakan istilah berikut): {joined}"),
+        Language::Thai => format!("\n\nคำศัพท์ (กรุณาใช้คำเหล่านี้): {joined}"),
         _ => format!("\n\n術語表（請優先使用這些詞彙）：{joined}"),
     };
     Some(suffix)

@@ -7,7 +7,7 @@ import {
   getDictionaryEntries,
 } from "../../lib/tauri";
 
-export default function VocabularySection() {
+export default function DictionarySection() {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -37,7 +37,7 @@ export default function VocabularySection() {
 
     // Check for duplicate locally
     if (entries.some((e) => e.word === trimmed)) {
-      setError(t("dictionary.duplicate"));
+      setError(t("dict.duplicate"));
       setTimeout(() => setError(null), 2000);
       setInputValue("");
       inputRef.current?.focus();
@@ -83,10 +83,10 @@ export default function VocabularySection() {
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-          {t("dictionary.title")}
+          {t("dict.title")}
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {t("dictionary.description")}
+          {t("dict.description")}
         </p>
       </div>
 
@@ -98,7 +98,7 @@ export default function VocabularySection() {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={t("dictionary.addHint")}
+          placeholder={t("dict.addHint")}
           className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
         />
         <button
@@ -107,7 +107,7 @@ export default function VocabularySection() {
           disabled={!inputValue.trim()}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
         >
-          {t("dictionary.addButton")}
+          {t("dict.addButton")}
         </button>
       </div>
 
@@ -118,14 +118,14 @@ export default function VocabularySection() {
 
       {/* Word count */}
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        {t("dictionary.count", { count: entries.length })}
+        {t("dict.count", { count: entries.length })}
       </p>
 
       {/* Entry list */}
       {entries.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center dark:border-gray-600">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {t("dictionary.empty")}
+            {t("dict.empty")}
           </p>
         </div>
       ) : (

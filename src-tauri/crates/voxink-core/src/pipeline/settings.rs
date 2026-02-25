@@ -5,9 +5,16 @@ use crate::pipeline::state::{Language, RecordingMode};
 /// Application settings, serialized for Tauri IPC and persistent storage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
-    /// Global hotkey shortcut string (e.g., "CommandOrControl+Shift+V")
-    pub hotkey: String,
-    /// Recording mode: hold-to-record or toggle
+    /// Push-to-talk hotkey (hold to record, release to stop)
+    /// Migrated from old `hotkey` field via serde alias.
+    #[serde(alias = "hotkey")]
+    pub hotkey_ptt: String,
+    /// Toggle hotkey (press once to start, press again to stop)
+    #[serde(default = "default_hotkey_toggle")]
+    pub hotkey_toggle: String,
+    /// Kept for backwards compatibility when deserializing old settings.
+    /// Not used in logic — mode is determined by which hotkey was pressed.
+    #[serde(default)]
     pub recording_mode: RecordingMode,
     /// Whether to auto-paste transcribed text at cursor
     pub auto_paste: bool,
@@ -32,12 +39,20 @@ pub struct Settings {
     pub theme: String,
     /// UI language: "en" or "zh-TW"
     pub ui_language: String,
+    /// Preferred microphone device name. None = system default.
+    #[serde(default)]
+    pub microphone_device: Option<String>,
+}
+
+fn default_hotkey_toggle() -> String {
+    "CommandOrControl+Shift+V".to_string()
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            hotkey: "CommandOrControl+Shift+V".to_string(),
+            hotkey_ptt: "RAlt".to_string(),
+            hotkey_toggle: default_hotkey_toggle(),
             recording_mode: RecordingMode::HoldToRecord,
             auto_paste: true,
             launch_at_login: false,
@@ -50,6 +65,7 @@ impl Default for Settings {
             refinement_prompt: String::new(),
             theme: "system".to_string(),
             ui_language: "en".to_string(),
+            microphone_device: None,
         }
     }
 }
@@ -61,8 +77,8 @@ mod tests {
     #[test]
     fn should_have_sensible_defaults() {
         let settings = Settings::default();
-        assert_eq!(settings.hotkey, "CommandOrControl+Shift+V");
-        assert_eq!(settings.recording_mode, RecordingMode::HoldToRecord);
+        assert_eq!(settings.hotkey_ptt, "RAlt");
+        assert_eq!(settings.hotkey_toggle, "CommandOrControl+Shift+V");
         assert!(settings.auto_paste);
         assert!(!settings.launch_at_login);
         assert_eq!(settings.stt_provider, "groq");
@@ -70,6 +86,7 @@ mod tests {
         assert!(!settings.refinement_enabled);
         assert_eq!(settings.theme, "system");
         assert_eq!(settings.ui_language, "en");
+        assert_eq!(settings.microphone_device, None);
     }
 
     #[test]
@@ -84,12 +101,20 @@ mod tests {
     fn should_serialize_to_expected_json_keys() {
         let settings = Settings::default();
         let value: serde_json::Value = serde_json::to_value(&settings).unwrap();
-        assert!(value.get("hotkey").is_some());
-        assert!(value.get("recording_mode").is_some());
+        assert!(value.get("hotkey_ptt").is_some());
+        assert!(value.get("hotkey_toggle").is_some());
         assert!(value.get("auto_paste").is_some());
         assert!(value.get("stt_provider").is_some());
         assert!(value.get("refinement_enabled").is_some());
         assert!(value.get("theme").is_some());
         assert!(value.get("ui_language").is_some());
+    }
+
+    #[test]
+    fn should_migrate_old_hotkey_field() {
+        let json = r#"{"hotkey":"F5","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.hotkey_ptt, "F5"); // migrated from old "hotkey"
+        assert_eq!(settings.hotkey_toggle, "CommandOrControl+Shift+V"); // default
     }
 }

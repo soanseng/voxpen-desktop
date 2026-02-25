@@ -79,3 +79,22 @@ export async function addDictionaryEntry(word: string): Promise<void> {
 export async function deleteDictionaryEntry(id: number): Promise<void> {
   return invoke("delete_dictionary_entry", { id });
 }
+
+export async function listInputDevices(): Promise<string[]> {
+  return invoke<string[]>("list_input_devices");
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  download_url: string;
+}
+
+export async function checkForUpdate(): Promise<UpdateInfo> {
+  return invoke<UpdateInfo>("check_for_update");
+}
+
+export async function setHotkey(shortcut: string, kind: string): Promise<void> {
+  return invoke("set_hotkey", { shortcut, kind });
+}

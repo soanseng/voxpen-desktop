@@ -1,3 +1,4 @@
+use serde::Serialize;
 use tauri_plugin_store::StoreExt;
 
 use voxink_core::dictionary::DictionaryEntry;
@@ -22,27 +23,36 @@ fn config_from_settings(settings: &Settings) -> PipelineConfig {
     }
 }
 
-/// Change the global hotkey at runtime.
+/// Change a hotkey at runtime. `kind` is "ptt" or "toggle".
 #[tauri::command]
 pub async fn set_hotkey(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     shortcut: String,
+    kind: String,
 ) -> Result<(), String> {
     if shortcut.trim().is_empty() {
         return Err("Hotkey cannot be empty".to_string());
     }
 
-    // Register new hotkey (unregisters previous one internally)
-    let mut mgr = state.hotkey_manager.lock().await;
-    mgr.register(&app, &shortcut)?;
-    drop(mgr);
-
-    // Update in-memory settings
+    // Update in-memory settings first
     let mut s = state.settings.lock().await;
-    s.hotkey = shortcut;
+    match kind.as_str() {
+        "ptt" => s.hotkey_ptt = shortcut.clone(),
+        "toggle" => s.hotkey_toggle = shortcut.clone(),
+        _ => return Err(format!("Unknown hotkey kind: {kind}")),
+    }
     let settings_clone = s.clone();
     drop(s);
+
+    // Re-register both hotkeys
+    let mut mgr = state.hotkey_manager.lock().await;
+    mgr.register_dual(
+        &app,
+        &settings_clone.hotkey_ptt,
+        &settings_clone.hotkey_toggle,
+    )?;
+    drop(mgr);
 
     // Persist to store
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
@@ -285,4 +295,74 @@ pub async fn delete_dictionary_entry(
     id: i64,
 ) -> Result<(), String> {
     state.dictionary.delete(id)
+}
+
+/// List available audio input devices.
+#[tauri::command]
+pub async fn list_input_devices() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(crate::audio::list_input_devices)
+        .await
+        .map_err(|e| format!("failed to list devices: {e}"))
+}
+
+/// Check for app updates by querying the GitHub releases API.
+#[derive(Serialize)]
+pub struct UpdateInfo {
+    pub current: String,
+    pub latest: String,
+    pub update_available: bool,
+    pub download_url: String,
+}
+
+#[tauri::command]
+pub async fn check_for_update() -> Result<UpdateInfo, String> {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let url = "https://api.github.com/repos/AkashiSN/voxink-desktop/releases/latest";
+
+    let client = reqwest::Client::builder()
+        .user_agent("VoxInk-Desktop")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let resp: serde_json::Value = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {e}"))?;
+
+    let tag = resp["tag_name"]
+        .as_str()
+        .ok_or("No tag_name in release")?
+        .trim_start_matches('v')
+        .to_string();
+
+    let html_url = resp["html_url"]
+        .as_str()
+        .unwrap_or("https://github.com/AkashiSN/voxink-desktop/releases")
+        .to_string();
+
+    let update_available = version_newer(&tag, &current);
+
+    Ok(UpdateInfo {
+        current,
+        latest: tag,
+        update_available,
+        download_url: html_url,
+    })
+}
+
+/// Simple semver comparison: is `latest` newer than `current`?
+fn version_newer(latest: &str, current: &str) -> bool {
+    let parse = |s: &str| -> Vec<u32> {
+        s.split('.')
+            .filter_map(|p| p.parse::<u32>().ok())
+            .collect()
+    };
+    let l = parse(latest);
+    let c = parse(current);
+    l > c
 }

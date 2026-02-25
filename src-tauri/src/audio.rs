@@ -24,6 +24,8 @@ pub struct CpalRecorder {
     native_rate: Mutex<u32>,
     /// Native channel count the device is actually recording at.
     native_channels: Mutex<u16>,
+    /// Preferred input device name. None = system default.
+    preferred_device: Mutex<Option<String>>,
 }
 
 // SAFETY: CpalRecorder wraps cpal::Stream (which contains raw pointers and is
@@ -40,16 +42,41 @@ impl CpalRecorder {
             stream: Mutex::new(None),
             native_rate: Mutex::new(TARGET_RATE),
             native_channels: Mutex::new(1),
+            preferred_device: Mutex::new(None),
         }
     }
+
+    /// Set the preferred input device. None = use system default.
+    pub fn set_preferred_device(&self, name: Option<String>) {
+        *self.preferred_device.lock().unwrap_or_else(|e| e.into_inner()) = name;
+    }
+}
+
+/// List available audio input devices.
+pub fn list_input_devices() -> Vec<String> {
+    let host = cpal::default_host();
+    host.input_devices()
+        .map(|devices| devices.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default()
 }
 
 impl AudioRecorder for CpalRecorder {
     fn start(&self) -> Result<(), AppError> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| AppError::Audio("no input device found".to_string()))?;
+        let preferred = self
+            .preferred_device
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let device = if let Some(ref name) = preferred {
+            host.input_devices()
+                .ok()
+                .and_then(|mut devs| devs.find(|d| d.name().ok().as_deref() == Some(name)))
+                .or_else(|| host.default_input_device())
+        } else {
+            host.default_input_device()
+        }
+        .ok_or_else(|| AppError::Audio("no input device found".to_string()))?;
 
         // Use the device's preferred config — avoids "unsupported config" on
         // Windows devices that don't natively support 16 kHz mono.

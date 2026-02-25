@@ -1,7 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "@tauri-apps/api/core";
 import type { Settings } from "../../types/settings";
+import { setHotkey, listInputDevices } from "../../lib/tauri";
 
 interface GeneralSectionProps {
   settings: Settings;
@@ -39,42 +39,12 @@ function ToggleSwitch({
   );
 }
 
-function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { label: string; value: T }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-lg bg-gray-200 p-1 dark:bg-gray-700">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={
-            "rounded-md px-4 py-1.5 text-sm font-medium transition-colors " +
-            (value === option.value
-              ? "bg-white text-gray-900 shadow-sm dark:bg-gray-500 dark:text-white"
-              : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200")
-          }
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** Map browser KeyboardEvent.code to our shortcut string format. */
 function formatKeyEvent(e: React.KeyboardEvent): string {
   e.preventDefault();
   e.stopPropagation();
 
-  // Standalone modifier keys → single-key shortcuts for rdev
+  // Standalone modifier keys -> single-key shortcuts for rdev
   const standaloneModifiers: Record<string, string> = {
     AltRight: "RAlt",
     AltLeft: "LAlt",
@@ -137,31 +107,165 @@ function displayShortcut(shortcut: string): string {
   return labels[shortcut] ?? shortcut;
 }
 
+function HotkeyPicker({
+  label,
+  hint,
+  currentValue,
+  kind,
+  onSaved,
+  t,
+}: {
+  label: string;
+  hint: string;
+  currentValue: string;
+  kind: "ptt" | "toggle";
+  onSaved: (shortcut: string) => void;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const [mode, setMode] = useState<"display" | "recording">("display");
+  const [pending, setPending] = useState("");
+  const [error, setError] = useState("");
+  const recorderRef = useRef<HTMLDivElement>(null);
+
+  async function save(shortcut: string) {
+    try {
+      await setHotkey(shortcut, kind);
+      onSaved(shortcut);
+      setMode("display");
+      setError("");
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        {label}
+      </label>
+
+      {mode === "display" ? (
+        <div className="flex items-center gap-3">
+          <div
+            className={
+              "inline-block rounded-lg border border-gray-300 bg-gray-50 " +
+              "px-4 py-2 font-mono text-sm text-gray-700 " +
+              "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            }
+          >
+            {displayShortcut(currentValue)}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("recording");
+              setPending("");
+              setError("");
+              setTimeout(() => recorderRef.current?.focus(), 50);
+            }}
+            className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
+          >
+            {t("hotkeyChange")}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div
+            ref={recorderRef}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              const shortcut = formatKeyEvent(e);
+              if (shortcut) setPending(shortcut);
+            }}
+            className={
+              "flex h-12 items-center rounded-lg border-2 border-blue-500 " +
+              "bg-blue-50 px-4 font-mono text-sm text-gray-700 outline-none " +
+              "dark:bg-blue-900/20 dark:text-gray-300"
+            }
+          >
+            {pending ? displayShortcut(pending) : t("hotkeyRecording")}
+          </div>
+
+          {/* Presets */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setPending("RAlt"); void save("RAlt"); }}
+              className={
+                "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
+                "text-gray-600 hover:bg-gray-100 " +
+                "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+              }
+            >
+              {t("hotkeyPresetAlt")}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPending("CommandOrControl+Shift+V"); void save("CommandOrControl+Shift+V"); }}
+              className={
+                "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
+                "text-gray-600 hover:bg-gray-100 " +
+                "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+              }
+            >
+              {t("hotkeyPresetCombo")}
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => pending && void save(pending)}
+              disabled={!pending}
+              className={
+                "rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium " +
+                "text-white hover:bg-blue-600 disabled:opacity-50"
+              }
+            >
+              {t("hotkeySave")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("display");
+                setError("");
+              }}
+              className={
+                "rounded-lg border border-gray-300 px-3 py-1.5 text-sm " +
+                "text-gray-600 hover:bg-gray-100 " +
+                "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+              }
+            >
+              {t("hotkeyCancel")}
+            </button>
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-500">
+              {t("hotkeyError", { error })}
+            </p>
+          )}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 dark:text-gray-500">{hint}</p>
+    </div>
+  );
+}
+
 export default function GeneralSection({
   settings,
   onUpdate,
 }: GeneralSectionProps) {
   const { t } = useTranslation();
-  const [hotkeyMode, setHotkeyMode] = useState<"display" | "recording">("display");
-  const [pendingHotkey, setPendingHotkey] = useState("");
-  const [hotkeyError, setHotkeyError] = useState("");
-  const recorderRef = useRef<HTMLDivElement>(null);
+  const [micDevices, setMicDevices] = useState<string[]>([]);
 
-  async function saveHotkey(shortcut: string) {
-    try {
-      await invoke("set_hotkey", { shortcut });
-      onUpdate("hotkey", shortcut);
-      setHotkeyMode("display");
-      setHotkeyError("");
-    } catch (err) {
-      setHotkeyError(String(err));
-    }
-  }
-
-  async function selectPreset(shortcut: string) {
-    setPendingHotkey(shortcut);
-    await saveHotkey(shortcut);
-  }
+  useEffect(() => {
+    listInputDevices()
+      .then(setMicDevices)
+      .catch(() => setMicDevices([]));
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -174,139 +278,56 @@ export default function GeneralSection({
         </p>
       </div>
 
-      {/* Hotkey */}
+      {/* Push-to-Talk Hotkey */}
+      <HotkeyPicker
+        label={t("hotkeyPtt")}
+        hint={t("hotkeyPttHint")}
+        currentValue={settings.hotkey_ptt}
+        kind="ptt"
+        onSaved={(s) => onUpdate("hotkey_ptt", s)}
+        t={t}
+      />
+
+      {/* Hands-free / Toggle Hotkey */}
+      <HotkeyPicker
+        label={t("hotkeyToggle")}
+        hint={t("hotkeyToggleHint")}
+        currentValue={settings.hotkey_toggle}
+        kind="toggle"
+        onSaved={(s) => onUpdate("hotkey_toggle", s)}
+        t={t}
+      />
+
+      {/* Microphone device */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t("hotkey")}
+        <label
+          htmlFor="mic-device"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          {t("micDevice")}
         </label>
-
-        {hotkeyMode === "display" ? (
-          <div className="flex items-center gap-3">
-            <div
-              className={
-                "inline-block rounded-lg border border-gray-300 bg-gray-50 " +
-                "px-4 py-2 font-mono text-sm text-gray-700 " +
-                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-              }
-            >
-              {displayShortcut(settings.hotkey)}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setHotkeyMode("recording");
-                setPendingHotkey("");
-                setHotkeyError("");
-                setTimeout(() => recorderRef.current?.focus(), 50);
-              }}
-              className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600"
-            >
-              {t("hotkeyChange")}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div
-              ref={recorderRef}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                const shortcut = formatKeyEvent(e);
-                if (shortcut) setPendingHotkey(shortcut);
-              }}
-              className={
-                "flex h-12 items-center rounded-lg border-2 border-blue-500 " +
-                "bg-blue-50 px-4 font-mono text-sm text-gray-700 outline-none " +
-                "dark:bg-blue-900/20 dark:text-gray-300"
-              }
-            >
-              {pendingHotkey ? displayShortcut(pendingHotkey) : t("hotkeyRecording")}
-            </div>
-
-            {/* Presets */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => selectPreset("RAlt")}
-                className={
-                  "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
-                  "text-gray-600 hover:bg-gray-100 " +
-                  "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
-                }
-              >
-                {t("hotkeyPresetAlt")}
-              </button>
-              <button
-                type="button"
-                onClick={() => selectPreset("CommandOrControl+Shift+V")}
-                className={
-                  "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
-                  "text-gray-600 hover:bg-gray-100 " +
-                  "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
-                }
-              >
-                {t("hotkeyPresetCombo")}
-              </button>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => pendingHotkey && saveHotkey(pendingHotkey)}
-                disabled={!pendingHotkey}
-                className={
-                  "rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium " +
-                  "text-white hover:bg-blue-600 disabled:opacity-50"
-                }
-              >
-                {t("hotkeySave")}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setHotkeyMode("display");
-                  setHotkeyError("");
-                }}
-                className={
-                  "rounded-lg border border-gray-300 px-3 py-1.5 text-sm " +
-                  "text-gray-600 hover:bg-gray-100 " +
-                  "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
-                }
-              >
-                {t("hotkeyCancel")}
-              </button>
-            </div>
-
-            {hotkeyError && (
-              <p className="text-xs text-red-500">
-                {t("hotkeyError", { error: hotkeyError })}
-              </p>
-            )}
-          </div>
-        )}
-
+        <select
+          id="mic-device"
+          value={settings.microphone_device ?? ""}
+          onChange={(e) =>
+            onUpdate("microphone_device", e.target.value || null)
+          }
+          className={
+            "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+            "px-3 py-2 text-sm text-gray-900 " +
+            "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+            "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          }
+        >
+          <option value="">{t("micDeviceDefault")}</option>
+          {micDevices.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          {t("hotkeyHint")}
-        </p>
-      </div>
-
-      {/* Recording Mode */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t("recordingMode")}
-        </label>
-        <SegmentedControl
-          options={[
-            { label: t("holdToRecord"), value: "HoldToRecord" as const },
-            { label: t("toggle"), value: "Toggle" as const },
-          ]}
-          value={settings.recording_mode}
-          onChange={(v) => onUpdate("recording_mode", v)}
-        />
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          {settings.recording_mode === "HoldToRecord"
-            ? t("holdToRecordHint")
-            : t("toggleHint")}
+          {t("micDeviceHint")}
         </p>
       </div>
 

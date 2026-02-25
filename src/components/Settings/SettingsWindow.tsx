@@ -6,15 +6,15 @@ import SttSection from "./SttSection";
 import RefinementSection from "./RefinementSection";
 import AppearanceSection from "./AppearanceSection";
 import HistoryWindow from "../History/HistoryWindow";
-import VocabularySection from "./VocabularySection";
+import DictionarySection from "./DictionarySection";
 
-type Tab = "general" | "speech" | "refinement" | "vocabulary" | "appearance" | "history";
+type Tab = "general" | "speech" | "refinement" | "dictionary" | "appearance" | "history";
 
 const TAB_IDS: Tab[] = [
   "general",
   "speech",
   "refinement",
-  "vocabulary",
+  "dictionary",
   "appearance",
   "history",
 ];
@@ -75,7 +75,7 @@ function TabIcon({ tab }: { tab: Tab }) {
           />
         </svg>
       );
-    case "vocabulary":
+    case "dictionary":
       return (
         <svg
           className={cls}
@@ -188,7 +188,7 @@ export default function SettingsWindow() {
           {activeTab === "refinement" && (
             <RefinementSection settings={settings} onUpdate={updateSetting} />
           )}
-          {activeTab === "vocabulary" && <VocabularySection />}
+          {activeTab === "dictionary" && <DictionarySection />}
           {activeTab === "appearance" && (
             <AppearanceSection settings={settings} onUpdate={updateSetting} />
           )}

@@ -20,6 +20,13 @@ function getLanguageOptions(t: (key: string) => string): { value: Settings["stt_
     { value: "Chinese", label: t("chinese") },
     { value: "English", label: t("english") },
     { value: "Japanese", label: t("japanese") },
+    { value: "Korean", label: t("korean") },
+    { value: "French", label: t("french") },
+    { value: "German", label: t("german") },
+    { value: "Spanish", label: t("spanish") },
+    { value: "Vietnamese", label: t("vietnamese") },
+    { value: "Indonesian", label: t("indonesian") },
+    { value: "Thai", label: t("thai") },
   ];
 }
 

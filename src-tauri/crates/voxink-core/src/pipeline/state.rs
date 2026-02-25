@@ -39,6 +39,13 @@ pub enum Language {
     Chinese,
     English,
     Japanese,
+    Korean,
+    French,
+    German,
+    Spanish,
+    Vietnamese,
+    Indonesian,
+    Thai,
 }
 
 impl Language {
@@ -49,6 +56,13 @@ impl Language {
             Language::Chinese => Some("zh"),
             Language::English => Some("en"),
             Language::Japanese => Some("ja"),
+            Language::Korean => Some("ko"),
+            Language::French => Some("fr"),
+            Language::German => Some("de"),
+            Language::Spanish => Some("es"),
+            Language::Vietnamese => Some("vi"),
+            Language::Indonesian => Some("id"),
+            Language::Thai => Some("th"),
         }
     }
 
@@ -59,6 +73,13 @@ impl Language {
             Language::Chinese => "繁體中文轉錄。",
             Language::English => "Transcribe the following English speech.",
             Language::Japanese => "以下の日本語音声を文字起こししてください。",
+            Language::Korean => "한국어 음성을 전사합니다.",
+            Language::French => "Transcription de la parole française.",
+            Language::German => "Transkription der deutschen Sprache.",
+            Language::Spanish => "Transcripción del habla en español.",
+            Language::Vietnamese => "Phiên âm giọng nói tiếng Việt.",
+            Language::Indonesian => "Transkripsi ucapan bahasa Indonesia.",
+            Language::Thai => "ถอดเสียงภาษาไทย",
         }
     }
 }
@@ -212,5 +233,62 @@ mod tests {
         let mode = RecordingMode::Toggle;
         let json = serde_json::to_string(&mode).unwrap();
         assert_eq!(json, r#""Toggle""#);
+    }
+
+    // -- New language tests --
+
+    #[test]
+    fn should_return_ko_code_for_korean() {
+        assert_eq!(Language::Korean.code(), Some("ko"));
+    }
+
+    #[test]
+    fn should_return_fr_code_for_french() {
+        assert_eq!(Language::French.code(), Some("fr"));
+    }
+
+    #[test]
+    fn should_return_de_code_for_german() {
+        assert_eq!(Language::German.code(), Some("de"));
+    }
+
+    #[test]
+    fn should_return_es_code_for_spanish() {
+        assert_eq!(Language::Spanish.code(), Some("es"));
+    }
+
+    #[test]
+    fn should_return_vi_code_for_vietnamese() {
+        assert_eq!(Language::Vietnamese.code(), Some("vi"));
+    }
+
+    #[test]
+    fn should_return_id_code_for_indonesian() {
+        assert_eq!(Language::Indonesian.code(), Some("id"));
+    }
+
+    #[test]
+    fn should_return_th_code_for_thai() {
+        assert_eq!(Language::Thai.code(), Some("th"));
+    }
+
+    #[test]
+    fn should_return_nonempty_prompt_for_all_languages() {
+        let all = [
+            Language::Auto,
+            Language::Chinese,
+            Language::English,
+            Language::Japanese,
+            Language::Korean,
+            Language::French,
+            Language::German,
+            Language::Spanish,
+            Language::Vietnamese,
+            Language::Indonesian,
+            Language::Thai,
+        ];
+        for lang in &all {
+            assert!(!lang.prompt().is_empty(), "{:?} has empty prompt", lang);
+        }
     }
 }
