@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { getVersion } from "@tauri-apps/api/app";
 import { useSettings } from "../../hooks/useSettings";
 import GeneralSection from "./GeneralSection";
 import SttSection from "./SttSection";
@@ -130,6 +131,11 @@ export default function SettingsWindow() {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const { settings, updateSetting, loading } = useSettings();
   const { t } = useTranslation();
+  const [appVersion, setAppVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   if (loading) {
     return (
@@ -171,7 +177,7 @@ export default function SettingsWindow() {
         </ul>
         <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            {t("version")}
+            VoxInk v{appVersion}
           </p>
         </div>
       </nav>
