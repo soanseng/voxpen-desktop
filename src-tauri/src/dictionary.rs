@@ -28,7 +28,7 @@ impl DictionaryDb {
         if trimmed.is_empty() {
             return Err("word cannot be empty".to_string());
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -43,7 +43,7 @@ impl DictionaryDb {
 
     /// Get all dictionary entries, newest first.
     pub fn get_all(&self) -> Result<Vec<DictionaryEntry>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn
             .prepare(voxink_core::dictionary::QUERY_ALL_SQL)
             .map_err(|e| format!("query prepare failed: {e}"))?;
@@ -62,7 +62,7 @@ impl DictionaryDb {
 
     /// Get word strings only (for prompt injection), newest first with limit.
     pub fn get_words(&self, limit: u32) -> Result<Vec<String>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn
             .prepare(voxink_core::dictionary::GET_WORDS_SQL)
             .map_err(|e| format!("query prepare failed: {e}"))?;
@@ -75,7 +75,7 @@ impl DictionaryDb {
 
     /// Count total dictionary entries.
     pub fn count(&self) -> Result<usize, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(voxink_core::dictionary::COUNT_SQL, [], |row| {
             row.get::<_, usize>(0)
         })
@@ -84,7 +84,7 @@ impl DictionaryDb {
 
     /// Delete a dictionary entry by id.
     pub fn delete(&self, id: i64) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             voxink_core::dictionary::DELETE_SQL,
             rusqlite::params![id],

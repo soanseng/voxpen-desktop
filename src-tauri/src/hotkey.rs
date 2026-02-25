@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread;
 
@@ -13,19 +13,66 @@ use voxink_core::pipeline::state::PipelineState;
 
 use crate::state::AppState;
 
+/// Lookup table mapping index (1-based) to rdev::Key.
+/// Index 0 means "disabled / no key active".
+const RDEV_KEY_TABLE: &[rdev::Key] = &[
+    rdev::Key::AltGr,       // 1  — RAlt
+    rdev::Key::Alt,          // 2  — LAlt
+    rdev::Key::ControlRight, // 3  — RControl
+    rdev::Key::ControlLeft,  // 4  — LControl
+    rdev::Key::ShiftRight,   // 5  — RShift
+    rdev::Key::ShiftLeft,    // 6  — LShift
+    rdev::Key::F1,           // 7
+    rdev::Key::F2,           // 8
+    rdev::Key::F3,           // 9
+    rdev::Key::F4,           // 10
+    rdev::Key::F5,           // 11
+    rdev::Key::F6,           // 12
+    rdev::Key::F7,           // 13
+    rdev::Key::F8,           // 14
+    rdev::Key::F9,           // 15
+    rdev::Key::F10,          // 16
+    rdev::Key::F11,          // 17
+    rdev::Key::F12,          // 18
+];
+
+/// Shared state for the persistent rdev listener thread.
+struct RdevState {
+    /// 1-based index into RDEV_KEY_TABLE. 0 = disabled (no key active).
+    target_key_index: AtomicU8,
+    /// Whether the listener thread has already been spawned.
+    thread_spawned: AtomicBool,
+    /// Debounce flag shared with the hotkey event handler.
+    /// Persists across re-registrations so the single thread can reuse it.
+    processing: Arc<AtomicBool>,
+}
+
+/// Look up a key name and return its 1-based index into RDEV_KEY_TABLE.
+fn rdev_key_index(name: &str) -> Option<u8> {
+    let key = parse_rdev_key(name)?;
+    RDEV_KEY_TABLE
+        .iter()
+        .position(|k| *k == key)
+        .map(|i| (i + 1) as u8)
+}
+
 /// Tracks the active hotkey registration so it can be swapped at runtime.
 pub struct HotkeyManager {
     /// The currently registered shortcut string.
     current_shortcut: Option<String>,
-    /// Stop signal for rdev listener thread.
-    rdev_stop: Arc<AtomicBool>,
+    /// Shared state for the persistent rdev listener thread.
+    rdev_state: Arc<RdevState>,
 }
 
 impl HotkeyManager {
     pub fn new() -> Self {
         Self {
             current_shortcut: None,
-            rdev_stop: Arc::new(AtomicBool::new(false)),
+            rdev_state: Arc::new(RdevState {
+                target_key_index: AtomicU8::new(0),
+                thread_spawned: AtomicBool::new(false),
+                processing: Arc::new(AtomicBool::new(false)),
+            }),
         }
     }
 
@@ -49,10 +96,8 @@ impl HotkeyManager {
             if is_combo_shortcut(shortcut) {
                 let _ = app.global_shortcut().unregister_all();
             }
-            // Signal rdev thread to stop
-            self.rdev_stop.store(true, Ordering::SeqCst);
-            // Create fresh stop signal for next registration
-            self.rdev_stop = Arc::new(AtomicBool::new(false));
+            // Disable the rdev key — the thread stays alive but ignores all events
+            self.rdev_state.target_key_index.store(0, Ordering::SeqCst);
         }
         self.current_shortcut = None;
     }
@@ -73,53 +118,70 @@ impl HotkeyManager {
     }
 
     fn register_single_key(&self, app: &AppHandle, key_name: &str) -> Result<(), String> {
-        let rdev_key =
-            parse_rdev_key(key_name).ok_or_else(|| format!("Unknown key: {}", key_name))?;
+        let index =
+            rdev_key_index(key_name).ok_or_else(|| format!("Unknown key: {}", key_name))?;
 
-        let app_handle = app.clone();
-        let stop = self.rdev_stop.clone();
-        let processing = Arc::new(AtomicBool::new(false));
+        // Atomically swap the target key — the existing thread picks it up immediately
+        self.rdev_state
+            .target_key_index
+            .store(index, Ordering::SeqCst);
 
-        thread::spawn(move || {
-            let processing_clone = processing.clone();
-            let app_clone = app_handle.clone();
-            let key_down = Arc::new(AtomicBool::new(false));
+        // Reset processing flag so a fresh registration starts clean
+        self.rdev_state.processing.store(false, Ordering::SeqCst);
 
-            let _ = rdev::listen(move |event| {
-                if stop.load(Ordering::SeqCst) {
-                    return;
-                }
+        // Only spawn the listener thread once for the lifetime of the app
+        if self
+            .rdev_state
+            .thread_spawned
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            let app_handle = app.clone();
+            let rdev_state = self.rdev_state.clone();
 
-                match event.event_type {
-                    rdev::EventType::KeyPress(k) if k == rdev_key => {
-                        // Only fire once per press (ignore OS key repeat)
-                        if !key_down.swap(true, Ordering::SeqCst) {
-                            let app = app_clone.clone();
-                            let state: tauri::State<'_, AppState> = app.state();
-                            handle_hotkey_event(
-                                &app,
-                                &state,
-                                ShortcutState::Pressed,
-                                &processing_clone,
-                            );
-                        }
+            thread::spawn(move || {
+                let key_down = AtomicBool::new(false);
+
+                let _ = rdev::listen(move |event| {
+                    let idx = rdev_state.target_key_index.load(Ordering::SeqCst);
+                    if idx == 0 {
+                        // Disabled — reset key_down so a future activation starts clean
+                        key_down.store(false, Ordering::SeqCst);
+                        return;
                     }
-                    rdev::EventType::KeyRelease(k) if k == rdev_key => {
-                        if key_down.swap(false, Ordering::SeqCst) {
-                            let app = app_clone.clone();
-                            let state: tauri::State<'_, AppState> = app.state();
-                            handle_hotkey_event(
-                                &app,
-                                &state,
-                                ShortcutState::Released,
-                                &processing_clone,
-                            );
+
+                    let target = RDEV_KEY_TABLE[(idx - 1) as usize];
+
+                    match event.event_type {
+                        rdev::EventType::KeyPress(k) if k == target => {
+                            if !key_down.swap(true, Ordering::SeqCst) {
+                                let app = app_handle.clone();
+                                let app_state: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &app_state,
+                                    ShortcutState::Pressed,
+                                    &rdev_state.processing,
+                                );
+                            }
                         }
+                        rdev::EventType::KeyRelease(k) if k == target => {
+                            if key_down.swap(false, Ordering::SeqCst) {
+                                let app = app_handle.clone();
+                                let app_state: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &app_state,
+                                    ShortcutState::Released,
+                                    &rdev_state.processing,
+                                );
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
+                });
             });
-        });
+        }
 
         Ok(())
     }

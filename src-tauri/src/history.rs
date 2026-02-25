@@ -25,7 +25,7 @@ impl HistoryDb {
 
     /// Insert a transcription entry.
     pub fn insert(&self, entry: &TranscriptionEntry) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             voxink_core::history::INSERT_SQL,
             rusqlite::params![
@@ -48,7 +48,7 @@ impl HistoryDb {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<TranscriptionEntry>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn
             .prepare(voxink_core::history::QUERY_SQL)
             .map_err(|e| format!("query prepare failed: {e}"))?;
@@ -66,7 +66,7 @@ impl HistoryDb {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<TranscriptionEntry>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let pattern = format!("%{query}%");
         let mut stmt = conn
             .prepare(voxink_core::history::SEARCH_SQL)
@@ -83,7 +83,7 @@ impl HistoryDb {
 
     /// Delete a single transcription by id.
     pub fn delete(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(voxink_core::history::DELETE_SQL, rusqlite::params![id])
             .map_err(|e| format!("delete failed: {e}"))?;
         Ok(())

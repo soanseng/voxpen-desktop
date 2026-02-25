@@ -14,6 +14,12 @@ pub trait KeySimulator: Send + Sync {
 }
 
 /// Delay between clipboard write and paste simulation.
+/// Windows needs more time due to clipboard chain processing and
+/// potential antivirus scanning. macOS/Linux are faster.
+#[cfg(target_os = "windows")]
+const PASTE_DELAY: Duration = Duration::from_millis(200);
+
+#[cfg(not(target_os = "windows"))]
 const PASTE_DELAY: Duration = Duration::from_millis(100);
 
 /// Paste text at cursor position using clipboard + key simulation.
@@ -22,7 +28,7 @@ const PASTE_DELAY: Duration = Duration::from_millis(100);
 /// 1. Save current clipboard content
 /// 2. Write transcription to clipboard
 /// 3. Simulate paste keystroke
-/// 4. Wait 100ms (for OS to process the paste)
+/// 4. Wait for OS to process the paste (100ms on macOS/Linux, 200ms on Windows)
 /// 5. Restore original clipboard
 ///
 /// If paste simulation fails, text remains on clipboard (fallback).

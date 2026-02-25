@@ -27,7 +27,7 @@ impl ArboardClipboard {
 
 impl ClipboardManager for ArboardClipboard {
     fn get_text(&self) -> Result<Option<String>, AppError> {
-        let mut cb = self.clipboard.lock().unwrap();
+        let mut cb = self.clipboard.lock().unwrap_or_else(|e| e.into_inner());
         match cb.get_text() {
             Ok(text) => Ok(Some(text)),
             Err(arboard::Error::ContentNotAvailable) => Ok(None),
@@ -36,7 +36,7 @@ impl ClipboardManager for ArboardClipboard {
     }
 
     fn set_text(&self, text: &str) -> Result<(), AppError> {
-        let mut cb = self.clipboard.lock().unwrap();
+        let mut cb = self.clipboard.lock().unwrap_or_else(|e| e.into_inner());
         cb.set_text(text)
             .map_err(|e| AppError::Paste(format!("clipboard write failed: {e}")))
     }

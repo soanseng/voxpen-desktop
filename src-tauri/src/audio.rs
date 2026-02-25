@@ -44,7 +44,7 @@ impl AudioRecorder for CpalRecorder {
         };
 
         let buffer = Arc::clone(&self.buffer);
-        buffer.lock().unwrap().clear();
+        buffer.lock().unwrap_or_else(|e| e.into_inner()).clear();
 
         let recording = Arc::clone(&self.recording);
         recording.store(true, Ordering::SeqCst);
@@ -54,7 +54,7 @@ impl AudioRecorder for CpalRecorder {
                 &config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     if recording.load(Ordering::SeqCst) {
-                        buffer.lock().unwrap().extend_from_slice(data);
+                        buffer.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(data);
                     }
                 },
                 |err| eprintln!("audio stream error: {err}"),
@@ -66,7 +66,7 @@ impl AudioRecorder for CpalRecorder {
             .play()
             .map_err(|e| AppError::Audio(format!("failed to start stream: {e}")))?;
 
-        *self.stream.lock().unwrap() = Some(stream);
+        *self.stream.lock().unwrap_or_else(|e| e.into_inner()) = Some(stream);
         Ok(())
     }
 
@@ -74,9 +74,9 @@ impl AudioRecorder for CpalRecorder {
         self.recording.store(false, Ordering::SeqCst);
 
         // Drop the stream to release the audio device
-        *self.stream.lock().unwrap() = None;
+        *self.stream.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
-        let samples = std::mem::take(&mut *self.buffer.lock().unwrap());
+        let samples = std::mem::take(&mut *self.buffer.lock().unwrap_or_else(|e| e.into_inner()));
         Ok(samples)
     }
 

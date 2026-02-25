@@ -27,7 +27,7 @@ impl EnigoKeyboard {
 
 impl KeySimulator for EnigoKeyboard {
     fn paste(&self) -> Result<(), AppError> {
-        let mut enigo = self.enigo.lock().unwrap();
+        let mut enigo = self.enigo.lock().unwrap_or_else(|e| e.into_inner());
 
         #[cfg(target_os = "macos")]
         let modifier = Key::Meta;
