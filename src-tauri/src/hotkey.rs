@@ -110,7 +110,28 @@ impl HotkeyManager {
             .on_shortcut(shortcut, move |_app, _shortcut, event| {
                 let app = app_handle.clone();
                 let state: tauri::State<'_, AppState> = app.state();
-                handle_hotkey_event(&app, &state, event.state, &processing);
+
+                // On Windows, RegisterHotKey only fires WM_HOTKEY on key press —
+                // ShortcutState::Released never arrives.  We therefore treat every
+                // Pressed event as a toggle: if recording_started is true, this press
+                // means "stop"; otherwise it means "start".
+                // Non-Windows platforms still get Released events, so for them we
+                // pass through the original event.state as-is.
+                let effective_state = if cfg!(target_os = "windows") {
+                    if event.state == ShortcutState::Pressed {
+                        if state.recording_started.load(Ordering::SeqCst) {
+                            ShortcutState::Released
+                        } else {
+                            ShortcutState::Pressed
+                        }
+                    } else {
+                        ShortcutState::Released
+                    }
+                } else {
+                    event.state
+                };
+
+                handle_hotkey_event(&app, &state, effective_state, &processing);
             })
             .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
 
@@ -377,20 +398,36 @@ fn handle_hotkey_event(
                         let text = final_text.clone();
                         let cb = clipboard.clone();
                         let kb = keyboard.clone();
-                        let _ = tokio::task::spawn_blocking(move || {
+                        match tokio::task::spawn_blocking(move || {
                             paste_text(cb.as_ref(), kb.as_ref(), &text)
                         })
-                        .await;
+                        .await
+                        {
+                            Ok(Err(e)) => eprintln!("paste failed: {e}"),
+                            Err(e) => eprintln!("paste task panicked: {e}"),
+                            Ok(Ok(())) => {}
+                        }
                     }
                 }
 
-                // Reset to idle after delay
+                // Allow the next hotkey press immediately after paste completes.
+                // The idle-reset below is cosmetic (clears overlay after a delay).
+                processing_flag.store(false, Ordering::SeqCst);
+
+                // Reset to idle after delay (cosmetic — clears overlay)
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 let ctrl = controller.lock().await;
-                ctrl.reset();
+                // Only reset if still in a terminal state (Result/Refined/Error).
+                // A new recording may have started during the 2s delay.
+                match ctrl.current_state() {
+                    PipelineState::Result { .. }
+                    | PipelineState::Refined { .. }
+                    | PipelineState::Error { .. } => {
+                        ctrl.reset();
+                    }
+                    _ => {} // New session in progress — don't reset
+                }
                 drop(ctrl);
-
-                processing_flag.store(false, Ordering::SeqCst);
             });
         }
     }

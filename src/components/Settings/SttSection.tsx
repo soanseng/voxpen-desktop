@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
-import { saveApiKey } from "../../lib/tauri";
+import { checkMicrophone, getApiKeyStatus, saveApiKey } from "../../lib/tauri";
 
 interface SttSectionProps {
   settings: Settings;
@@ -48,9 +48,29 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">(
     "idle",
   );
+  const [keyStatus, setKeyStatus] = useState<string | null>(null);
+  const [mic, setMic] = useState<{ status: "checking" | "ok" | "error"; detail: string }>({
+    status: "checking",
+    detail: "",
+  });
 
   const models = getModelsForProvider(settings.stt_provider);
   const languages = getLanguageOptions(t);
+
+  const recheckMic = useCallback(() => {
+    setMic({ status: "checking", detail: "" });
+    checkMicrophone()
+      .then((name) => setMic({ status: "ok", detail: name }))
+      .catch((err) => setMic({ status: "error", detail: String(err) }));
+  }, []);
+
+  // Check microphone on mount
+  useEffect(() => { recheckMic(); }, [recheckMic]);
+
+  // Load key status on mount and when provider changes
+  useEffect(() => {
+    getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => setKeyStatus(null));
+  }, [settings.stt_provider]);
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return;
@@ -60,6 +80,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
       await saveApiKey(settings.stt_provider, apiKey.trim());
       setSaveStatus("saved");
       setApiKey("");
+      getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => {});
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       setSaveStatus("error");
@@ -87,6 +108,37 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {t("speechDescription")}
         </p>
+      </div>
+
+      {/* Microphone status */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          {t("microphone")}
+        </label>
+        <div className="flex items-center gap-2">
+          {mic.status === "checking" && (
+            <span className="text-sm text-gray-400 dark:text-gray-500">{t("micChecking")}</span>
+          )}
+          {mic.status === "ok" && (
+            <span className="text-sm text-green-600 dark:text-green-400">
+              {t("micOk", { name: mic.detail })}
+            </span>
+          )}
+          {mic.status === "error" && (
+            <span className="text-sm text-red-600 dark:text-red-400">
+              {t("micError", { error: mic.detail })}
+            </span>
+          )}
+          {mic.status !== "checking" && (
+            <button
+              type="button"
+              onClick={recheckMic}
+              className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              {t("micRecheck")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Provider */}
@@ -208,6 +260,13 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
         {saveStatus === "error" && (
           <p className="text-xs text-red-600 dark:text-red-400">
             {t("saveFailed")}
+          </p>
+        )}
+        {saveStatus === "idle" && (
+          <p className={`text-xs ${keyStatus ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
+            {keyStatus
+              ? t("apiKeyConfigured", { masked: keyStatus })
+              : t("apiKeyNotConfigured")}
           </p>
         )}
       </div>

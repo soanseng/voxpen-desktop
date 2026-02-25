@@ -189,6 +189,8 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::save_api_key,
+            commands::get_api_key_status,
+            commands::check_microphone,
             commands::test_api_key,
             commands::get_history,
             commands::search_history,

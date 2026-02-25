@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Settings } from "../../types/settings";
-import { saveApiKey } from "../../lib/tauri";
+import { getApiKeyStatus, saveApiKey } from "../../lib/tauri";
 
 interface RefinementSectionProps {
   settings: Settings;
@@ -79,10 +79,16 @@ export default function RefinementSection({
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">(
     "idle",
   );
+  const [keyStatus, setKeyStatus] = useState<string | null>(null);
 
   const models = getModelsForProvider(settings.refinement_provider);
   const disabled = !settings.refinement_enabled;
   const sameProvider = settings.refinement_provider === settings.stt_provider;
+
+  // Load key status on mount and when provider changes
+  useEffect(() => {
+    getApiKeyStatus(settings.refinement_provider).then(setKeyStatus).catch(() => setKeyStatus(null));
+  }, [settings.refinement_provider]);
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return;
@@ -92,6 +98,7 @@ export default function RefinementSection({
       await saveApiKey(settings.refinement_provider, apiKey.trim());
       setSaveStatus("saved");
       setApiKey("");
+      getApiKeyStatus(settings.refinement_provider).then(setKeyStatus).catch(() => {});
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       setSaveStatus("error");
@@ -174,6 +181,11 @@ export default function RefinementSection({
           </label>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {t("sharedApiKey")}
+          </p>
+          <p className={`text-xs ${keyStatus ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
+            {keyStatus
+              ? t("apiKeyConfigured", { masked: keyStatus })
+              : t("apiKeyNotConfigured")}
           </p>
         </div>
       ) : (
@@ -273,6 +285,13 @@ export default function RefinementSection({
           {saveStatus === "error" && (
             <p className="text-xs text-red-600 dark:text-red-400">
               {t("saveFailed")}
+            </p>
+          )}
+          {saveStatus === "idle" && (
+            <p className={`text-xs ${keyStatus ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
+              {keyStatus
+                ? t("apiKeyConfigured", { masked: keyStatus })
+                : t("apiKeyNotConfigured")}
             </p>
           )}
         </div>

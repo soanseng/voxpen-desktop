@@ -18,6 +18,16 @@ export async function saveApiKey(
   return invoke("save_api_key", { provider, key });
 }
 
+export async function getApiKeyStatus(
+  provider: string,
+): Promise<string | null> {
+  return invoke<string | null>("get_api_key_status", { provider });
+}
+
+export async function checkMicrophone(): Promise<string> {
+  return invoke<string>("check_microphone");
+}
+
 export async function testApiKey(
   provider: string,
   key: string,

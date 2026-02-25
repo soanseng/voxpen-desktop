@@ -112,6 +112,77 @@ pub async fn save_api_key(
     Ok(())
 }
 
+/// Return a masked preview of the stored API key, or null if not configured.
+///
+/// Masking: first 4 chars + "····" + last 4 chars (e.g. "gsk-····abc4").
+/// Keys shorter than 12 chars get "****" instead.
+#[tauri::command]
+pub async fn get_api_key_status(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<Option<String>, String> {
+    let store = app.store("secrets.json").map_err(|e| e.to_string())?;
+    let store_key = format!("{}_api_key", provider);
+    let masked = store
+        .get(&store_key)
+        .and_then(|v| v.as_str().map(String::from))
+        .filter(|k| !k.is_empty())
+        .map(|k| {
+            if k.len() >= 12 {
+                format!("{}····{}", &k[..4], &k[k.len() - 4..])
+            } else {
+                "****".to_string()
+            }
+        });
+    Ok(masked)
+}
+
+/// Probe the default input (microphone) device and return its name.
+///
+/// Returns the device name on success, or an error string describing why
+/// the microphone is unavailable (no device, permission denied, etc.).
+#[tauri::command]
+pub async fn check_microphone() -> Result<String, String> {
+    // cpal device enumeration is blocking — run off the async executor
+    tokio::task::spawn_blocking(|| {
+        use cpal::traits::{DeviceTrait, HostTrait};
+        let host = cpal::default_host();
+        let device = host
+            .default_input_device()
+            .ok_or_else(|| "No microphone found. Please connect a microphone.".to_string())?;
+        let name = device.name().unwrap_or_else(|_| "Unknown device".to_string());
+        // Verify the device supports our capture format
+        let config = cpal::StreamConfig {
+            channels: 1,
+            sample_rate: cpal::SampleRate(16000),
+            buffer_size: cpal::BufferSize::Default,
+        };
+        device
+            .supported_input_configs()
+            .map_err(|e| format!("Cannot access microphone: {e}"))?;
+        // Try building a short-lived stream to verify permissions
+        let stream = device
+            .build_input_stream(
+                &config,
+                |_data: &[i16], _: &cpal::InputCallbackInfo| {},
+                |_err| {},
+                None,
+            )
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("access") || msg.contains("denied") || msg.contains("0x80070005") || msg.contains("not activated") {
+                    format!("Microphone access denied. Please enable in Settings > Privacy > Microphone. ({e})")
+                } else {
+                    format!("Microphone error: {e}")
+                }
+            })?;
+        drop(stream);
+        Ok(name)
+    })
+    .await
+    .map_err(|e| format!("check failed: {e}"))?
+}
+
 /// Test an API key by making a minimal transcription request.
 #[tauri::command]
 pub async fn test_api_key(provider: String, key: String) -> Result<bool, String> {

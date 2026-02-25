@@ -5172,7 +5172,7 @@ dependencies = [
 
 [[package]]
 name = "voxink-desktop"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "arboard",
  "cpal",
