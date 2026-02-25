@@ -3,7 +3,7 @@ members = [".", "crates/voxink-core"]
 
 [package]
 name = "voxink-desktop"
-version = "0.2.1"
+version = "0.3.0"
 description = "System-tray voice dictation for every desktop app"
 authors = ["VoxInk"]
 edition = "2021"
@@ -33,6 +33,7 @@ enigo = "0.2"
 thiserror = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
+rdev = "0.5"
 
 [dev-dependencies]
 tempfile = "3"

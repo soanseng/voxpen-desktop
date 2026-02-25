@@ -6,6 +6,37 @@ use voxink_core::pipeline::settings::Settings;
 
 use crate::state::AppState;
 
+/// Change the global hotkey at runtime.
+#[tauri::command]
+pub async fn set_hotkey(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    shortcut: String,
+) -> Result<(), String> {
+    if shortcut.trim().is_empty() {
+        return Err("Hotkey cannot be empty".to_string());
+    }
+
+    // Register new hotkey (unregisters previous one internally)
+    let mut mgr = state.hotkey_manager.lock().await;
+    mgr.register(&app, &shortcut)?;
+    drop(mgr);
+
+    // Update in-memory settings
+    let mut s = state.settings.lock().await;
+    s.hotkey = shortcut;
+    let settings_clone = s.clone();
+    drop(s);
+
+    // Persist to store
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    let value = serde_json::to_value(&settings_clone).map_err(|e| e.to_string())?;
+    store.set("settings", value);
+    store.save().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// Load settings from Tauri store, falling back to defaults.
 /// Also syncs the loaded settings to shared in-memory state.
 #[tauri::command]

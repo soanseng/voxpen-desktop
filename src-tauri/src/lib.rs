@@ -16,6 +16,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use voxink_core::pipeline::controller::{PipelineConfig, PipelineController};
@@ -72,6 +73,7 @@ pub fn run() {
                 keyboard: Arc::new(keyboard_mgr),
                 history: Arc::new(history_db),
                 dictionary: Arc::new(dictionary_db),
+                hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
             };
             app.manage(app_state);
 
@@ -145,9 +147,23 @@ pub fn run() {
                 });
             }
 
-            // Register global hotkey
-            if let Err(e) = hotkey::register_hotkey(app.handle()) {
-                eprintln!("failed to register hotkey: {e}");
+            // Register global hotkey from saved settings
+            {
+                let saved_hotkey = app
+                    .store("settings.json")
+                    .ok()
+                    .and_then(|s| s.get("settings"))
+                    .and_then(|v: serde_json::Value| {
+                        v.get("hotkey")
+                            .and_then(|h| h.as_str().map(String::from))
+                    })
+                    .unwrap_or_else(|| "CommandOrControl+Shift+V".to_string());
+
+                let state: tauri::State<'_, AppState> = app.state();
+                let mut mgr = state.hotkey_manager.blocking_lock();
+                if let Err(e) = mgr.register(app.handle(), &saved_hotkey) {
+                    eprintln!("failed to register hotkey: {e}");
+                }
             }
 
             // Show settings window on launch so users can configure the app
@@ -159,6 +175,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::set_hotkey,
             commands::get_settings,
             commands::save_settings,
             commands::save_api_key,

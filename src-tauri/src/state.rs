@@ -132,4 +132,5 @@ pub struct AppState {
     pub keyboard: Arc<crate::keyboard::EnigoKeyboard>,
     pub history: Arc<crate::history::HistoryDb>,
     pub dictionary: Arc<crate::dictionary::DictionaryDb>,
+    pub hotkey_manager: Arc<Mutex<crate::hotkey::HotkeyManager>>,
 }
