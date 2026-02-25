@@ -32,17 +32,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-            rust_target: aarch64-apple-darwin
-            label: macOS-arm64
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
-            rust_target: x86_64-apple-darwin
-            label: macOS-x64
-          - platform: ubuntu-22.04
-            args: ''
-            label: Linux-x64
           - platform: windows-latest
             args: '--target x86_64-pc-windows-msvc'
             rust_target: x86_64-pc-windows-msvc
@@ -53,18 +42,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libasound2-dev \
-            libxdo-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -100,10 +77,7 @@ jobs:
           releaseBody: |
             ## VoxInk Desktop v__VERSION__
 
-            See the assets below to download for your platform:
-            - **macOS**: `.dmg` (Apple Silicon or Intel)
-            - **Windows**: `.exe` (NSIS installer)
-            - **Linux**: `.AppImage` or `.deb`
+            - **Windows**: `.exe` (NSIS installer) / `.msi`
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

@@ -4378,6 +4378,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "image",
  "jni",
  "libc",
  "log",
@@ -5246,7 +5247,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voxink-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mockall",
  "reqwest 0.12.28",
@@ -5260,7 +5261,7 @@ dependencies = [
 
 [[package]]
 name = "voxink-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "cpal",

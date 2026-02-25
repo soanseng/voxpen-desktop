@@ -38,11 +38,7 @@
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
     },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "VoxInk"
-    }
+    "trayIcon": null
   },
   "bundle": {
     "active": true,

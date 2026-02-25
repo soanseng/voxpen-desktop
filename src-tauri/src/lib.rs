@@ -10,6 +10,7 @@ mod state;
 use std::sync::Arc;
 
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     path::BaseDirectory,
     tray::TrayIconBuilder,
@@ -87,7 +88,11 @@ pub fn run() {
                     MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
 
+                let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
+                    .expect("failed to load tray icon");
                 let tray = TrayIconBuilder::new()
+                    .icon(icon)
+                    .icon_as_template(cfg!(target_os = "macos"))
                     .menu(&menu)
                     .show_menu_on_left_click(true)
                     .tooltip("VoxInk — Ready")
@@ -143,6 +148,12 @@ pub fn run() {
             // Register global hotkey
             if let Err(e) = hotkey::register_hotkey(app.handle()) {
                 eprintln!("failed to register hotkey: {e}");
+            }
+
+            // Show settings window on launch so users can configure the app
+            if let Some(window) = app.get_webview_window("settings") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
 
             Ok(())
