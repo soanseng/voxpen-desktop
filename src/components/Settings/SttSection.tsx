@@ -1,14 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
-import type { Settings, ModelStatus } from "../../types/settings";
+import type { Settings } from "../../types/settings";
 import {
   checkMicrophone,
   getApiKeyStatus,
   saveApiKey,
-  getModelStatus,
-  downloadWhisperModel,
-  deleteWhisperModel,
 } from "../../lib/tauri";
 
 interface SttSectionProps {
@@ -16,21 +12,13 @@ interface SttSectionProps {
   onUpdate: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
 }
 
-function getSttProviders(t: (key: string) => string) {
+function getSttProviders() {
   return [
     { value: "groq", label: "Groq" },
     { value: "openai", label: "OpenAI" },
-    { value: "local", label: t("localWhisper") },
     { value: "custom", label: "Custom Server" },
   ];
 }
-
-const LOCAL_MODELS = [
-  { value: "quick", tier: "quick", sizeMb: 190 },
-  { value: "balanced", tier: "balanced", sizeMb: 574 },
-  { value: "quality", tier: "quality", sizeMb: 874 },
-  { value: "maximum", tier: "maximum", sizeMb: 1080 },
-];
 
 function getLanguageOptions(t: (key: string) => string): { value: Settings["stt_language"]; label: string }[] {
   return [
@@ -85,13 +73,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
     detail: "",
   });
 
-  // Local whisper model state
-  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
-
-  const providers = getSttProviders(t);
+  const providers = getSttProviders();
   const models = getModelsForProvider(settings.stt_provider);
   const languages = getLanguageOptions(t);
 
@@ -107,33 +89,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
 
   // Load key status on mount and when provider changes
   useEffect(() => {
-    if (settings.stt_provider === "local") {
-      setKeyStatus(null);
-      return;
-    }
     getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => setKeyStatus(null));
-  }, [settings.stt_provider]);
-
-  // Load model status when provider is local or model changes
-  useEffect(() => {
-    if (settings.stt_provider === "local") {
-      getModelStatus(settings.stt_model).then(setModelStatus).catch(() => setModelStatus(null));
-    }
-  }, [settings.stt_provider, settings.stt_model]);
-
-  // Listen for download progress events
-  useEffect(() => {
-    if (settings.stt_provider !== "local") return;
-    const unlisten = listen<{ model_id: string; progress: number }>(
-      "model-download-progress",
-      (event) => {
-        setModelStatus({
-          status: "Downloading",
-          progress: Math.round(event.payload.progress * 100),
-        });
-      },
-    );
-    return () => { unlisten.then((fn) => fn()); };
   }, [settings.stt_provider]);
 
   async function handleSaveKey() {
@@ -156,44 +112,9 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
 
   function handleProviderChange(provider: string) {
     onUpdate("stt_provider", provider);
-    if (provider === "local") {
-      onUpdate("stt_model", "balanced");
-    } else {
-      const newModels = getModelsForProvider(provider);
-      if (newModels.length > 0) {
-        onUpdate("stt_model", newModels[0].value);
-      }
-    }
-    setDeleteConfirm(false);
-    setDownloadError(null);
-  }
-
-  async function handleDownload() {
-    setDownloading(true);
-    setDownloadError(null);
-    try {
-      await downloadWhisperModel(settings.stt_model);
-      const status = await getModelStatus(settings.stt_model);
-      setModelStatus(status);
-    } catch (err) {
-      setDownloadError(String(err));
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  async function handleDeleteModel() {
-    if (!deleteConfirm) {
-      setDeleteConfirm(true);
-      setTimeout(() => setDeleteConfirm(false), 3000);
-      return;
-    }
-    try {
-      await deleteWhisperModel(settings.stt_model);
-      setModelStatus({ status: "NotDownloaded" });
-      setDeleteConfirm(false);
-    } catch (err) {
-      setDownloadError(String(err));
+    const newModels = getModelsForProvider(provider);
+    if (newModels.length > 0) {
+      onUpdate("stt_model", newModels[0].value);
     }
   }
 
@@ -261,8 +182,8 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
         </select>
       </div>
 
-      {/* API Key — hide when local */}
-      {settings.stt_provider !== "local" && (
+      {/* API Key — hide when custom (no key needed for local servers) */}
+      {settings.stt_provider !== "custom" && (
         <div className="space-y-2">
           <label
             htmlFor="stt-api-key"
@@ -366,18 +287,6 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
         </div>
       )}
 
-      {/* Local whisper hint — show when local */}
-      {settings.stt_provider === "local" && (
-        <div className="space-y-2">
-          <p className="text-sm text-green-600 dark:text-green-400">
-            {t("noApiKeyNeeded")}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {t("localWhisperHint")}
-          </p>
-        </div>
-      )}
-
       {/* Language */}
       <div className="space-y-2">
         <label
@@ -406,117 +315,27 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
       </div>
 
       {/* Model */}
-      {settings.stt_provider === "local" ? (
-        <div className="space-y-4">
-          {/* Model tier dropdown */}
-          <div className="space-y-2">
-            <label
-              htmlFor="local-model"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              {t("model")}
-            </label>
-            <select
-              id="local-model"
-              value={settings.stt_model}
-              onChange={(e) => onUpdate("stt_model", e.target.value)}
-              className={selectClass}
-            >
-              {LOCAL_MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {t(`modelTier.${m.tier}`)} — ~{m.sizeMb} MB
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Model status + download/delete */}
-          <div className="space-y-2">
-            {modelStatus?.status === "NotDownloaded" && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {t("modelNotDownloaded")}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void handleDownload()}
-                  disabled={downloading}
-                  className={
-                    "rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white " +
-                    "transition-colors hover:bg-blue-600 " +
-                    "disabled:cursor-not-allowed disabled:opacity-50 " +
-                    "dark:bg-blue-600 dark:hover:bg-blue-700"
-                  }
-                >
-                  {t("downloadModel")}
-                </button>
-              </div>
-            )}
-
-            {modelStatus?.status === "Downloading" && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-blue-500 transition-all duration-300"
-                      style={{ width: `${modelStatus.progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 min-w-[4rem] text-right">
-                    {modelStatus.progress}%
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("modelDownloading", { progress: modelStatus.progress })}
-                </p>
-              </div>
-            )}
-
-            {modelStatus?.status === "Ready" && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-green-600 dark:text-green-400">
-                  {t("modelReady", { size: Math.round(modelStatus.size_bytes / 1_000_000) })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteModel()}
-                  className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                >
-                  {deleteConfirm ? t("deleteModelConfirm") : t("deleteModel")}
-                </button>
-              </div>
-            )}
-
-            {downloadError && (
-              <p className="text-xs text-red-600 dark:text-red-400">
-                {t("downloadFailed", { error: downloadError })}
-              </p>
-            )}
-          </div>
+      {models.length > 0 && (
+        <div className="space-y-2">
+          <label
+            htmlFor="stt-model"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            {t("model")}
+          </label>
+          <select
+            id="stt-model"
+            value={settings.stt_model}
+            onChange={(e) => onUpdate("stt_model", e.target.value)}
+            className={selectClass}
+          >
+            {models.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
         </div>
-      ) : (
-        models.length > 0 && (
-          <div className="space-y-2">
-            <label
-              htmlFor="stt-model"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              {t("model")}
-            </label>
-            <select
-              id="stt-model"
-              value={settings.stt_model}
-              onChange={(e) => onUpdate("stt_model", e.target.value)}
-              className={selectClass}
-            >
-              {models.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )
       )}
     </div>
   );

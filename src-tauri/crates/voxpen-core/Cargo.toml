@@ -5,7 +5,7 @@ edition = "2021"
 description = "VoxPen core business logic — STT pipeline, audio encoding, LLM refinement"
 
 [features]
-default = ["local-whisper"]
+default = []
 local-whisper = ["dep:whisper-rs"]
 
 [dependencies]

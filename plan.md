@@ -298,10 +298,27 @@ Distribution infrastructure ready. First release requires: signing keys, Apple D
 - [ ] Finalize on recording stop
 
 ### 6.3 On-Device Whisper (Offline)
-- [ ] Integrate `whisper.cpp` via `whisper-rs` crate
-- [ ] Download model on first use (~1.5GB for large-v3)
+- [x] Integrate `whisper.cpp` via `whisper-rs` crate (Rust backend ready)
+- [x] Download model on first use (4 tiers: quick/balanced/quality/maximum)
+- [x] Model management commands (download, status, delete)
 - [ ] Fallback when offline
 - [ ] User choice: cloud (faster, needs internet) vs local (private, slower)
+
+**Status**: Backend complete, **UI temporarily removed** from settings.
+`local-whisper` is an opt-in Cargo feature (`--features local-whisper`), not in default build.
+
+**Windows build blocker**: `whisper-rs-sys` (bindgen + whisper.cpp) fails to compile
+on Windows MSVC due to `libclang` struct layout mismatches. bindgen generates Linux
+glibc types (`_G_fpos_t`, `_IO_FILE`) or produces opaque structs (size=1) depending
+on environment configuration. Attempted solutions:
+- `WHISPER_DONT_GENERATE_BINDINGS=1` → bundled bindings are Linux-only
+- `BINDGEN_EXTRA_CLANG_ARGS=--target=x86_64-pc-windows-msvc` + MSVC include paths → still fails
+- x64 Native Tools Command Prompt → missing scoop tools (cargo, git, cmake)
+- Combined VS dev shell + scoop → still produces wrong struct sizes
+
+**Decision**: Ship v1.0 without local whisper in the default build. Enable via
+`cargo build --features local-whisper` on macOS/Linux where it compiles cleanly.
+Revisit Windows support when `whisper-rs-sys` upstream fixes MSVC bindgen compatibility.
 
 ### 6.4 Additional Languages
 - [ ] Add ko, es, fr, de, th, vi with refinement prompts
@@ -385,6 +402,7 @@ Same as Typeless/Wispr Flow/1Password. Fragile on some Linux Wayland compositors
 | Windows SmartScreen warning | Medium | Consider EV code signing certificate |
 | cpal audio device issues | Low | Fallback to system default, clear error messages |
 | Tauri v2 breaking changes | Low | Pin versions, follow release notes |
+| whisper-rs Windows MSVC build | High | `local-whisper` opt-in feature, excluded from default build. Windows ships cloud-only STT. |
 
 ---
 

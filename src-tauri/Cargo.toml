@@ -41,6 +41,6 @@ tauri-plugin-dialog = "2.6.0"
 tempfile = "3"
 
 [features]
-default = ["custom-protocol", "local-whisper"]
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 local-whisper = ["voxpen-core/local-whisper"]
