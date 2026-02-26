@@ -396,6 +396,7 @@ pub async fn activate_license(
         .await
         .map_err(|e| e.to_string())?;
     let _ = app.emit("usage-updated", ());
+    let _ = app.emit("license-tier-changed", info.tier.clone());
     Ok(info)
 }
 
@@ -411,6 +412,7 @@ pub async fn deactivate_license(
         .await
         .map_err(|e| e.to_string())?;
     let _ = app.emit("usage-updated", ());
+    let _ = app.emit("license-tier-changed", LicenseTier::Free);
     Ok(())
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getVersion } from "@tauri-apps/api/app";
+import { listen } from "@tauri-apps/api/event";
 import type { LicenseTier } from "../../types/settings";
 import { getLicenseTier } from "../../lib/tauri";
 import { useSettings } from "../../hooks/useSettings";
@@ -175,6 +176,16 @@ export default function SettingsWindow() {
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
     getLicenseTier().then(setLicenseTier).catch(() => {});
+  }, []);
+
+  // Update license tier reactively when activate/deactivate happens
+  useEffect(() => {
+    const unlisten = listen<LicenseTier>("license-tier-changed", (event) => {
+      setLicenseTier(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   if (loading) {

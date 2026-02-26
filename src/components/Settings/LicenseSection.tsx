@@ -52,10 +52,10 @@ export default function LicenseSection() {
       .catch(() => {});
   }, []);
 
-  // Listen for usage-updated events
+  // Listen for usage-updated events (payload is empty; re-fetch actual status)
   useEffect(() => {
-    const unlisten = listen<UsageStatus>("usage-updated", (event) => {
-      setUsage(event.payload);
+    const unlisten = listen("usage-updated", () => {
+      getUsageStatus().then(setUsage).catch(() => {});
     });
     return () => {
       unlisten.then((fn) => fn());
