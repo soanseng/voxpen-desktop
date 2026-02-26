@@ -2,8 +2,8 @@ use std::sync::Mutex;
 
 use arboard::Clipboard;
 
-use voxink_core::error::AppError;
-use voxink_core::input::clipboard::ClipboardManager;
+use voxpen_core::error::AppError;
+use voxpen_core::input::clipboard::ClipboardManager;
 
 /// Concrete clipboard manager using arboard for cross-platform clipboard access.
 pub struct ArboardClipboard {

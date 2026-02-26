@@ -369,8 +369,8 @@ pub(crate) async fn chat_completion_with_provider(
     // OpenRouter requires these headers for their API
     if provider == "openrouter" {
         req = req
-            .header("HTTP-Referer", "https://voxink.app")
-            .header("X-Title", "VoxInk");
+            .header("HTTP-Referer", "https://voxpen.app")
+            .header("X-Title", "VoxPen");
     }
 
     let response = req.send().await?;
@@ -669,8 +669,8 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .and(header("HTTP-Referer", "https://voxink.app"))
-            .and(header("X-Title", "VoxInk"))
+            .and(header("HTTP-Referer", "https://voxpen.app"))
+            .and(header("X-Title", "VoxPen"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(chat_response_json("refined")),
             )

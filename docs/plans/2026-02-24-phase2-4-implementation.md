@@ -2,13 +2,13 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Implement LLM refinement pipeline, Settings UI, Tray menu expansion (Phase 2), Floating overlay + History (Phase 3), and UI polish + i18n (Phase 4) — all within voxink-core for business logic + React frontend for UI.
+**Goal:** Implement LLM refinement pipeline, Settings UI, Tray menu expansion (Phase 2), Floating overlay + History (Phase 3), and UI polish + i18n (Phase 4) — all within voxpen-core for business logic + React frontend for UI.
 
-**Architecture:** Business logic lives in `voxink-core` crate (no Tauri dep). React frontend communicates via Tauri IPC commands. All API calls stay in Rust. Settings stored encrypted. History in SQLite.
+**Architecture:** Business logic lives in `voxpen-core` crate (no Tauri dep). React frontend communicates via Tauri IPC commands. All API calls stay in Rust. Settings stored encrypted. History in SQLite.
 
 **Tech Stack:** Rust (tokio, reqwest, serde, thiserror, mockall, wiremock), React 19, TypeScript, Tailwind CSS, Tauri v2 plugins (store, sql, global-shortcut, autostart).
 
-**Note:** Full Tauri app build requires system libs not available in this environment. All Rust work targets `voxink-core` (buildable/testable independently). Frontend builds via `pnpm build`. Tauri integration (Phase 1.6-1.7) deferred until system libs available.
+**Note:** Full Tauri app build requires system libs not available in this environment. All Rust work targets `voxpen-core` (buildable/testable independently). Frontend builds via `pnpm build`. Tauri integration (Phase 1.6-1.7) deferred until system libs available.
 
 ---
 
@@ -17,7 +17,7 @@
 ### Task 2.1: Groq Chat Completion API Client
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/api/groq.rs` (extend existing)
+- Create: `src-tauri/crates/voxpen-core/src/api/groq.rs` (extend existing)
 - Test: inline `#[cfg(test)]` module
 
 **What:** Add `chat_completion()` async fn to existing `groq.rs` — sends chat messages to Groq's `/openai/v1/chat/completions` endpoint. Returns refined text.
@@ -34,7 +34,7 @@ Add 5 tests to `groq.rs`:
 **Step 2: Run tests — verify they fail**
 
 ```bash
-cargo test --manifest-path src-tauri/crates/voxink-core/Cargo.toml -- groq
+cargo test --manifest-path src-tauri/crates/voxpen-core/Cargo.toml -- groq
 ```
 
 **Step 3: Implement**
@@ -76,8 +76,8 @@ pub async fn chat_completion(config: &ChatConfig, system_prompt: &str, user_text
 ### Task 2.2: LLM Refinement Pipeline Orchestration
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/pipeline/refine.rs`
-- Modify: `src-tauri/crates/voxink-core/src/pipeline/mod.rs` (add `pub mod refine;`)
+- Create: `src-tauri/crates/voxpen-core/src/pipeline/refine.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/pipeline/mod.rs` (add `pub mod refine;`)
 
 **What:** `refine()` fn composing `prompts::for_language()` + `groq::chat_completion()`. Mirrors Android's `RefineTextUseCase`.
 
@@ -105,7 +105,7 @@ Plus `refine_with_base_url` for testing.
 ### Task 2.3: LLM Provider Trait + Update Controller
 
 **Files:**
-- Modify: `src-tauri/crates/voxink-core/src/pipeline/controller.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/pipeline/controller.rs`
 
 **What:** Add `LlmProvider` trait (mirroring `SttProvider`), update `PipelineController` to support optional refinement after STT. On refinement failure, fall back to raw text (graceful degradation). 5s timeout for LLM.
 
@@ -184,7 +184,7 @@ Tabbed UI with Tailwind styling. Each section as a component. `useSettings` hook
 **Step: Build frontend**
 
 ```bash
-cd /home/scipio/projects/voxink-desktop && pnpm build
+cd /home/scipio/projects/voxpen-desktop && pnpm build
 ```
 
 **Commit after build passes.**
@@ -194,10 +194,10 @@ cd /home/scipio/projects/voxink-desktop && pnpm build
 ### Task 2.5: Tray Menu Expansion (Rust-side types only)
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/pipeline/settings.rs`
-- Modify: `src-tauri/crates/voxink-core/src/pipeline/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/pipeline/settings.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/pipeline/mod.rs`
 
-**What:** Define `Settings` struct in voxink-core (Serialize/Deserialize) for IPC. Define defaults. The actual Tauri tray menu code goes in the app crate (Phase 1.6).
+**What:** Define `Settings` struct in voxpen-core (Serialize/Deserialize) for IPC. Define defaults. The actual Tauri tray menu code goes in the app crate (Phase 1.6).
 
 **Commit after tests pass.**
 
@@ -208,8 +208,8 @@ cd /home/scipio/projects/voxink-desktop && pnpm build
 ### Task 3.1: Transcription History Types + SQLite Schema
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/history.rs`
-- Modify: `src-tauri/crates/voxink-core/src/lib.rs`
+- Create: `src-tauri/crates/voxpen-core/src/history.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/lib.rs`
 
 **What:** Define `TranscriptionEntry` struct, SQL schema constants, and query builder helpers. Actual SQLite access happens in Tauri crate (needs tauri-plugin-sql).
 
@@ -240,8 +240,8 @@ SQL schema, creation, insert, query, delete, search constants.
 ### Task 3.2: Audio File Chunking
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/audio/chunker.rs`
-- Modify: `src-tauri/crates/voxink-core/src/audio/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/audio/chunker.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/audio/mod.rs`
 
 **What:** WAV-aware chunking for files > 25MB. Read WAV header, split PCM data into chunks, prepend header to each. Mirrors Android's `AudioChunker`.
 
@@ -322,6 +322,6 @@ SQL schema, creation, insert, query, delete, search constants.
 
 - Use subagent-driven development (this session)
 - Fresh subagent per task + code review
-- voxink-core tasks: build + test + clippy after each
+- voxpen-core tasks: build + test + clippy after each
 - Frontend tasks: `pnpm build` after each
 - Commit after each task

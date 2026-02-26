@@ -74,7 +74,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 'VoxInk Desktop v__VERSION__'
+          releaseName: 'VoxPen Desktop v__VERSION__'
           releaseBody: |
             ## What's New / 更新內容
 
@@ -124,14 +124,14 @@ jobs:
             Right-click the app → **Open** → **Open** to bypass.
             If it shows "damaged", run in Terminal:
             ```
-            xattr -cr /Applications/VoxInk\ Desktop.app
+            xattr -cr /Applications/VoxPen\ Desktop.app
             ```
 
             此應用**未經 Apple 公證**。macOS Gatekeeper 可能阻擋開啟。
             對應用程式右鍵 →「**打開**」→「**打開**」即可繞過。
             如顯示「已損壞」，請在終端機執行：
             ```
-            xattr -cr /Applications/VoxInk\ Desktop.app
+            xattr -cr /Applications/VoxPen\ Desktop.app
             ```
           releaseDraft: true
           prerelease: false

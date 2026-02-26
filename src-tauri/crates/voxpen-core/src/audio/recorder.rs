@@ -3,7 +3,7 @@ use crate::error::AppError;
 /// Trait abstracting audio recording hardware.
 ///
 /// Implemented by `cpal`-based recorder in the Tauri crate.
-/// Mockable in voxink-core tests via `mockall`.
+/// Mockable in voxpen-core tests via `mockall`.
 #[cfg_attr(test, mockall::automock)]
 pub trait AudioRecorder: Send + Sync {
     /// Begin capturing PCM audio from the default input device.

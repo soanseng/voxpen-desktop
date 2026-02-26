@@ -1,5 +1,5 @@
 {
-  "name": "voxink-desktop",
+  "name": "voxpen-desktop",
   "private": true,
   "version": "0.4.0",
   "type": "module",
@@ -11,8 +11,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:debug": "tauri build --debug",
-    "test:core": "cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml",
-    "lint:core": "cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
+    "test:core": "cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml",
+    "lint:core": "cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

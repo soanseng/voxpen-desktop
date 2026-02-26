@@ -1,11 +1,11 @@
-# CLAUDE.md — VoxInk Desktop (語墨桌面版)
+# CLAUDE.md — VoxPen Desktop (語墨桌面版)
 
 ## Project Overview
 
-VoxInk Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux. Users press a global hotkey to dictate, and the transcribed + refined text is automatically pasted at the cursor position in any app. Built with Tauri v2 (Rust backend + React frontend), BYOK model.
+VoxPen Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux. Users press a global hotkey to dictate, and the transcribed + refined text is automatically pasted at the cursor position in any app. Built with Tauri v2 (Rust backend + React frontend), BYOK model.
 
-**App Name**: VoxInk Desktop (語墨)
-**App Identifier**: `com.voxink.desktop`
+**App Name**: VoxPen Desktop (語墨)
+**App Identifier**: `com.voxpen.desktop`
 **Relationship to Android**: Separate codebase. Shares API endpoints, refinement prompts, and language list, but no code-level dependency. Architecture mirrors Android's MVVM + Repository pattern, adapted to Rust idioms.
 
 ## Tech Stack
@@ -152,7 +152,7 @@ VoxInk Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux.
 ## Project Structure
 
 ```
-voxink-desktop/
+voxpen-desktop/
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json

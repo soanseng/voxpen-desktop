@@ -5,7 +5,7 @@ Status: Approved
 
 ## Summary
 
-VoxInk Desktop transitions from free open-source to freemium with LemonSqueezy license key validation. BYOK model stays for both tiers. Architecture: pure local (App direct to LemonSqueezy API), with future migration path to proxy model.
+VoxPen Desktop transitions from free open-source to freemium with LemonSqueezy license key validation. BYOK model stays for both tiers. Architecture: pure local (App direct to LemonSqueezy API), with future migration path to proxy model.
 
 ## Business Model
 
@@ -308,7 +308,7 @@ Keys: `license_tab`, `license_free`, `license_pro`, `license_usage_today`, `lice
 ### New Files (Rust)
 
 ```
-src-tauri/crates/voxink-core/src/licensing/
+src-tauri/crates/voxpen-core/src/licensing/
   mod.rs
   types.rs
   manager.rs
@@ -327,8 +327,8 @@ src/components/Settings/LicenseSection.tsx
 
 | File | Change |
 |------|--------|
-| `src-tauri/crates/voxink-core/src/lib.rs` | Add `pub mod licensing` |
-| `src-tauri/crates/voxink-core/src/error.rs` | Add `License`, `UsageLimitReached` variants |
+| `src-tauri/crates/voxpen-core/src/lib.rs` | Add `pub mod licensing` |
+| `src-tauri/crates/voxpen-core/src/error.rs` | Add `License`, `UsageLimitReached` variants |
 | `src-tauri/src/state.rs` | Add `license_manager` to `AppState` |
 | `src-tauri/src/hotkey.rs` | Add 2 gate points (before record, after transcription) |
 | `src-tauri/src/commands.rs` | Add 5 IPC commands |

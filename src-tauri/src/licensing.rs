@@ -5,10 +5,10 @@ use rusqlite::Connection;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-use voxink_core::error::AppError;
-use voxink_core::licensing::manager::{LicenseStore, UsageDb};
-use voxink_core::licensing::types::LicenseInfo;
-use voxink_core::licensing::usage;
+use voxpen_core::error::AppError;
+use voxpen_core::licensing::manager::{LicenseStore, UsageDb};
+use voxpen_core::licensing::types::LicenseInfo;
+use voxpen_core::licensing::usage;
 
 // ---------------------------------------------------------------------------
 // TauriLicenseStore — persists LicenseInfo in Tauri's encrypted store
@@ -102,7 +102,7 @@ impl UsageDb for SqliteUsageDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use voxink_core::licensing::manager::UsageDb;
+    use voxpen_core::licensing::manager::UsageDb;
 
     fn open_test_db() -> SqliteUsageDb {
         let dir = tempfile::tempdir().unwrap();

@@ -31,7 +31,7 @@ Models stored in `{app_data_dir}/models/`, downloaded from HuggingFace via reqwe
 
 ## Audio Conversion
 
-VoxInk captures `Vec<i16>` (16kHz mono). whisper-rs expects `&[f32]` normalized to [-1.0, 1.0].
+VoxPen captures `Vec<i16>` (16kHz mono). whisper-rs expects `&[f32]` normalized to [-1.0, 1.0].
 
 Conversion: `sample as f32 / 32768.0` — done in `LocalSttProvider::transcribe()`.
 

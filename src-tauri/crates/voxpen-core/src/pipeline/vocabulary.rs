@@ -57,7 +57,7 @@ pub fn build_stt_hint(words: &[String], language: &Language) -> Option<String> {
 ///
 /// Returns a localized suffix like:
 /// - Chinese: `\n\n術語表（請優先使用這些詞彙）：語墨, Anthropic`
-/// - English: `\n\nVocabulary (prefer these terms): VoxInk, Anthropic`
+/// - English: `\n\nVocabulary (prefer these terms): VoxPen, Anthropic`
 ///
 /// Returns `None` if vocabulary is empty.
 pub fn build_llm_suffix(words: &[String], language: &Language) -> Option<String> {
@@ -126,10 +126,10 @@ mod tests {
 
     #[test]
     fn should_build_english_llm_suffix() {
-        let words = vec!["VoxInk".to_string()];
+        let words = vec!["VoxPen".to_string()];
         let suffix = build_llm_suffix(&words, &Language::English).unwrap();
         assert!(suffix.contains("Vocabulary (prefer these terms)"));
-        assert!(suffix.contains("VoxInk"));
+        assert!(suffix.contains("VoxPen"));
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn should_estimate_cjk_tokens_higher_than_ascii() {
         let cjk_tokens = estimate_tokens("語墨");
-        let ascii_tokens = estimate_tokens("VoxInk");
+        let ascii_tokens = estimate_tokens("VoxPen");
         assert!(cjk_tokens > ascii_tokens);
     }
 }

@@ -56,9 +56,9 @@ use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tokio::sync::Mutex;
 
-use voxink_core::audio::recorder::AudioRecorder;
-use voxink_core::input::paste::paste_text;
-use voxink_core::pipeline::state::PipelineState;
+use voxpen_core::audio::recorder::AudioRecorder;
+use voxpen_core::input::paste::paste_text;
+use voxpen_core::pipeline::state::PipelineState;
 
 use crate::state::AppState;
 
@@ -294,7 +294,7 @@ fn handle_hotkey_event(
                     s.stt_language.clone()
                 };
                 let vocabulary_hint =
-                    voxink_core::pipeline::vocabulary::build_stt_hint(
+                    voxpen_core::pipeline::vocabulary::build_stt_hint(
                         &vocab_words, &stt_lang,
                     );
 
@@ -314,7 +314,7 @@ fn handle_hotkey_event(
                     };
 
                     let s = settings.lock().await;
-                    let entry = voxink_core::history::TranscriptionEntry {
+                    let entry = voxpen_core::history::TranscriptionEntry {
                         id: uuid::Uuid::new_v4().to_string(),
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -524,7 +524,7 @@ Replace `hotkeyHint` and add new keys:
 
 **Step 3: Update version string**
 
-In both files, update `"version": "VoxInk v0.3.0"`.
+In both files, update `"version": "VoxPen v0.3.0"`.
 
 **Step 4: Commit**
 
@@ -729,7 +729,7 @@ async function selectPreset(shortcut: string) {
 
 **Step 3: Verify frontend builds**
 
-Run: `cd /home/scipio/projects/voxink-desktop && pnpm build`
+Run: `cd /home/scipio/projects/voxpen-desktop && pnpm build`
 
 **Step 4: Commit**
 
@@ -762,7 +762,7 @@ chore: bump version to 0.3.0
 
 **Step 1: Run core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 
 **Step 2: Run clippy**
 

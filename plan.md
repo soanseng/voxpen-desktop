@@ -1,4 +1,4 @@
-# plan.md — VoxInk Desktop (語墨桌面版) Development Plan
+# plan.md — VoxPen Desktop (語墨桌面版) Development Plan
 
 ## Vision
 
@@ -17,7 +17,7 @@ System-tray voice dictation for every desktop app. Press a hotkey, speak, text a
 
 ## Prerequisites
 
-- VoxInk Android v1 shipped (prompts, API patterns proven)
+- VoxPen Android v1 shipped (prompts, API patterns proven)
 - Rust toolchain installed (`rustup`)
 - Tauri v2 CLI installed (`cargo install tauri-cli`)
 - Node.js + pnpm for React frontend
@@ -28,9 +28,9 @@ System-tray voice dictation for every desktop app. Press a hotkey, speak, text a
 
 ### 0.1 Tauri Project Init
 - [x] Tauri v2 project with React + TypeScript + Tailwind frontend
-- [x] Configure `tauri.conf.json`: app id `com.voxink.desktop`, hidden settings window, tray icon
+- [x] Configure `tauri.conf.json`: app id `com.voxpen.desktop`, hidden settings window, tray icon
 - [x] Capabilities: global-shortcut, store, sql, autostart permissions
-- [x] All Rust dependencies in workspace `Cargo.toml` + `voxink-core/Cargo.toml`
+- [x] All Rust dependencies in workspace `Cargo.toml` + `voxpen-core/Cargo.toml`
 - [x] `AppError` enum with `thiserror` (6 variants, serializable for Tauri)
 - [x] `PipelineState` enum (7 states matching Android `ImeUiState`)
 - [x] `Language` enum with `code()` and `prompt()` methods
@@ -46,7 +46,7 @@ System-tray voice dictation for every desktop app. Press a hotkey, speak, text a
 - [x] App starts with hidden window (tray-only)
 
 ### Architecture Decision: Workspace Crate
-Created `src-tauri/crates/voxink-core/` as a separate workspace crate containing all business logic (types, encoder, prompts, API modules). This crate has **no Tauri dependency** and can be built/tested independently without Linux system libraries (libgtk, libwebkit, etc.). The Tauri app crate depends on `voxink-core` and handles only framework glue (tray, hotkey, IPC commands).
+Created `src-tauri/crates/voxpen-core/` as a separate workspace crate containing all business logic (types, encoder, prompts, API modules). This crate has **no Tauri dependency** and can be built/tested independently without Linux system libraries (libgtk, libwebkit, etc.). The Tauri app crate depends on `voxpen-core` and handles only framework glue (tray, hotkey, IPC commands).
 
 ### Verification
 - 41 unit tests passing
@@ -64,10 +64,10 @@ Empty Tauri app living in system tray, with core types (`AppError`, `PipelineSta
 This is the entire core loop. Get this working end-to-end first.
 
 > **Note**: `audio/encoder.rs` (pcm_to_wav) already implemented and tested in Phase 0. Phase 1 focuses on the remaining pipeline modules.
-> All new modules go in `src-tauri/crates/voxink-core/src/` (framework-independent, testable without Tauri).
+> All new modules go in `src-tauri/crates/voxpen-core/src/` (framework-independent, testable without Tauri).
 
 ### 1.1 Groq STT API Client ✅ COMPLETE
-**File**: `voxink-core/src/api/groq.rs`
+**File**: `voxpen-core/src/api/groq.rs`
 - [x] `SttConfig` struct with api_key, model, language, response_format
 - [x] `WhisperResponse` struct for Groq API response
 - [x] `transcribe()` async fn with reqwest multipart POST, per-call Bearer auth
@@ -75,13 +75,13 @@ This is the entire core loop. Get this working end-to-end first.
 - [x] 5 wiremock tests: success, 401, 413, 500, custom model
 
 ### 1.2 Transcription Pipeline ✅ COMPLETE
-**File**: `voxink-core/src/pipeline/transcribe.rs`
+**File**: `voxpen-core/src/pipeline/transcribe.rs`
 - [x] `transcribe()` composing encoder::pcm_to_wav + groq::transcribe
 - [x] Empty PCM validation → AppError::Audio
 - [x] 3 wiremock tests: encode+call, empty rejection, error propagation
 
 ### 1.3 Pipeline Controller (State Machine) ✅ COMPLETE
-**File**: `voxink-core/src/pipeline/controller.rs`
+**File**: `voxpen-core/src/pipeline/controller.rs`
 - [x] `PipelineController` with `tokio::sync::watch` for state broadcast
 - [x] `PipelineConfig` struct (API key, language, model)
 - [x] `on_start_recording()`: validates API key → emits Recording (or Error)
@@ -90,12 +90,12 @@ This is the entire core loop. Get this working end-to-end first.
 - [x] 7 tests: idle start, recording transition, error on missing key, processing on stop, empty pcm, reset, config update
 
 ### 1.4 Audio Recorder Trait ✅ COMPLETE
-**File**: `voxink-core/src/audio/recorder.rs` + `src-tauri/src/audio.rs`
+**File**: `voxpen-core/src/audio/recorder.rs` + `src-tauri/src/audio.rs`
 - [x] `AudioRecorder` trait: start/stop/is_recording (mockall automock)
 - [x] `CpalRecorder` concrete implementation (16kHz mono i16, Arc<Mutex> buffer)
 
 ### 1.5 Auto-Paste ✅ COMPLETE
-**File**: `voxink-core/src/input/clipboard.rs` + `input/paste.rs` + `src-tauri/src/clipboard.rs` + `src-tauri/src/keyboard.rs`
+**File**: `voxpen-core/src/input/clipboard.rs` + `input/paste.rs` + `src-tauri/src/clipboard.rs` + `src-tauri/src/keyboard.rs`
 - [x] `ClipboardManager` trait: get_text/set_text (mockall automock)
 - [x] `KeySimulator` trait: paste (mockall automock)
 - [x] `paste_text()` orchestration: save → write → paste → sleep(100ms) → restore
@@ -130,7 +130,7 @@ This is the entire core loop. Get this working end-to-end first.
 - [x] Window routing: App.tsx detects window label and renders Settings vs Overlay
 
 ### Build Note
-Full Tauri app compilation requires system libs (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libasound2-dev`). The CI workflow validates full build. Local verification: voxink-core tests (89 passing) + frontend build + clippy clean.
+Full Tauri app compilation requires system libs (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libasound2-dev`). The CI workflow validates full build. Local verification: voxpen-core tests (89 passing) + frontend build + clippy clean.
 
 ### Deliverable
 Working end-to-end: press hotkey → speak → text appears at cursor. This is a usable MVP.
@@ -267,8 +267,8 @@ Production-ready app tested on all three platforms.
 - [ ] Windows code signing certificate (optional)
 
 ### 5.5 Build Scripts ✅ COMPLETE
-- [x] `pnpm test:core` — run voxink-core tests
-- [x] `pnpm lint:core` — run clippy on voxink-core
+- [x] `pnpm test:core` — run voxpen-core tests
+- [x] `pnpm lint:core` — run clippy on voxpen-core
 - [x] `pnpm tauri:build` / `pnpm tauri:dev` convenience scripts
 
 ### 5.6 Website / Landing Page (deferred)
@@ -319,11 +319,11 @@ Distribution infrastructure ready. First release requires: signing keys, Apple D
 
 ## Technical Decisions Log
 
-### Why a separate `voxink-core` crate?
+### Why a separate `voxpen-core` crate?
 1. **Testability**: Core business logic (encoder, API client, state machine, prompts) can be tested without Linux system libraries (libgtk, libwebkit, etc.)
 2. **Separation of concerns**: Framework-agnostic code (pure Rust) vs framework glue (Tauri setup, IPC commands, device access)
-3. **Faster iteration**: `cargo test -p voxink-core` runs in seconds, no Tauri build needed
-4. **Trait boundaries**: Hardware-dependent code (audio, clipboard, keys) uses traits in voxink-core, with concrete impls in the Tauri crate
+3. **Faster iteration**: `cargo test -p voxpen-core` runs in seconds, no Tauri build needed
+4. **Trait boundaries**: Hardware-dependent code (audio, clipboard, keys) uses traits in voxpen-core, with concrete impls in the Tauri crate
 5. **Future portability**: Core crate could be reused in CLI, other frameworks
 
 ### Why Tauri over Electron?

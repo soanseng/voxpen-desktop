@@ -217,7 +217,7 @@ export default function SettingsWindow() {
         </ul>
         <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            VoxInk v{appVersion}
+            VoxPen v{appVersion}
           </p>
         </div>
       </nav>

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
-use voxink_core::dictionary::{DictionaryEntry, CREATE_TABLE_SQL};
+use voxpen_core::dictionary::{DictionaryEntry, CREATE_TABLE_SQL};
 
 /// Thread-safe SQLite database handle for dictionary operations.
 pub struct DictionaryDb {
@@ -34,7 +34,7 @@ impl DictionaryDb {
             .unwrap_or_default()
             .as_millis() as i64;
         conn.execute(
-            voxink_core::dictionary::INSERT_SQL,
+            voxpen_core::dictionary::INSERT_SQL,
             rusqlite::params![trimmed, now],
         )
         .map_err(|e| format!("insert failed: {e}"))?;
@@ -45,7 +45,7 @@ impl DictionaryDb {
     pub fn get_all(&self) -> Result<Vec<DictionaryEntry>, String> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn
-            .prepare(voxink_core::dictionary::QUERY_ALL_SQL)
+            .prepare(voxpen_core::dictionary::QUERY_ALL_SQL)
             .map_err(|e| format!("query prepare failed: {e}"))?;
         let rows = stmt
             .query_map([], |row| {
@@ -64,7 +64,7 @@ impl DictionaryDb {
     pub fn get_words(&self, limit: u32) -> Result<Vec<String>, String> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn
-            .prepare(voxink_core::dictionary::GET_WORDS_SQL)
+            .prepare(voxpen_core::dictionary::GET_WORDS_SQL)
             .map_err(|e| format!("query prepare failed: {e}"))?;
         let rows = stmt
             .query_map(rusqlite::params![limit], |row| row.get(0))
@@ -76,7 +76,7 @@ impl DictionaryDb {
     /// Count total dictionary entries.
     pub fn count(&self) -> Result<usize, String> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        conn.query_row(voxink_core::dictionary::COUNT_SQL, [], |row| {
+        conn.query_row(voxpen_core::dictionary::COUNT_SQL, [], |row| {
             row.get::<_, usize>(0)
         })
         .map_err(|e| format!("count failed: {e}"))
@@ -86,7 +86,7 @@ impl DictionaryDb {
     pub fn delete(&self, id: i64) -> Result<(), String> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
-            voxink_core::dictionary::DELETE_SQL,
+            voxpen_core::dictionary::DELETE_SQL,
             rusqlite::params![id],
         )
         .map_err(|e| format!("delete failed: {e}"))?;

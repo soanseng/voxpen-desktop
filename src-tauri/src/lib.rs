@@ -21,9 +21,9 @@ use tauri::{
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
-use voxink_core::pipeline::controller::{PipelineConfig, PipelineController};
-use voxink_core::pipeline::settings::Settings;
-use voxink_core::pipeline::state::{Language, PipelineState, TonePreset};
+use voxpen_core::pipeline::controller::{PipelineConfig, PipelineController};
+use voxpen_core::pipeline::settings::Settings;
+use voxpen_core::pipeline::state::{Language, PipelineState, TonePreset};
 
 use state::{AppState, GroqLlmProvider, GroqSttProvider};
 
@@ -53,8 +53,8 @@ const ALL_TONES: &[(&str, TonePreset)] = &[
 ];
 
 /// Format the tray usage text based on license tier and usage status.
-fn format_usage_text(tier: &voxink_core::licensing::LicenseTier, status: &voxink_core::licensing::UsageStatus) -> String {
-    use voxink_core::licensing::{LicenseTier, UsageStatus, FREE_DAILY_LIMIT};
+fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen_core::licensing::UsageStatus) -> String {
+    use voxpen_core::licensing::{LicenseTier, UsageStatus, FREE_DAILY_LIMIT};
     match tier {
         LicenseTier::Pro => "Unlimited (Pro)".to_string(),
         LicenseTier::Free => {
@@ -132,7 +132,7 @@ fn build_tray_menu(
     let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit VoxPen", true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
@@ -179,10 +179,10 @@ pub fn run() {
             // Initialize local STT provider (feature-gated)
             #[cfg(feature = "local-whisper")]
             let local_stt = {
-                use voxink_core::whisper::models;
+                use voxpen_core::whisper::models;
                 let default_model = models::default_local_model();
                 let model_path = models_dir.join(default_model.filename);
-                Arc::new(voxink_core::whisper::provider::LocalSttProvider::new(
+                Arc::new(voxpen_core::whisper::provider::LocalSttProvider::new(
                     model_path,
                     Language::Auto,
                 ))
@@ -211,7 +211,7 @@ pub fn run() {
                 clipboard::ArboardClipboard::new().expect("failed to init clipboard");
             let keyboard_mgr =
                 keyboard::EnigoKeyboard::new().expect("failed to init keyboard simulator");
-            let db_path = app_data_dir.join("voxink.db");
+            let db_path = app_data_dir.join("voxpen.db");
             let history_db =
                 history::HistoryDb::open(db_path.clone()).expect("failed to open history DB");
             let dictionary_db =
@@ -221,8 +221,8 @@ pub fn run() {
             let license_store = licensing::TauriLicenseStore::new(app.handle().clone());
             let usage_db = licensing::SqliteUsageDb::open(db_path)
                 .expect("failed to open usage DB");
-            let verifier = voxink_core::licensing::DirectLemonSqueezy::new();
-            let license_mgr = voxink_core::licensing::LicenseManager::new(
+            let verifier = voxpen_core::licensing::DirectLemonSqueezy::new();
+            let license_mgr = voxpen_core::licensing::LicenseManager::new(
                 verifier, license_store, usage_db,
             );
 
@@ -257,7 +257,7 @@ pub fn run() {
                     state_ref.license_manager.check_access(),
                 );
                 let usage_text = format_usage_text(&tier, &initial_usage);
-                let is_pro = tier == voxink_core::licensing::LicenseTier::Pro;
+                let is_pro = tier == voxpen_core::licensing::LicenseTier::Pro;
 
                 // Build system tray menu
                 let mic_devices = audio::list_input_devices();
@@ -270,7 +270,7 @@ pub fn run() {
                     .icon_as_template(cfg!(target_os = "macos"))
                     .menu(&menu)
                     .show_menu_on_left_click(true)
-                    .tooltip("VoxInk — Ready")
+                    .tooltip("VoxPen — Ready")
                     .on_menu_event(|app, event| {
                         let id = event.id.as_ref();
                         match id {
@@ -293,7 +293,7 @@ pub fn run() {
                                             let _ = open::that(&info.download_url);
                                         }
                                         Ok(_) => {
-                                            eprintln!("VoxInk is up to date");
+                                            eprintln!("VoxPen is up to date");
                                         }
                                         Err(e) => {
                                             eprintln!("update check failed: {e}");
@@ -397,13 +397,13 @@ pub fn run() {
 
                         // Update tray tooltip based on pipeline state
                         let tooltip = match &pipeline_state {
-                            PipelineState::Idle => "VoxInk — Ready",
-                            PipelineState::Recording => "VoxInk — Recording...",
+                            PipelineState::Idle => "VoxPen — Ready",
+                            PipelineState::Recording => "VoxPen — Recording...",
                             PipelineState::Processing
-                            | PipelineState::Refining { .. } => "VoxInk — Processing...",
+                            | PipelineState::Refining { .. } => "VoxPen — Processing...",
                             PipelineState::Result { .. }
-                            | PipelineState::Refined { .. } => "VoxInk — Done",
-                            PipelineState::Error { .. } => "VoxInk — Error",
+                            | PipelineState::Refined { .. } => "VoxPen — Done",
+                            PipelineState::Error { .. } => "VoxPen — Error",
                         };
                         let _ = tray.set_tooltip(Some(tooltip));
 
@@ -523,7 +523,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use voxink_core::licensing::{LicenseTier, UsageStatus};
+    use voxpen_core::licensing::{LicenseTier, UsageStatus};
 
     #[test]
     fn should_format_pro_tier_as_unlimited() {

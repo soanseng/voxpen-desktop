@@ -2,8 +2,8 @@ use std::sync::Mutex;
 
 use enigo::{Direction, Enigo, Key, Keyboard, Settings as EnigoSettings};
 
-use voxink_core::error::AppError;
-use voxink_core::input::paste::KeySimulator;
+use voxpen_core::error::AppError;
+use voxpen_core::input::paste::KeySimulator;
 
 /// Concrete keyboard simulator using enigo for paste keystroke simulation.
 pub struct EnigoKeyboard {

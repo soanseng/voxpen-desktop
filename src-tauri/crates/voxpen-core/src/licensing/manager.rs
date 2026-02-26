@@ -233,7 +233,7 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
 fn hostname_or_default() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "VoxInk Desktop".to_string())
+        .unwrap_or_else(|_| "VoxPen Desktop".to_string())
 }
 
 // ===========================================================================

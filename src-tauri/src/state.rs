@@ -8,13 +8,13 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
-use voxink_core::api::groq::{self, ChatConfig, SttConfig};
-use voxink_core::error::AppError;
-use voxink_core::pipeline::controller::{LlmProvider, PipelineController, SttProvider};
-use voxink_core::pipeline::refine;
-use voxink_core::pipeline::settings::Settings;
-use voxink_core::pipeline::state::Language;
-use voxink_core::pipeline::transcribe;
+use voxpen_core::api::groq::{self, ChatConfig, SttConfig};
+use voxpen_core::error::AppError;
+use voxpen_core::pipeline::controller::{LlmProvider, PipelineController, SttProvider};
+use voxpen_core::pipeline::refine;
+use voxpen_core::pipeline::settings::Settings;
+use voxpen_core::pipeline::state::Language;
+use voxpen_core::pipeline::transcribe;
 
 /// Concrete SttProvider backed by Groq Whisper API (and optionally local whisper).
 ///
@@ -26,7 +26,7 @@ pub struct GroqSttProvider {
     settings: Arc<Mutex<Settings>>,
     app_handle: AppHandle,
     #[cfg(feature = "local-whisper")]
-    local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
+    local_stt: Arc<voxpen_core::whisper::provider::LocalSttProvider>,
 }
 
 impl GroqSttProvider {
@@ -34,7 +34,7 @@ impl GroqSttProvider {
     pub fn new(
         settings: Arc<Mutex<Settings>>,
         app_handle: AppHandle,
-        local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
+        local_stt: Arc<voxpen_core::whisper::provider::LocalSttProvider>,
     ) -> Self {
         Self {
             settings,
@@ -196,8 +196,8 @@ pub struct AppState {
     /// wait for recording to actually begin before calling recorder.stop().
     pub recording_started: Arc<AtomicBool>,
     pub license_manager: Arc<
-        voxink_core::licensing::LicenseManager<
-            voxink_core::licensing::DirectLemonSqueezy,
+        voxpen_core::licensing::LicenseManager<
+            voxpen_core::licensing::DirectLemonSqueezy,
             crate::licensing::TauriLicenseStore,
             crate::licensing::SqliteUsageDb,
         >,
@@ -207,5 +207,5 @@ pub struct AppState {
     /// Shared local STT provider — accessible by both GroqSttProvider
     /// (for transcription dispatch) and IPC commands (for model/language updates).
     #[cfg(feature = "local-whisper")]
-    pub local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
+    pub local_stt: Arc<voxpen_core::whisper::provider::LocalSttProvider>,
 }

@@ -7,9 +7,9 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use voxink_core::audio::recorder::AudioRecorder;
-use voxink_core::input::paste::paste_text;
-use voxink_core::pipeline::state::{PipelineState, RecordingMode};
+use voxpen_core::audio::recorder::AudioRecorder;
+use voxpen_core::input::paste::paste_text;
+use voxpen_core::pipeline::state::{PipelineState, RecordingMode};
 
 use crate::state::AppState;
 
@@ -404,12 +404,12 @@ fn handle_hotkey_event(
                 // License usage gate
                 let usage_status = license_mgr.check_access().await;
                 match &usage_status {
-                    voxink_core::licensing::UsageStatus::Exhausted => {
+                    voxpen_core::licensing::UsageStatus::Exhausted => {
                         let _ = app_for_err.emit("usage-exhausted", ());
                         processing_flag.store(false, Ordering::SeqCst);
                         return;
                     }
-                    voxink_core::licensing::UsageStatus::Warning { remaining } => {
+                    voxpen_core::licensing::UsageStatus::Warning { remaining } => {
                         let _ = app_for_err.emit("usage-warning", remaining);
                     }
                     _ => {}
@@ -513,7 +513,7 @@ fn handle_hotkey_event(
                     let s = settings.lock().await;
                     s.stt_language.clone()
                 };
-                let vocabulary_hint = voxink_core::pipeline::vocabulary::build_stt_hint(
+                let vocabulary_hint = voxpen_core::pipeline::vocabulary::build_stt_hint(
                     &vocab_words, &stt_lang,
                 );
 
@@ -535,7 +535,7 @@ fn handle_hotkey_event(
                     };
 
                     let s = settings.lock().await;
-                    let entry = voxink_core::history::TranscriptionEntry {
+                    let entry = voxpen_core::history::TranscriptionEntry {
                         id: uuid::Uuid::new_v4().to_string(),
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -601,7 +601,7 @@ fn handle_hotkey_event(
 ///
 /// On Windows, microphone permission denied surfaces as a generic WASAPI error.
 /// We detect common patterns and suggest remediation steps.
-fn format_audio_error(err: &voxink_core::error::AppError) -> String {
+fn format_audio_error(err: &voxpen_core::error::AppError) -> String {
     let msg = err.to_string();
     let lower = msg.to_lowercase();
 

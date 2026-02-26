@@ -1,22 +1,22 @@
 [workspace]
-members = [".", "crates/voxink-core"]
+members = [".", "crates/voxpen-core"]
 
 [package]
-name = "voxink-desktop"
+name = "voxpen-desktop"
 version = "0.4.0"
 description = "System-tray voice dictation for every desktop app"
-authors = ["VoxInk"]
+authors = ["VoxPen"]
 edition = "2021"
 
 [lib]
-name = "voxink_desktop_lib"
+name = "voxpen_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-voxink-core = { path = "crates/voxink-core", default-features = false }
+voxpen-core = { path = "crates/voxpen-core", default-features = false }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-store = "2"
@@ -43,4 +43,4 @@ tempfile = "3"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-local-whisper = ["voxink-core/local-whisper"]
+local-whisper = ["voxpen-core/local-whisper"]

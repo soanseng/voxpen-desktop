@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Configure cross-platform build pipelines, auto-update infrastructure, icon generation, and installer packaging so VoxInk Desktop can be built and distributed on macOS, Windows, and Linux via GitHub Releases.
+**Goal:** Configure cross-platform build pipelines, auto-update infrastructure, icon generation, and installer packaging so VoxPen Desktop can be built and distributed on macOS, Windows, and Linux via GitHub Releases.
 
 **Architecture:** Tauri v2's built-in bundler handles platform-specific installers (DMG, NSIS, AppImage, .deb). The `tauri-plugin-updater` provides delta-aware auto-updates verified by Ed25519 signatures. GitHub Actions with `tauri-apps/tauri-action` orchestrates cross-platform CI/CD, producing signed artifacts and an auto-generated `latest.json` update manifest.
 
@@ -81,13 +81,13 @@ In `package.json`, add to `dependencies`:
 **Step 3: Install frontend dependencies**
 
 ```bash
-cd /home/scipio/projects/voxink-desktop && pnpm install
+cd /home/scipio/projects/voxpen-desktop && pnpm install
 ```
 
 **Step 4: Verify Cargo.toml compiles (core crate only — full Tauri build needs system libs)**
 
 ```bash
-cargo check -p voxink-core --manifest-path src-tauri/Cargo.toml
+cargo check -p voxpen-core --manifest-path src-tauri/Cargo.toml
 ```
 
 Expected: success (core crate unchanged).
@@ -113,9 +113,9 @@ Replace the current `bundle` section and add `plugins.updater`:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
-  "productName": "VoxInk Desktop",
+  "productName": "VoxPen Desktop",
   "version": "0.1.0",
-  "identifier": "com.voxink.desktop",
+  "identifier": "com.voxpen.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -126,7 +126,7 @@ Replace the current `bundle` section and add `plugins.updater`:
     "windows": [
       {
         "label": "settings",
-        "title": "VoxInk Settings",
+        "title": "VoxPen Settings",
         "width": 680,
         "height": 520,
         "resizable": true,
@@ -140,7 +140,7 @@ Replace the current `bundle` section and add `plugins.updater`:
     "trayIcon": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true,
-      "tooltip": "VoxInk"
+      "tooltip": "VoxPen"
     }
   },
   "bundle": {
@@ -181,7 +181,7 @@ Replace the current `bundle` section and add `plugins.updater`:
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/anthropics/voxink-desktop/releases/latest/download/latest.json"
+        "https://github.com/anthropics/voxpen-desktop/releases/latest/download/latest.json"
       ],
       "pubkey": ""
     }
@@ -195,7 +195,7 @@ Notes:
 - `endpoints` URL uses a placeholder GitHub org — update when the real repo is created.
 - `hardenedRuntime: true` required for macOS notarization.
 - `webviewInstallMode.downloadBootstrapper` keeps Windows installer small.
-- `bundleMediaFramework: false` since VoxInk uses `cpal` directly, not GStreamer.
+- `bundleMediaFramework: false` since VoxPen uses `cpal` directly, not GStreamer.
 
 **Step 2: Verify JSON is valid**
 
@@ -230,11 +230,11 @@ use tauri::{
     Manager,
 };
 
-pub use voxink_core;
+pub use voxpen_core;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! VoxInk Desktop is running.", name)
+    format!("Hello, {}! VoxPen Desktop is running.", name)
 }
 
 pub fn run() {
@@ -250,13 +250,13 @@ pub fn run() {
         .setup(|app| {
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit VoxPen", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .menu_on_left_click(true)
-                .tooltip("VoxInk — Ready")
+                .tooltip("VoxPen — Ready")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "settings" => {
                         if let Some(window) = app.get_webview_window("settings") {
@@ -513,7 +513,7 @@ concurrency:
 
 jobs:
   test-core:
-    name: Test voxink-core
+    name: Test voxpen-core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -525,10 +525,10 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Run tests
-        run: cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
+        run: cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml
 
       - name: Run clippy
-        run: cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings
 
   test-frontend:
     name: Test frontend
@@ -586,7 +586,7 @@ concurrency:
 
 jobs:
   test-core:
-    name: Test voxink-core
+    name: Test voxpen-core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -594,8 +594,8 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - run: cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
-      - run: cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - run: cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings
 
   build-release:
     name: Build (${{ matrix.label }})
@@ -680,9 +680,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: 'VoxInk Desktop v__VERSION__'
+          releaseName: 'VoxPen Desktop v__VERSION__'
           releaseBody: |
-            ## VoxInk Desktop v__VERSION__
+            ## VoxPen Desktop v__VERSION__
 
             See the assets below to download for your platform:
             - **macOS**: `.dmg` (Apple Silicon or Intel)
@@ -720,8 +720,8 @@ Add these scripts:
   "tauri:dev": "tauri dev",
   "tauri:build": "tauri build",
   "tauri:build:debug": "tauri build --debug",
-  "test:core": "cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml",
-  "lint:core": "cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
+  "test:core": "cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml",
+  "lint:core": "cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
 }
 ```
 
@@ -793,4 +793,4 @@ git commit -m "docs: mark Phase 5 distribution infrastructure complete in plan.m
 
 **Parallelization:** Tasks 1, 2, 3, 5, 7, 8, 9 are independent and can run in parallel. Tasks 4 and 6 depend on Task 2 (updater dep). Task 10 runs last.
 
-**Note on Tauri build:** The full `cargo build` for the Tauri app crate requires system libraries (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libasound2-dev`). The voxink-core crate can be tested independently. CI workflow handles system deps via `apt-get install`.
+**Note on Tauri build:** The full `cargo build` for the Tauri app crate requires system libraries (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libasound2-dev`). The voxpen-core crate can be tested independently. CI workflow handles system deps via `apt-get install`.

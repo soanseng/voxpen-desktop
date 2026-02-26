@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   test-core:
-    name: Test voxink-core
+    name: Test voxpen-core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Run tests
-        run: cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
+        run: cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml
 
       - name: Run clippy
-        run: cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings

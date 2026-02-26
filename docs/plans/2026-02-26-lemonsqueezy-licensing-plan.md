@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add freemium licensing to VoxInk Desktop — Free tier (15 transcriptions/day, full features) and Pro tier (unlimited + audio file transcription) via LemonSqueezy license key validation.
+**Goal:** Add freemium licensing to VoxPen Desktop — Free tier (15 transcriptions/day, full features) and Pro tier (unlimited + audio file transcription) via LemonSqueezy license key validation.
 
 **Architecture:** Pure local approach (Approach A). App calls LemonSqueezy API directly for activate/validate/deactivate. Usage counting in local SQLite. License data in encrypted Tauri store. `LicenseVerifier` trait enables future migration to proxy model.
 
@@ -12,10 +12,10 @@
 
 ---
 
-## Task 1: Add `chrono` dependency to voxink-core
+## Task 1: Add `chrono` dependency to voxpen-core
 
 **Files:**
-- Modify: `src-tauri/crates/voxink-core/Cargo.toml`
+- Modify: `src-tauri/crates/voxpen-core/Cargo.toml`
 
 **Step 1: Add chrono to dependencies**
 
@@ -29,13 +29,13 @@ Add after the `thiserror` line in `[dependencies]`.
 
 **Step 2: Verify it compiles**
 
-Run: `cargo build -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo build -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: BUILD SUCCESS
 
 **Step 3: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/Cargo.toml
+git add src-tauri/crates/voxpen-core/Cargo.toml
 git commit -m "chore: add chrono dependency for licensing date logic"
 ```
 
@@ -44,7 +44,7 @@ git commit -m "chore: add chrono dependency for licensing date logic"
 ## Task 2: Add License and Usage error variants
 
 **Files:**
-- Modify: `src-tauri/crates/voxink-core/src/error.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/error.rs`
 - Test: in-file `#[cfg(test)]` module
 
 **Step 1: Write failing tests**
@@ -67,7 +67,7 @@ fn should_display_usage_limit_error() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- should_display_license_error should_display_usage_limit`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- should_display_license_error should_display_usage_limit`
 Expected: FAIL — variants don't exist
 
 **Step 3: Add the error variants**
@@ -84,13 +84,13 @@ UsageLimitReached,
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- should_display_license should_display_usage`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- should_display_license should_display_usage`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/error.rs
+git add src-tauri/crates/voxpen-core/src/error.rs
 git commit -m "feat: add License and UsageLimitReached error variants"
 ```
 
@@ -99,13 +99,13 @@ git commit -m "feat: add License and UsageLimitReached error variants"
 ## Task 3: Create licensing types module
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/licensing/types.rs`
-- Create: `src-tauri/crates/voxink-core/src/licensing/mod.rs`
-- Modify: `src-tauri/crates/voxink-core/src/lib.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/types.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/lib.rs`
 
 **Step 1: Write the types with tests**
 
-Create `src-tauri/crates/voxink-core/src/licensing/types.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/types.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -234,7 +234,7 @@ mod tests {
 
 **Step 2: Create mod.rs**
 
-Create `src-tauri/crates/voxink-core/src/licensing/mod.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/mod.rs`:
 
 ```rust
 pub mod types;
@@ -244,7 +244,7 @@ pub use types::*;
 
 **Step 3: Add to lib.rs**
 
-Add `pub mod licensing;` to `src-tauri/crates/voxink-core/src/lib.rs` (after `pub mod pipeline;` line — wait, there's no pipeline line at the end. Add it after `pub mod pipeline;`).
+Add `pub mod licensing;` to `src-tauri/crates/voxpen-core/src/lib.rs` (after `pub mod pipeline;` line — wait, there's no pipeline line at the end. Add it after `pub mod pipeline;`).
 
 Actually, looking at lib.rs, add after `pub mod pipeline;` on line 7:
 
@@ -254,13 +254,13 @@ pub mod licensing;
 
 **Step 4: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- licensing`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- licensing`
 Expected: All 6 tests PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/licensing/ src-tauri/crates/voxink-core/src/lib.rs
+git add src-tauri/crates/voxpen-core/src/licensing/ src-tauri/crates/voxpen-core/src/lib.rs
 git commit -m "feat: add licensing types module (LicenseTier, LicenseInfo, UsageStatus)"
 ```
 
@@ -269,12 +269,12 @@ git commit -m "feat: add licensing types module (LicenseTier, LicenseInfo, Usage
 ## Task 4: Create usage tracking module
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/licensing/usage.rs`
-- Modify: `src-tauri/crates/voxink-core/src/licensing/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/usage.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
 
 **Step 1: Write the usage module with SQL constants and tests**
 
-Create `src-tauri/crates/voxink-core/src/licensing/usage.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/usage.rs`:
 
 ```rust
 /// SQL to create the daily_usage table.
@@ -391,17 +391,17 @@ mod tests {
 
 **Step 2: Add to mod.rs**
 
-Add `pub mod usage;` to `src-tauri/crates/voxink-core/src/licensing/mod.rs`.
+Add `pub mod usage;` to `src-tauri/crates/voxpen-core/src/licensing/mod.rs`.
 
 **Step 3: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- licensing::usage`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- licensing::usage`
 Expected: All 8 tests PASS
 
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/licensing/
+git add src-tauri/crates/voxpen-core/src/licensing/
 git commit -m "feat: add usage tracking module with daily count logic"
 ```
 
@@ -410,12 +410,12 @@ git commit -m "feat: add usage tracking module with daily count logic"
 ## Task 5: Create LemonSqueezy API client
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/licensing/lemonsqueezy.rs`
-- Modify: `src-tauri/crates/voxink-core/src/licensing/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/lemonsqueezy.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
 
 **Step 1: Write the LemonSqueezy client**
 
-Create `src-tauri/crates/voxink-core/src/licensing/lemonsqueezy.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/lemonsqueezy.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -612,7 +612,7 @@ mod tests {
                 "name": "my-machine"
             },
             "meta": {
-                "product_name": "VoxInk Pro",
+                "product_name": "VoxPen Pro",
                 "variant_name": "Lifetime"
             }
         })
@@ -715,13 +715,13 @@ Add `pub mod lemonsqueezy;` to the licensing mod.rs.
 
 **Step 3: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- licensing::lemonsqueezy`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- licensing::lemonsqueezy`
 Expected: All 5 tests PASS
 
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/licensing/
+git add src-tauri/crates/voxpen-core/src/licensing/
 git commit -m "feat: add LemonSqueezy API client with wiremock tests"
 ```
 
@@ -730,12 +730,12 @@ git commit -m "feat: add LemonSqueezy API client with wiremock tests"
 ## Task 6: Create LicenseVerifier trait
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/licensing/verifier.rs`
-- Modify: `src-tauri/crates/voxink-core/src/licensing/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/verifier.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
 
 **Step 1: Write the trait and DirectLemonSqueezy impl**
 
-Create `src-tauri/crates/voxink-core/src/licensing/verifier.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/verifier.rs`:
 
 ```rust
 use std::future::Future;
@@ -850,7 +850,7 @@ mod tests {
                 "activation_limit": 3, "activation_usage": 1
             },
             "instance": { "id": "i-1", "name": "m" },
-            "meta": { "product_name": "VoxInk", "variant_name": "Pro" }
+            "meta": { "product_name": "VoxPen", "variant_name": "Pro" }
         })
     }
 
@@ -900,13 +900,13 @@ Add `pub mod verifier;` and `pub use verifier::*;` to the licensing mod.rs.
 
 **Step 3: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- licensing::verifier`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- licensing::verifier`
 Expected: All 2 tests PASS
 
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/licensing/
+git add src-tauri/crates/voxpen-core/src/licensing/
 git commit -m "feat: add LicenseVerifier trait with DirectLemonSqueezy impl"
 ```
 
@@ -915,14 +915,14 @@ git commit -m "feat: add LicenseVerifier trait with DirectLemonSqueezy impl"
 ## Task 7: Create LicenseManager core logic
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/licensing/manager.rs`
-- Modify: `src-tauri/crates/voxink-core/src/licensing/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/licensing/manager.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
 
 This is the largest task. The LicenseManager ties together verification, usage counting, and tier determination.
 
 **Step 1: Write the LicenseManager**
 
-Create `src-tauri/crates/voxink-core/src/licensing/manager.rs`:
+Create `src-tauri/crates/voxpen-core/src/licensing/manager.rs`:
 
 The manager must be designed for testability. It depends on:
 - A `LicenseVerifier` (trait, mockable)
@@ -1224,7 +1224,7 @@ mod tests {
             "error": if valid { serde_json::Value::Null } else { serde_json::Value::String("invalid".into()) },
             "license_key": { "id": 1, "status": "active", "key": "K", "activation_limit": 3, "activation_usage": 1 },
             "instance": { "id": "i-1", "name": "m" },
-            "meta": { "product_name": "VoxInk", "variant_name": "Pro" }
+            "meta": { "product_name": "VoxPen", "variant_name": "Pro" }
         })).unwrap()
     }
 
@@ -1462,13 +1462,13 @@ Add `pub mod manager;` and `pub use manager::{LicenseManager, LicenseStore, Usag
 
 **Step 3: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- licensing::manager`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- licensing::manager`
 Expected: All tests PASS (adjust test code as needed for ownership)
 
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/licensing/
+git add src-tauri/crates/voxpen-core/src/licensing/
 git commit -m "feat: add LicenseManager with verification state machine and usage gating"
 ```
 
@@ -1495,8 +1495,8 @@ Run `CREATE TABLE IF NOT EXISTS daily_usage` during init (same pattern as histor
 Add to `src-tauri/src/state.rs` AppState struct:
 
 ```rust
-pub license_manager: Arc<voxink_core::licensing::LicenseManager<
-    voxink_core::licensing::DirectLemonSqueezy,
+pub license_manager: Arc<voxpen_core::licensing::LicenseManager<
+    voxpen_core::licensing::DirectLemonSqueezy,
     crate::licensing::TauriLicenseStore,
     crate::licensing::SqliteUsageDb,
 >>,
@@ -1510,7 +1510,7 @@ In the `setup` closure, after creating the dictionary DB, initialize the licensi
 let license_store = licensing::TauriLicenseStore::new(app.handle().clone());
 let usage_db = licensing::SqliteUsageDb::open(db_path.clone())
     .expect("failed to open usage DB");
-let verifier = voxink_core::licensing::DirectLemonSqueezy::new();
+let verifier = voxpen_core::licensing::DirectLemonSqueezy::new();
 let machine_name = hostname::get()
     .map(|h| h.to_string_lossy().to_string())
     .unwrap_or_else(|_| "unknown".to_string());
@@ -1519,7 +1519,7 @@ let app_version: u32 = env!("CARGO_PKG_VERSION")
     .next()
     .and_then(|v| v.parse().ok())
     .unwrap_or(1);
-let license_manager = voxink_core::licensing::LicenseManager::new(
+let license_manager = voxpen_core::licensing::LicenseManager::new(
     verifier, license_store, usage_db, app_version, machine_name,
 );
 ```
@@ -1558,7 +1558,7 @@ git commit -m "feat: wire LicenseManager into Tauri AppState"
 Add to `src-tauri/src/commands.rs`:
 
 ```rust
-use voxink_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
+use voxpen_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
 
 #[tauri::command]
 pub async fn activate_license(
@@ -1645,12 +1645,12 @@ Then inside the spawned async block, before the microphone setup (line ~404):
 // === License gate ===
 let usage = license_mgr.check_access().await;
 match &usage {
-    voxink_core::licensing::UsageStatus::Exhausted => {
+    voxpen_core::licensing::UsageStatus::Exhausted => {
         let _ = app_for_err.emit("usage-exhausted", ());
         processing_flag.store(false, Ordering::SeqCst);
         return;
     }
-    voxink_core::licensing::UsageStatus::Warning { remaining } => {
+    voxpen_core::licensing::UsageStatus::Warning { remaining } => {
         let _ = app_for_err.emit("usage-warning", remaining);
     }
     _ => {}
@@ -1744,7 +1744,7 @@ export async function getLicenseTier(): Promise<LicenseTier> {
 
 **Step 3: Verify TypeScript compiles**
 
-Run: `cd /home/scipio/projects/voxink-desktop && npx tsc --noEmit`
+Run: `cd /home/scipio/projects/voxpen-desktop && npx tsc --noEmit`
 Expected: No errors
 
 **Step 4: Commit**
@@ -1769,8 +1769,8 @@ Add a `"license"` section to `en.json` (before the closing `}`):
 ```json
 "license": {
   "tab": "License",
-  "free": "VoxInk Free",
-  "pro": "VoxInk Pro",
+  "free": "VoxPen Free",
+  "pro": "VoxPen Pro",
   "usageToday": "Today: {{used}} / {{limit}}",
   "enterKey": "Enter license key...",
   "activate": "Activate",
@@ -1798,8 +1798,8 @@ Add matching `"license"` section to `zh-TW.json`:
 ```json
 "license": {
   "tab": "授權",
-  "free": "VoxInk 免費版",
-  "pro": "VoxInk Pro",
+  "free": "VoxPen 免費版",
+  "pro": "VoxPen Pro",
   "usageToday": "今日：{{used}} / {{limit}}",
   "enterKey": "輸入授權碼...",
   "activate": "啟用",
@@ -1854,7 +1854,7 @@ The implementer should follow the existing Tailwind patterns from other Settings
 
 **Step 2: Verify it builds**
 
-Run: `cd /home/scipio/projects/voxink-desktop && pnpm build`
+Run: `cd /home/scipio/projects/voxpen-desktop && pnpm build`
 Expected: BUILD SUCCESS (component may not be connected yet)
 
 **Step 3: Commit**
@@ -1897,7 +1897,7 @@ Import `LicenseSection` at the top.
 
 **Step 2: Verify it builds**
 
-Run: `cd /home/scipio/projects/voxink-desktop && pnpm build`
+Run: `cd /home/scipio/projects/voxpen-desktop && pnpm build`
 Expected: BUILD SUCCESS
 
 **Step 3: Commit**
@@ -1926,7 +1926,7 @@ For `UsageExhausted`, the overlay should NOT be click-through (unlike other stat
 
 **Step 2: Verify it builds**
 
-Run: `cd /home/scipio/projects/voxink-desktop && pnpm build`
+Run: `cd /home/scipio/projects/voxpen-desktop && pnpm build`
 Expected: BUILD SUCCESS
 
 **Step 3: Commit**
@@ -1979,7 +1979,7 @@ git commit -m "feat: add usage and upgrade items to system tray menu"
 Run: `cargo test --manifest-path src-tauri/Cargo.toml`
 Expected: All tests PASS
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests PASS (existing + new licensing tests)
 
 **Step 2: Run clippy**
@@ -1989,7 +1989,7 @@ Expected: No warnings
 
 **Step 3: Run frontend build**
 
-Run: `cd /home/scipio/projects/voxink-desktop && pnpm build`
+Run: `cd /home/scipio/projects/voxpen-desktop && pnpm build`
 Expected: BUILD SUCCESS
 
 **Step 4: Full Tauri build**
@@ -2013,19 +2013,19 @@ git commit -m "feat: complete LemonSqueezy licensing integration (freemium model
 ## Summary of all files
 
 ### New files (8)
-- `src-tauri/crates/voxink-core/src/licensing/mod.rs`
-- `src-tauri/crates/voxink-core/src/licensing/types.rs`
-- `src-tauri/crates/voxink-core/src/licensing/usage.rs`
-- `src-tauri/crates/voxink-core/src/licensing/lemonsqueezy.rs`
-- `src-tauri/crates/voxink-core/src/licensing/verifier.rs`
-- `src-tauri/crates/voxink-core/src/licensing/manager.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/mod.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/types.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/usage.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/lemonsqueezy.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/verifier.rs`
+- `src-tauri/crates/voxpen-core/src/licensing/manager.rs`
 - `src-tauri/src/licensing.rs`
 - `src/components/Settings/LicenseSection.tsx`
 
 ### Modified files (12)
-- `src-tauri/crates/voxink-core/Cargo.toml` — add `chrono`
-- `src-tauri/crates/voxink-core/src/lib.rs` — add `pub mod licensing`
-- `src-tauri/crates/voxink-core/src/error.rs` — add 2 variants
+- `src-tauri/crates/voxpen-core/Cargo.toml` — add `chrono`
+- `src-tauri/crates/voxpen-core/src/lib.rs` — add `pub mod licensing`
+- `src-tauri/crates/voxpen-core/src/error.rs` — add 2 variants
 - `src-tauri/Cargo.toml` — add `hostname`
 - `src-tauri/src/lib.rs` — init LicenseManager, register commands, tray items
 - `src-tauri/src/state.rs` — add `license_manager` to AppState

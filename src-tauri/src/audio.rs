@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleRate, Stream};
 
-use voxink_core::audio::encoder;
-use voxink_core::audio::recorder::AudioRecorder;
-use voxink_core::error::AppError;
+use voxpen_core::audio::encoder;
+use voxpen_core::audio::recorder::AudioRecorder;
+use voxpen_core::error::AppError;
 
 /// Target sample rate for Whisper API (16 kHz mono).
 const TARGET_RATE: u32 = encoder::SAMPLE_RATE;

@@ -1,10 +1,10 @@
-# VoxInk Desktop v1.0 Completion Plan
+# VoxPen Desktop v1.0 Completion Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Complete all remaining gaps to bring VoxInk Desktop from ~85% to v1.0 — SQLite history, overlay window, tray icon states, debouncing, edge case handling.
+**Goal:** Complete all remaining gaps to bring VoxPen Desktop from ~85% to v1.0 — SQLite history, overlay window, tray icon states, debouncing, edge case handling.
 
-**Architecture:** Wire existing stubs to real implementations. The voxink-core crate has all SQL constants and types defined. The Tauri app crate needs: (1) DB init on startup, (2) history insertion in hotkey handler, (3) real SQL queries in commands, (4) overlay as secondary always-on-top window, (5) tray icon/tooltip state updates, (6) hotkey debouncing, (7) API key reading from Tauri store.
+**Architecture:** Wire existing stubs to real implementations. The voxpen-core crate has all SQL constants and types defined. The Tauri app crate needs: (1) DB init on startup, (2) history insertion in hotkey handler, (3) real SQL queries in commands, (4) overlay as secondary always-on-top window, (5) tray icon/tooltip state updates, (6) hotkey debouncing, (7) API key reading from Tauri store.
 
 **Tech Stack:** Tauri v2, tauri-plugin-sql (SQLite), tokio, cpal, React 19, TypeScript, Tailwind CSS
 
@@ -49,7 +49,7 @@ Actually, `tauri-plugin-sql` requires the frontend to call `Database.load()` to 
 
 **Step 3: Update tauri.conf.json to not configure SQL plugin** (it auto-initializes)
 
-No tauri.conf.json change needed for SQL — the plugin discovers DBs when `Database.load("sqlite:voxink.db")` is called from JS. But we need Rust-side DB access for history insertion in the hotkey handler.
+No tauri.conf.json change needed for SQL — the plugin discovers DBs when `Database.load("sqlite:voxpen.db")` is called from JS. But we need Rust-side DB access for history insertion in the hotkey handler.
 
 **Alternative approach**: Use `tauri_plugin_sql`'s Rust-side API. The plugin exposes `DbPool` as managed state. We can access it from the hotkey handler via `app.state()`.
 
@@ -63,7 +63,7 @@ Add DB init to `src/main.tsx`:
 import Database from "@tauri-apps/plugin-sql";
 
 // Initialize SQLite database
-const db = await Database.load("sqlite:voxink.db");
+const db = await Database.load("sqlite:voxpen.db");
 await db.execute(`CREATE TABLE IF NOT EXISTS transcriptions (
     id TEXT PRIMARY KEY NOT NULL,
     timestamp INTEGER NOT NULL,
@@ -109,11 +109,11 @@ pub async fn get_history(
 ) -> Result<Vec<TranscriptionEntry>, String> {
     let db_instances = app.state::<DbInstances>();
     let db = db_instances.0.lock().await;
-    let pool = db.get("sqlite:voxink.db")
+    let pool = db.get("sqlite:voxpen.db")
         .ok_or("database not initialized")?;
 
     let rows = sqlx::query_as::<_, TranscriptionEntry>(
-        voxink_core::history::QUERY_SQL
+        voxpen_core::history::QUERY_SQL
     )
     .bind(limit)
     .bind(offset)
@@ -152,8 +152,8 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
-use voxink_core::history::{TranscriptionEntry, CREATE_TABLE_SQL};
-use voxink_core::pipeline::state::Language;
+use voxpen_core::history::{TranscriptionEntry, CREATE_TABLE_SQL};
+use voxpen_core::pipeline::state::Language;
 
 /// Thread-safe SQLite database handle for history operations.
 pub struct HistoryDb {
@@ -171,7 +171,7 @@ impl HistoryDb {
     pub fn insert(&self, entry: &TranscriptionEntry) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            voxink_core::history::INSERT_SQL,
+            voxpen_core::history::INSERT_SQL,
             rusqlite::params![
                 entry.id,
                 entry.timestamp,
@@ -187,7 +187,7 @@ impl HistoryDb {
 
     pub fn query(&self, limit: u32, offset: u32) -> Result<Vec<TranscriptionEntry>, String> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(voxink_core::history::QUERY_SQL)
+        let mut stmt = conn.prepare(voxpen_core::history::QUERY_SQL)
             .map_err(|e| format!("query failed: {e}"))?;
         let rows = stmt.query_map(rusqlite::params![limit, offset], |row| {
             Ok(TranscriptionEntry {
@@ -209,7 +209,7 @@ impl HistoryDb {
     pub fn search(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<TranscriptionEntry>, String> {
         let conn = self.conn.lock().unwrap();
         let pattern = format!("%{query}%");
-        let mut stmt = conn.prepare(voxink_core::history::SEARCH_SQL)
+        let mut stmt = conn.prepare(voxpen_core::history::SEARCH_SQL)
             .map_err(|e| format!("search failed: {e}"))?;
         let rows = stmt.query_map(rusqlite::params![&pattern, &pattern, limit, offset], |row| {
             Ok(TranscriptionEntry {
@@ -230,7 +230,7 @@ impl HistoryDb {
 
     pub fn delete(&self, id: &str) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(voxink_core::history::DELETE_SQL, rusqlite::params![id])
+        conn.execute(voxpen_core::history::DELETE_SQL, rusqlite::params![id])
             .map_err(|e| format!("delete failed: {e}"))?;
         Ok(())
     }
@@ -257,7 +257,7 @@ pub struct AppState {
 // In setup(), before creating AppState:
 let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
 std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
-let db_path = app_data_dir.join("voxink.db");
+let db_path = app_data_dir.join("voxpen.db");
 let history_db = crate::history::HistoryDb::open(db_path).expect("failed to open history DB");
 ```
 
@@ -294,9 +294,9 @@ pub async fn delete_history_entry(
 }
 ```
 
-**Step 6: Run voxink-core tests**
+**Step 6: Run voxpen-core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All 89+ tests pass (existing tests unaffected)
 
 **Step 7: Commit**
@@ -329,7 +329,7 @@ In `src-tauri/src/hotkey.rs`, after the pipeline result and before auto-paste:
 if let Ok(text) = &result {
     // Save to history
     let settings = settings.lock().await;
-    let entry = voxink_core::history::TranscriptionEntry {
+    let entry = voxpen_core::history::TranscriptionEntry {
         id: uuid::Uuid::new_v4().to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -384,9 +384,9 @@ if let Ok(final_text) = &result {
 }
 ```
 
-**Step 3: Run voxink-core tests**
+**Step 3: Run voxpen-core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass
 
 **Step 4: Commit**
@@ -412,7 +412,7 @@ git commit -m "feat: save transcription history after each dictation"
 ```json
 {
   "label": "overlay",
-  "title": "VoxInk Overlay",
+  "title": "VoxPen Overlay",
   "width": 200,
   "height": 80,
   "resizable": false,
@@ -504,7 +504,7 @@ The `TrayIconBuilder::build()` returns a `TrayIcon`. We need to clone it into th
 let tray = TrayIconBuilder::new()
     .menu(&menu)
     .menu_on_left_click(true)
-    .tooltip("VoxInk — Ready")
+    .tooltip("VoxPen — Ready")
     .on_menu_event(|app, event| match event.id.as_ref() {
         "settings" => { /* ... */ }
         "quit" => { app.exit(0); }
@@ -530,11 +530,11 @@ tauri::async_runtime::spawn(async move {
 
         // Update tray tooltip based on state
         let tooltip = match &pipeline_state {
-            PipelineState::Idle => "VoxInk — Ready",
-            PipelineState::Recording => "VoxInk — Recording...",
-            PipelineState::Processing | PipelineState::Refining { .. } => "VoxInk — Processing...",
-            PipelineState::Result { .. } | PipelineState::Refined { .. } => "VoxInk — Done",
-            PipelineState::Error { .. } => "VoxInk — Error",
+            PipelineState::Idle => "VoxPen — Ready",
+            PipelineState::Recording => "VoxPen — Recording...",
+            PipelineState::Processing | PipelineState::Refining { .. } => "VoxPen — Processing...",
+            PipelineState::Result { .. } | PipelineState::Refined { .. } => "VoxPen — Done",
+            PipelineState::Error { .. } => "VoxPen — Error",
         };
         let _ = tray_for_state.set_tooltip(Some(tooltip));
     }
@@ -613,9 +613,9 @@ if let Err(e) = ctrl.on_start_recording() {
 }
 ```
 
-**Step 3: Run voxink-core tests**
+**Step 3: Run voxpen-core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass
 
 **Step 4: Commit**
@@ -686,9 +686,9 @@ let stt = GroqSttProvider::new(settings.clone(), app.handle().clone());
 let llm = GroqLlmProvider::new(settings.clone(), app.handle().clone());
 ```
 
-**Step 4: Run voxink-core tests**
+**Step 4: Run voxpen-core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass (provider changes are in Tauri crate, not core)
 
 **Step 5: Commit**
@@ -731,7 +731,7 @@ Expected: Frontend builds (no JS imports of plugin-sql exist)
 
 **Step 6: Run core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass
 
 **Step 7: Commit**
@@ -794,7 +794,7 @@ pub async fn get_settings(
 
 **Step 2: Run core tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass
 
 **Step 3: Commit**

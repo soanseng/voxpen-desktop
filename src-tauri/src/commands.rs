@@ -2,13 +2,13 @@ use serde::Serialize;
 use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
-use voxink_core::dictionary::DictionaryEntry;
-use voxink_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
-use voxink_core::pipeline::prompts;
-use voxink_core::history::TranscriptionEntry;
-use voxink_core::pipeline::controller::PipelineConfig;
-use voxink_core::pipeline::settings::Settings;
-use voxink_core::pipeline::state::{Language, TonePreset};
+use voxpen_core::dictionary::DictionaryEntry;
+use voxpen_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
+use voxpen_core::pipeline::prompts;
+use voxpen_core::history::TranscriptionEntry;
+use voxpen_core::pipeline::controller::PipelineConfig;
+use voxpen_core::pipeline::settings::Settings;
+use voxpen_core::pipeline::state::{Language, TonePreset};
 
 use crate::state::AppState;
 
@@ -112,8 +112,8 @@ pub async fn save_settings(
     // Update local whisper model path and language when provider is "local"
     #[cfg(feature = "local-whisper")]
     if settings.stt_provider == "local" {
-        if let Some(model) = voxink_core::whisper::models::model_by_id(&settings.stt_model) {
-            let path = voxink_core::whisper::models::model_path(
+        if let Some(model) = voxpen_core::whisper::models::model_by_id(&settings.stt_model) {
+            let path = voxpen_core::whisper::models::model_path(
                 &state.models_dir,
                 model.filename,
             );
@@ -214,8 +214,8 @@ pub async fn check_microphone() -> Result<String, String> {
 /// Test an API key by making a minimal transcription request.
 #[tauri::command]
 pub async fn test_api_key(provider: String, key: String) -> Result<bool, String> {
-    use voxink_core::api::groq::{self, SttConfig};
-    use voxink_core::pipeline::state::Language;
+    use voxpen_core::api::groq::{self, SttConfig};
+    use voxpen_core::pipeline::state::Language;
 
     if provider != "groq" {
         return Err(format!("unsupported provider: {provider}"));
@@ -223,7 +223,7 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
 
     // Send a tiny silent WAV to validate the API key
     let silent_pcm: Vec<i16> = vec![0; 16000]; // 1 second of silence
-    let wav_data = voxink_core::audio::encoder::pcm_to_wav(&silent_pcm);
+    let wav_data = voxpen_core::audio::encoder::pcm_to_wav(&silent_pcm);
 
     let config = SttConfig {
         api_key: key,
@@ -235,7 +235,7 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
 
     match groq::transcribe(&config, &wav_data).await {
         Ok(_) => Ok(true),
-        Err(voxink_core::error::AppError::ApiKeyMissing(_)) => Ok(false),
+        Err(voxpen_core::error::AppError::ApiKeyMissing(_)) => Ok(false),
         Err(_) => Ok(true), // Non-auth errors mean the key itself is valid
     }
 }
@@ -332,10 +332,10 @@ pub struct UpdateInfo {
 #[tauri::command]
 pub async fn check_for_update() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let url = "https://api.github.com/repos/AkashiSN/voxink-desktop/releases/latest";
+    let url = "https://api.github.com/repos/AkashiSN/voxpen-desktop/releases/latest";
 
     let client = reqwest::Client::builder()
-        .user_agent("VoxInk-Desktop")
+        .user_agent("VoxPen-Desktop")
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;
@@ -357,7 +357,7 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
 
     let html_url = resp["html_url"]
         .as_str()
-        .unwrap_or("https://github.com/AkashiSN/voxink-desktop/releases")
+        .unwrap_or("https://github.com/AkashiSN/voxpen-desktop/releases")
         .to_string();
 
     let update_available = version_newer(&tag, &current);
@@ -463,9 +463,9 @@ pub async fn transcribe_file(
     state: tauri::State<'_, AppState>,
     file_path: String,
 ) -> Result<FileTranscriptionResult, String> {
-    use voxink_core::api::groq::{self, SttConfig, ChatConfig};
-    use voxink_core::pipeline::refine;
-    use voxink_core::licensing::LicenseTier;
+    use voxpen_core::api::groq::{self, SttConfig, ChatConfig};
+    use voxpen_core::pipeline::refine;
+    use voxpen_core::licensing::LicenseTier;
 
     // Pro gate
     let tier = state.license_manager.current_tier();
@@ -552,7 +552,7 @@ pub async fn transcribe_file(
     let _ = app.emit("usage-updated", ());
 
     // Save to history
-    let entry = voxink_core::history::TranscriptionEntry {
+    let entry = voxpen_core::history::TranscriptionEntry {
         id: uuid::Uuid::new_v4().to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -580,8 +580,8 @@ pub async fn transcribe_file(
 
 /// List available local whisper models from the built-in catalog.
 #[tauri::command]
-pub async fn get_whisper_models() -> &'static [voxink_core::whisper::models::WhisperModel] {
-    voxink_core::whisper::models::MODEL_CATALOG
+pub async fn get_whisper_models() -> &'static [voxpen_core::whisper::models::WhisperModel] {
+    voxpen_core::whisper::models::MODEL_CATALOG
 }
 
 /// Check the download / readiness status of a local whisper model.
@@ -589,10 +589,10 @@ pub async fn get_whisper_models() -> &'static [voxink_core::whisper::models::Whi
 pub async fn get_model_status(
     state: tauri::State<'_, AppState>,
     model_id: String,
-) -> Result<voxink_core::whisper::models::ModelStatus, String> {
-    let model = voxink_core::whisper::models::model_by_id(&model_id)
+) -> Result<voxpen_core::whisper::models::ModelStatus, String> {
+    let model = voxpen_core::whisper::models::model_by_id(&model_id)
         .ok_or_else(|| format!("unknown model: {model_id}"))?;
-    Ok(voxink_core::whisper::models::get_model_status(
+    Ok(voxpen_core::whisper::models::get_model_status(
         &state.models_dir,
         model,
     ))
@@ -610,12 +610,12 @@ pub async fn download_whisper_model(
 ) -> Result<(), String> {
     use tauri::Emitter;
 
-    let model = voxink_core::whisper::models::model_by_id(&model_id)
+    let model = voxpen_core::whisper::models::model_by_id(&model_id)
         .ok_or_else(|| format!("unknown model: {model_id}"))?;
     let models_dir = state.models_dir.clone();
     let model_id_for_cb = model_id.clone();
 
-    voxink_core::whisper::download::download_model(
+    voxpen_core::whisper::download::download_model(
         model.url,
         model.filename,
         &models_dir,
@@ -648,9 +648,9 @@ pub async fn delete_whisper_model(
     state: tauri::State<'_, AppState>,
     model_id: String,
 ) -> Result<(), String> {
-    let model = voxink_core::whisper::models::model_by_id(&model_id)
+    let model = voxpen_core::whisper::models::model_by_id(&model_id)
         .ok_or_else(|| format!("unknown model: {model_id}"))?;
-    voxink_core::whisper::models::delete_model(&state.models_dir, model)
+    voxpen_core::whisper::models::delete_model(&state.models_dir, model)
         .map_err(|e| e.to_string())
 }
 

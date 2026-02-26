@@ -13,10 +13,10 @@
 ### Task 1: Add whisper-rs dependency and feature flags
 
 **Files:**
-- Modify: `src-tauri/crates/voxink-core/Cargo.toml`
+- Modify: `src-tauri/crates/voxpen-core/Cargo.toml`
 - Modify: `src-tauri/Cargo.toml`
 
-**Step 1: Add whisper-rs to voxink-core Cargo.toml**
+**Step 1: Add whisper-rs to voxpen-core Cargo.toml**
 
 Add feature-gated dependency:
 
@@ -37,16 +37,16 @@ Forward GPU features from the app crate:
 
 ```toml
 [features]
-local-whisper-cuda = ["voxink-core/local-whisper", "whisper-rs/cuda"]
-local-whisper-coreml = ["voxink-core/local-whisper", "whisper-rs/coreml"]
-local-whisper-metal = ["voxink-core/local-whisper", "whisper-rs/metal"]
+local-whisper-cuda = ["voxpen-core/local-whisper", "whisper-rs/cuda"]
+local-whisper-coreml = ["voxpen-core/local-whisper", "whisper-rs/coreml"]
+local-whisper-metal = ["voxpen-core/local-whisper", "whisper-rs/metal"]
 ```
 
-Note: The app crate does NOT need `whisper-rs` as a direct dependency — it's only used inside voxink-core. The GPU feature flags just forward through.
+Note: The app crate does NOT need `whisper-rs` as a direct dependency — it's only used inside voxpen-core. The GPU feature flags just forward through.
 
 **Step 3: Build to verify**
 
-Run: `cargo build -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo build -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: Compiles with whisper-rs downloaded and built. First build may take a few minutes (whisper.cpp C compilation).
 
 If whisper-rs fails to compile due to missing system libs, note the error. On Linux, `cmake` and C compiler are needed. On macOS, Xcode CLT suffices.
@@ -54,7 +54,7 @@ If whisper-rs fails to compile due to missing system libs, note the error. On Li
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/Cargo.toml src-tauri/Cargo.toml src-tauri/Cargo.lock
+git add src-tauri/crates/voxpen-core/Cargo.toml src-tauri/Cargo.toml src-tauri/Cargo.lock
 git commit -m "feat: add whisper-rs dependency with feature flags for local STT"
 ```
 
@@ -63,7 +63,7 @@ git commit -m "feat: add whisper-rs dependency with feature flags for local STT"
 ### Task 2: Add new AppError variants for local whisper
 
 **Files:**
-- Modify: `src-tauri/crates/voxink-core/src/error.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/error.rs`
 
 **Step 1: Write tests**
 
@@ -91,7 +91,7 @@ fn should_display_local_transcription_error() {
 
 **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- error`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- error`
 Expected: FAIL — variants don't exist yet.
 
 **Step 3: Add error variants**
@@ -111,13 +111,13 @@ LocalTranscription(String),
 
 **Step 4: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- error`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- error`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/error.rs
+git add src-tauri/crates/voxpen-core/src/error.rs
 git commit -m "feat: add AppError variants for local whisper model"
 ```
 
@@ -126,9 +126,9 @@ git commit -m "feat: add AppError variants for local whisper model"
 ### Task 3: Create model management module
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/whisper/mod.rs`
-- Create: `src-tauri/crates/voxink-core/src/whisper/models.rs`
-- Modify: `src-tauri/crates/voxink-core/src/lib.rs`
+- Create: `src-tauri/crates/voxpen-core/src/whisper/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/whisper/models.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/lib.rs`
 
 This module defines the model catalog and download/status logic. It is NOT feature-gated — model management (download, status check, delete) works regardless of whether whisper-rs is compiled in.
 
@@ -166,14 +166,14 @@ mod tests {
 
     #[test]
     fn should_report_not_downloaded_when_file_missing() {
-        let dir = std::env::temp_dir().join("voxink-test-models-missing");
+        let dir = std::env::temp_dir().join("voxpen-test-models-missing");
         let status = get_model_status("ggml-large-v3-turbo-q5_0", &dir);
         assert!(matches!(status, ModelStatus::NotDownloaded));
     }
 
     #[test]
     fn should_report_ready_when_file_exists() {
-        let dir = std::env::temp_dir().join("voxink-test-models-ready");
+        let dir = std::env::temp_dir().join("voxpen-test-models-ready");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("ggml-large-v3-turbo-q5_0.bin");
         std::fs::write(&path, b"fake model data").unwrap();
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn should_delete_model_file() {
-        let dir = std::env::temp_dir().join("voxink-test-models-delete");
+        let dir = std::env::temp_dir().join("voxpen-test-models-delete");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("ggml-large-v3-turbo-q5_0.bin");
         std::fs::write(&path, b"fake").unwrap();
@@ -321,17 +321,17 @@ pub mod provider;
 
 **Step 4: Register module in lib.rs**
 
-Add `pub mod whisper;` to `src-tauri/crates/voxink-core/src/lib.rs`.
+Add `pub mod whisper;` to `src-tauri/crates/voxpen-core/src/lib.rs`.
 
 **Step 5: Run tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml -- whisper::models`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml -- whisper::models`
 Expected: PASS
 
 **Step 6: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/whisper/ src-tauri/crates/voxink-core/src/lib.rs
+git add src-tauri/crates/voxpen-core/src/whisper/ src-tauri/crates/voxpen-core/src/lib.rs
 git commit -m "feat: add whisper model catalog and status management"
 ```
 
@@ -340,8 +340,8 @@ git commit -m "feat: add whisper model catalog and status management"
 ### Task 4: Implement model download with progress events
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/whisper/download.rs`
-- Modify: `src-tauri/crates/voxink-core/src/whisper/mod.rs`
+- Create: `src-tauri/crates/voxpen-core/src/whisper/download.rs`
+- Modify: `src-tauri/crates/voxpen-core/src/whisper/mod.rs`
 
 The download function streams the model file from HuggingFace and reports progress via a callback. It does NOT depend on whisper-rs (no feature gate needed).
 
@@ -433,13 +433,13 @@ pub mod download;
 
 **Step 3: Build**
 
-Run: `cargo build -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo build -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: PASS
 
 **Step 4: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/whisper/download.rs src-tauri/crates/voxink-core/src/whisper/mod.rs src-tauri/crates/voxink-core/Cargo.toml src-tauri/Cargo.lock
+git add src-tauri/crates/voxpen-core/src/whisper/download.rs src-tauri/crates/voxpen-core/src/whisper/mod.rs src-tauri/crates/voxpen-core/Cargo.toml src-tauri/Cargo.lock
 git commit -m "feat: add model download with streaming progress"
 ```
 
@@ -448,7 +448,7 @@ git commit -m "feat: add model download with streaming progress"
 ### Task 5: Implement LocalSttProvider (whisper-rs transcription)
 
 **Files:**
-- Create: `src-tauri/crates/voxink-core/src/whisper/provider.rs`
+- Create: `src-tauri/crates/voxpen-core/src/whisper/provider.rs`
 
 This is the core module — feature-gated behind `local-whisper`. It implements `SttProvider` using whisper-rs.
 
@@ -616,13 +616,13 @@ impl SttProvider for LocalSttProvider {
 
 **Step 2: Build**
 
-Run: `cargo build -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo build -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: PASS (with `local-whisper` feature enabled by default)
 
 **Step 3: Commit**
 
 ```bash
-git add src-tauri/crates/voxink-core/src/whisper/provider.rs
+git add src-tauri/crates/voxpen-core/src/whisper/provider.rs
 git commit -m "feat: implement LocalSttProvider with whisper-rs transcription"
 ```
 
@@ -652,7 +652,7 @@ let models_dir = app.path().app_data_dir().unwrap().join("models");
 Add to AppState:
 ```rust
 #[cfg(feature = "local-whisper")]
-pub local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
+pub local_stt: Arc<voxpen_core::whisper::provider::LocalSttProvider>,
 ```
 
 Initialize with the default model path.
@@ -660,7 +660,7 @@ Initialize with the default model path.
 **Step 3: Add IPC commands to commands.rs**
 
 ```rust
-use voxink_core::whisper::models::{self, ModelStatus, WhisperModel, MODEL_CATALOG};
+use voxpen_core::whisper::models::{self, ModelStatus, WhisperModel, MODEL_CATALOG};
 
 #[tauri::command]
 pub async fn get_whisper_models() -> Vec<&'static WhisperModel> {
@@ -686,7 +686,7 @@ pub async fn download_model(
     let models_dir = state.models_dir.clone();
     let app_clone = app.clone();
 
-    voxink_core::whisper::download::download_model(
+    voxpen_core::whisper::download::download_model(
         model.url,
         model.filename,
         &models_dir,
@@ -800,7 +800,7 @@ In `save_settings` command, when `stt_provider == "local"`, update the LocalSttP
 ```rust
 #[cfg(feature = "local-whisper")]
 if settings.stt_provider == "local" {
-    if let Some(path) = voxink_core::whisper::models::model_path(&settings.stt_model, &state.models_dir) {
+    if let Some(path) = voxpen_core::whisper::models::model_path(&settings.stt_model, &state.models_dir) {
         state.local_stt.set_model_path(path);
     }
 }
@@ -1053,12 +1053,12 @@ git commit -m "feat: add local whisper model UI to SttSection"
 
 **Step 1: Run all Rust tests**
 
-Run: `cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml`
+Run: `cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml`
 Expected: All tests pass (existing 220+ tests + new whisper model tests)
 
 **Step 2: Run clippy**
 
-Run: `cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings`
+Run: `cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings`
 Expected: No warnings
 
 **Step 3: Build full Tauri app**

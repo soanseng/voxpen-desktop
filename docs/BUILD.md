@@ -1,6 +1,6 @@
-# VoxInk Desktop — Build Guide
+# VoxPen Desktop — Build Guide
 
-Step-by-step instructions for building VoxInk Desktop on each platform.
+Step-by-step instructions for building VoxPen Desktop on each platform.
 
 ## Prerequisites (all platforms)
 
@@ -23,18 +23,18 @@ cargo tauri --version  # tauri-cli 2.x
 ## Clone and install frontend dependencies
 
 ```bash
-git clone https://github.com/anthropics/voxink-desktop.git
-cd voxink-desktop
+git clone https://github.com/anthropics/voxpen-desktop.git
+cd voxpen-desktop
 pnpm install
 ```
 
 ## Test core library (no system deps needed)
 
-This works on any platform — voxink-core has no OS-specific dependencies:
+This works on any platform — voxpen-core has no OS-specific dependencies:
 
 ```bash
-cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
-cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml
+cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings
 ```
 
 ---
@@ -86,21 +86,21 @@ pnpm tauri:build
 
 ```
 src-tauri/target/release/bundle/
-  deb/voxink-desktop_0.1.0_amd64.deb    # Debian/Ubuntu installer
-  appimage/voxink-desktop_0.1.0_amd64.AppImage  # Portable
+  deb/voxpen-desktop_0.1.0_amd64.deb    # Debian/Ubuntu installer
+  appimage/voxpen-desktop_0.1.0_amd64.AppImage  # Portable
 ```
 
 Install the `.deb`:
 
 ```bash
-sudo dpkg -i src-tauri/target/release/bundle/deb/voxink-desktop_0.1.0_amd64.deb
+sudo dpkg -i src-tauri/target/release/bundle/deb/voxpen-desktop_0.1.0_amd64.deb
 ```
 
 Or run the AppImage directly:
 
 ```bash
-chmod +x src-tauri/target/release/bundle/appimage/voxink-desktop_0.1.0_amd64.AppImage
-./src-tauri/target/release/bundle/appimage/voxink-desktop_0.1.0_amd64.AppImage
+chmod +x src-tauri/target/release/bundle/appimage/voxpen-desktop_0.1.0_amd64.AppImage
+./src-tauri/target/release/bundle/appimage/voxpen-desktop_0.1.0_amd64.AppImage
 ```
 
 ---
@@ -168,11 +168,11 @@ Same as Debian — `.AppImage` and `.deb` are generated. For Arch-native packagi
 For AUR distribution, create a `PKGBUILD`:
 
 ```bash
-# pkgname=voxink-desktop
+# pkgname=voxpen-desktop
 # pkgver=0.1.0
-# Simplified — the actual binary is in target/release/voxink-desktop
-install -Dm755 "src-tauri/target/release/voxink-desktop" "$pkgdir/usr/bin/voxink-desktop"
-install -Dm644 "src-tauri/icons/128x128.png" "$pkgdir/usr/share/pixmaps/voxink-desktop.png"
+# Simplified — the actual binary is in target/release/voxpen-desktop
+install -Dm755 "src-tauri/target/release/voxpen-desktop" "$pkgdir/usr/bin/voxpen-desktop"
+install -Dm644 "src-tauri/icons/128x128.png" "$pkgdir/usr/share/pixmaps/voxpen-desktop.png"
 ```
 
 ---
@@ -222,7 +222,7 @@ pnpm tauri:build   # Release
 
 ```
 src-tauri\target\release\bundle\
-  nsis\VoxInk Desktop_0.1.0_x64-setup.exe    # NSIS installer
+  nsis\VoxPen Desktop_0.1.0_x64-setup.exe    # NSIS installer
 ```
 
 The installer:
@@ -290,7 +290,7 @@ Using UTM, Parallels, or VMware on a Mac host:
 ```bash
 pnpm install
 pnpm tauri:build
-# Outputs: src-tauri/target/release/bundle/dmg/VoxInk Desktop_0.1.0_aarch64.dmg
+# Outputs: src-tauri/target/release/bundle/dmg/VoxPen Desktop_0.1.0_aarch64.dmg
 ```
 
 ### Approach 3: Rent a Mac in the Cloud
@@ -347,7 +347,7 @@ If you have Apple Developer access ($99/year):
 
 1. Go to [appleid.apple.com](https://appleid.apple.com)
 2. Sign-In & Security > App-Specific Passwords
-3. Generate a password for "VoxInk Notarization"
+3. Generate a password for "VoxPen Notarization"
 
 ### 3. Set environment variables
 
@@ -378,7 +378,7 @@ pnpm tauri:build
 For the auto-update system (all platforms):
 
 ```bash
-cargo tauri signer generate -w ~/.tauri/voxink.key
+cargo tauri signer generate -w ~/.tauri/voxpen.key
 ```
 
 This outputs a public key. Put it in `tauri.conf.json`:
@@ -401,10 +401,10 @@ After building on any platform:
 
 ```bash
 # 1. Core tests pass
-cargo test -p voxink-core --manifest-path src-tauri/Cargo.toml
+cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml
 
 # 2. Clippy clean
-cargo clippy -p voxink-core --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 # 3. Frontend builds
 pnpm build
@@ -467,7 +467,7 @@ The app must be code-signed and notarized for Gatekeeper. Without signing:
 
 ```bash
 # Users can bypass by right-clicking > Open, or:
-xattr -cr /Applications/VoxInk\ Desktop.app
+xattr -cr /Applications/VoxPen\ Desktop.app
 ```
 
 ### Build fails with `cc` linker error

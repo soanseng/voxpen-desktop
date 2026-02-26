@@ -1,11 +1,11 @@
-# Design: Android Pattern Mapping for VoxInk Desktop
+# Design: Android Pattern Mapping for VoxPen Desktop
 
 **Date**: 2026-02-24
 **Status**: Approved
 
 ## Context
 
-VoxInk Android v1.0 is complete. The desktop version (Tauri v2 + Rust + React) should mirror the same architectural patterns, adapted to Rust idioms.
+VoxPen Android v1.0 is complete. The desktop version (Tauri v2 + Rust + React) should mirror the same architectural patterns, adapted to Rust idioms.
 
 ## Decision
 
