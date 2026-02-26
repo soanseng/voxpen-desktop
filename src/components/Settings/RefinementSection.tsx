@@ -8,6 +8,15 @@ interface RefinementSectionProps {
   onUpdate: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
 }
 
+const TONE_PRESETS = [
+  { value: "Casual", labelKey: "toneCasual" },
+  { value: "Professional", labelKey: "toneProfessional" },
+  { value: "Email", labelKey: "toneEmail" },
+  { value: "Note", labelKey: "toneNote" },
+  { value: "Social", labelKey: "toneSocial" },
+  { value: "Custom", labelKey: "toneCustom" },
+] as const;
+
 const REFINEMENT_PROVIDERS = [
   { value: "groq", label: "Groq" },
   { value: "openai", label: "OpenAI" },
@@ -145,6 +154,42 @@ export default function RefinementSection({
           checked={settings.refinement_enabled}
           onChange={(v) => onUpdate("refinement_enabled", v)}
         />
+      </div>
+
+      {/* Tone Preset */}
+      <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>
+        <label
+          htmlFor="tone-preset"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          {t("tone")}
+        </label>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          {t("toneHint")}
+        </p>
+        <select
+          id="tone-preset"
+          value={settings.tone_preset}
+          onChange={(e) => {
+            onUpdate("tone_preset", e.target.value as Settings["tone_preset"]);
+            // Clear default prompt cache so it reloads for new tone
+            setDefaultPrompt("");
+          }}
+          disabled={disabled}
+          className={
+            "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+            "px-3 py-2 text-sm text-gray-900 " +
+            "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+            "disabled:cursor-not-allowed " +
+            "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          }
+        >
+          {TONE_PRESETS.map((tp) => (
+            <option key={tp.value} value={tp.value}>
+              {t(tp.labelKey)}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Provider */}
@@ -331,7 +376,7 @@ export default function RefinementSection({
         </div>
       )}
 
-      {/* System Prompt */}
+      {/* System Prompt — only editable when tone is Custom */}
       <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>
         <div className="flex items-center justify-between">
           <label
@@ -340,35 +385,38 @@ export default function RefinementSection({
           >
             {t("systemPrompt")}
           </label>
-          <button
-            type="button"
-            onClick={async () => {
-              const lang = settings.stt_language;
-              const tone = settings.tone_preset || "Casual";
-              const prompt = await getDefaultRefinementPrompt(lang, tone);
-              setDefaultPrompt(prompt);
-              onUpdate("refinement_prompt", "");
-              setPromptResetMsg(true);
-              setTimeout(() => setPromptResetMsg(false), 2000);
-            }}
-            disabled={disabled || !settings.refinement_prompt}
-            className={
-              "rounded px-2 py-1 text-xs font-medium " +
-              "text-blue-600 hover:bg-blue-50 " +
-              "disabled:cursor-not-allowed disabled:opacity-50 " +
-              "dark:text-blue-400 dark:hover:bg-gray-800"
-            }
-            title={t("resetPromptHint")}
-          >
-            {t("resetPrompt")}
-          </button>
+          {settings.tone_preset === "Custom" && (
+            <button
+              type="button"
+              onClick={async () => {
+                const lang = settings.stt_language;
+                const prompt = await getDefaultRefinementPrompt(lang, "Casual");
+                setDefaultPrompt(prompt);
+                onUpdate("refinement_prompt", "");
+                setPromptResetMsg(true);
+                setTimeout(() => setPromptResetMsg(false), 2000);
+              }}
+              disabled={disabled || !settings.refinement_prompt}
+              className={
+                "rounded px-2 py-1 text-xs font-medium " +
+                "text-blue-600 hover:bg-blue-50 " +
+                "disabled:cursor-not-allowed disabled:opacity-50 " +
+                "dark:text-blue-400 dark:hover:bg-gray-800"
+              }
+              title={t("resetPromptHint")}
+            >
+              {t("resetPrompt")}
+            </button>
+          )}
         </div>
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          {t("systemPromptHint")}
+          {settings.tone_preset === "Custom"
+            ? t("systemPromptHint")
+            : t("toneUsingPreset", { tone: t(`tone${settings.tone_preset}`) })}
         </p>
         <textarea
           id="refinement-prompt"
-          value={settings.refinement_prompt}
+          value={settings.tone_preset === "Custom" ? settings.refinement_prompt : ""}
           onChange={(e) => onUpdate("refinement_prompt", e.target.value)}
           onFocus={async () => {
             if (!defaultPrompt) {
@@ -378,7 +426,7 @@ export default function RefinementSection({
             }
           }}
           placeholder={defaultPrompt || t("systemPromptPlaceholder")}
-          disabled={disabled}
+          disabled={disabled || settings.tone_preset !== "Custom"}
           rows={5}
           className={
             "w-full rounded-lg border border-gray-300 bg-white " +
@@ -395,7 +443,7 @@ export default function RefinementSection({
             {t("promptReset")}
           </p>
         )}
-        {!settings.refinement_prompt && !promptResetMsg && (
+        {settings.tone_preset === "Custom" && !settings.refinement_prompt && !promptResetMsg && (
           <p className="text-xs text-gray-400 dark:text-gray-500">
             {t("usingDefault")}
           </p>
