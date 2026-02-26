@@ -18,6 +18,7 @@ use crate::pipeline::vocabulary;
 ///
 /// `custom_base_url` overrides the resolved base URL when the provider is
 /// `"custom"` and the URL is non-empty.
+#[allow(clippy::too_many_arguments)]
 pub async fn refine(
     text: &str,
     config: &ChatConfig,
