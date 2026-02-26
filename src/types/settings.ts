@@ -36,6 +36,19 @@ export type UsageStatus =
   | { type: "Exhausted" }
   | { type: "Unlimited" };
 
+export interface WhisperModel {
+  id: string;
+  tier: string;
+  url: string;
+  filename: string;
+  size_bytes: number;
+}
+
+export type ModelStatus =
+  | { status: "NotDownloaded" }
+  | { status: "Downloading"; progress: number }
+  | { status: "Ready"; size_bytes: number };
+
 export const defaultSettings: Settings = {
   hotkey_ptt: "RAlt",
   hotkey_toggle: "CommandOrControl+Shift+V",
