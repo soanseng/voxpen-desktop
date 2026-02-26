@@ -94,6 +94,18 @@ pub enum RecordingMode {
     Toggle,
 }
 
+/// Tone preset for LLM refinement — controls the style of the output text.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum TonePreset {
+    #[default]
+    Casual,
+    Professional,
+    Email,
+    Note,
+    Social,
+    Custom,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +282,26 @@ mod tests {
     #[test]
     fn should_return_th_code_for_thai() {
         assert_eq!(Language::Thai.code(), Some("th"));
+    }
+
+    // -- TonePreset tests --
+
+    #[test]
+    fn should_have_casual_as_default_tone() {
+        assert_eq!(TonePreset::default(), TonePreset::Casual);
+    }
+
+    #[test]
+    fn should_serialize_tone_preset() {
+        let tone = TonePreset::Professional;
+        let json = serde_json::to_string(&tone).unwrap();
+        assert_eq!(json, "\"Professional\"");
+    }
+
+    #[test]
+    fn should_deserialize_tone_preset() {
+        let tone: TonePreset = serde_json::from_str("\"Email\"").unwrap();
+        assert_eq!(tone, TonePreset::Email);
     }
 
     #[test]
