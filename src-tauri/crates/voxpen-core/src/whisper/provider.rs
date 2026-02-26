@@ -133,13 +133,14 @@ impl SttProvider for LocalSttProvider {
                     .map_err(|e| AppError::LocalTranscription(format!("inference failed: {e}")))?;
 
                 // Collect all segments into final text
-                let n_segments = state.full_n_segments().map_err(|e| {
-                    AppError::LocalTranscription(format!("failed to get segments: {e}"))
-                })?;
+                let n_segments = state.full_n_segments();
 
                 let mut text = String::new();
                 for i in 0..n_segments {
-                    let segment_text = state.full_get_segment_text_lossy(i).map_err(|e| {
+                    let segment = state.get_segment(i).ok_or_else(|| {
+                        AppError::LocalTranscription(format!("segment {i} out of bounds"))
+                    })?;
+                    let segment_text = segment.to_str_lossy().map_err(|e| {
                         AppError::LocalTranscription(format!("failed to get segment {i} text: {e}"))
                     })?;
                     text.push_str(&segment_text);
