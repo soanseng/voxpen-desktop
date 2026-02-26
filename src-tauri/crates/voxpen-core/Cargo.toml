@@ -1,6 +1,6 @@
 [package]
 name = "voxpen-core"
-version = "0.2.1"
+version = "0.5.0"
 edition = "2021"
 description = "VoxPen core business logic — STT pipeline, audio encoding, LLM refinement"
 
