@@ -144,5 +144,21 @@
     "activateFailed": "啟用失敗：{{error}}",
     "keyInvalid": "無效的授權碼。",
     "deactivateSuccess": "已停用授權。"
-  }
+  },
+  "localWhisper": "本機 (Whisper)",
+  "localWhisperHint": "離線語音轉文字。音訊不會離開您的電腦。",
+  "modelTier": {
+    "quick": "快速",
+    "balanced": "平衡",
+    "quality": "高品質",
+    "maximum": "最高品質"
+  },
+  "modelNotDownloaded": "尚未下載",
+  "modelReady": "已就緒（{{size}} MB）",
+  "modelDownloading": "下載中 {{progress}}%...",
+  "downloadModel": "下載模型",
+  "deleteModel": "刪除模型",
+  "deleteModelConfirm": "再按一次確認刪除",
+  "downloadFailed": "下載失敗：{{error}}",
+  "noApiKeyNeeded": "無需 API 金鑰 — 完全離線運行。"
 }
