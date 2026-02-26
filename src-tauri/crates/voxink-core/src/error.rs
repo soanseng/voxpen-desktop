@@ -27,6 +27,12 @@ pub enum AppError {
 
     #[error("Paste error: {0}")]
     Paste(String),
+
+    #[error("License error: {0}")]
+    License(String),
+
+    #[error("Daily usage limit reached")]
+    UsageLimitReached,
 }
 
 // Tauri commands require errors to be Serialize
@@ -65,6 +71,18 @@ mod tests {
     fn should_display_audio_error() {
         let err = AppError::Audio("no microphone".to_string());
         assert_eq!(err.to_string(), "Audio error: no microphone");
+    }
+
+    #[test]
+    fn should_display_license_error() {
+        let err = AppError::License("key revoked".to_string());
+        assert_eq!(err.to_string(), "License error: key revoked");
+    }
+
+    #[test]
+    fn should_display_usage_limit_error() {
+        let err = AppError::UsageLimitReached;
+        assert_eq!(err.to_string(), "Daily usage limit reached");
     }
 
     #[test]
