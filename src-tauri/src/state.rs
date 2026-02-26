@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -15,17 +16,39 @@ use voxink_core::pipeline::settings::Settings;
 use voxink_core::pipeline::state::Language;
 use voxink_core::pipeline::transcribe;
 
-/// Concrete SttProvider backed by Groq Whisper API.
+/// Concrete SttProvider backed by Groq Whisper API (and optionally local whisper).
 ///
 /// Holds a shared reference to the current settings so it always uses
-/// the latest API key and model configuration.
+/// the latest API key and model configuration. When the `local-whisper`
+/// feature is enabled and `stt_provider == "local"`, transcription is
+/// dispatched to the embedded whisper.cpp engine instead of a cloud API.
 pub struct GroqSttProvider {
     settings: Arc<Mutex<Settings>>,
     app_handle: AppHandle,
+    #[cfg(feature = "local-whisper")]
+    local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
 }
 
 impl GroqSttProvider {
-    pub fn new(settings: Arc<Mutex<Settings>>, app_handle: AppHandle) -> Self {
+    #[cfg(feature = "local-whisper")]
+    pub fn new(
+        settings: Arc<Mutex<Settings>>,
+        app_handle: AppHandle,
+        local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
+    ) -> Self {
+        Self {
+            settings,
+            app_handle,
+            local_stt,
+        }
+    }
+
+    #[cfg(not(feature = "local-whisper"))]
+    pub fn new(
+        settings: Arc<Mutex<Settings>>,
+        app_handle: AppHandle,
+        _models_dir: &std::path::Path,
+    ) -> Self {
         Self {
             settings,
             app_handle,
@@ -41,8 +64,22 @@ impl SttProvider for GroqSttProvider {
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
         let app_handle = self.app_handle.clone();
+        #[cfg(feature = "local-whisper")]
+        let local_stt = self.local_stt.clone();
+
         Box::pin(async move {
             let s = settings.lock().await;
+
+            // Dispatch to local whisper when stt_provider is "local"
+            #[cfg(feature = "local-whisper")]
+            if s.stt_provider == "local" {
+                let lang = s.stt_language.clone();
+                drop(s);
+                local_stt.set_language(lang);
+                return local_stt.transcribe(pcm_data, vocabulary_hint).await;
+            }
+
+            // Cloud STT path
             let api_key = get_api_key(&app_handle, &s.stt_provider)?;
             let config = SttConfig {
                 api_key,
@@ -158,4 +195,10 @@ pub struct AppState {
             crate::licensing::SqliteUsageDb,
         >,
     >,
+    /// Directory where local whisper model files are stored.
+    pub models_dir: PathBuf,
+    /// Shared local STT provider — accessible by both GroqSttProvider
+    /// (for transcription dispatch) and IPC commands (for model/language updates).
+    #[cfg(feature = "local-whisper")]
+    pub local_stt: Arc<voxink_core::whisper::provider::LocalSttProvider>,
 }

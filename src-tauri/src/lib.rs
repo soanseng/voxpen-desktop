@@ -142,9 +142,42 @@ pub fn run() {
             // Initialize shared settings
             let settings = Arc::new(Mutex::new(Settings::default()));
 
-            // Initialize pipeline controller with concrete Groq providers
+            // Initialize SQLite history database (needs app_data_dir early for models_dir)
+            let app_data_dir = app
+                .path()
+                .resolve("", BaseDirectory::AppData)
+                .expect("failed to resolve app data dir");
+            std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
+
+            // Prepare models directory for local whisper model files
+            let models_dir = app_data_dir.join("models");
+
+            // Initialize local STT provider (feature-gated)
+            #[cfg(feature = "local-whisper")]
+            let local_stt = {
+                use voxink_core::whisper::models;
+                let default_model = models::default_local_model();
+                let model_path = models_dir.join(default_model.filename);
+                Arc::new(voxink_core::whisper::provider::LocalSttProvider::new(
+                    model_path,
+                    Language::Auto,
+                ))
+            };
+
+            // Initialize pipeline controller with concrete providers
             let config = PipelineConfig::new(None, Language::Auto);
-            let stt = GroqSttProvider::new(settings.clone(), app.handle().clone());
+            #[cfg(feature = "local-whisper")]
+            let stt = GroqSttProvider::new(
+                settings.clone(),
+                app.handle().clone(),
+                local_stt.clone(),
+            );
+            #[cfg(not(feature = "local-whisper"))]
+            let stt = GroqSttProvider::new(
+                settings.clone(),
+                app.handle().clone(),
+                &models_dir,
+            );
             let llm = GroqLlmProvider::new(settings.clone(), app.handle().clone());
             let controller = PipelineController::new(config, stt, llm);
 
@@ -154,13 +187,6 @@ pub fn run() {
                 clipboard::ArboardClipboard::new().expect("failed to init clipboard");
             let keyboard_mgr =
                 keyboard::EnigoKeyboard::new().expect("failed to init keyboard simulator");
-
-            // Initialize SQLite history database
-            let app_data_dir = app
-                .path()
-                .resolve("", BaseDirectory::AppData)
-                .expect("failed to resolve app data dir");
-            std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
             let db_path = app_data_dir.join("voxink.db");
             let history_db =
                 history::HistoryDb::open(db_path.clone()).expect("failed to open history DB");
@@ -188,6 +214,9 @@ pub fn run() {
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
                 recording_started: Arc::new(AtomicBool::new(false)),
                 license_manager: Arc::new(license_mgr),
+                models_dir,
+                #[cfg(feature = "local-whisper")]
+                local_stt,
             };
             app.manage(app_state);
 
@@ -429,6 +458,10 @@ pub fn run() {
             commands::delete_dictionary_entry,
             commands::list_input_devices,
             commands::check_for_update,
+            commands::get_whisper_models,
+            commands::get_model_status,
+            commands::download_whisper_model,
+            commands::delete_whisper_model,
             commands::activate_license,
             commands::deactivate_license,
             commands::get_license_info,

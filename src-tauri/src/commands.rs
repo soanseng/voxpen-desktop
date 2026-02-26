@@ -108,6 +108,19 @@ pub async fn save_settings(
     ctrl.update_config(config_from_settings(&settings));
     drop(ctrl);
 
+    // Update local whisper model path and language when provider is "local"
+    #[cfg(feature = "local-whisper")]
+    if settings.stt_provider == "local" {
+        if let Some(model) = voxink_core::whisper::models::model_by_id(&settings.stt_model) {
+            let path = voxink_core::whisper::models::model_path(
+                &state.models_dir,
+                model.filename,
+            );
+            state.local_stt.set_model_path(path);
+        }
+        state.local_stt.set_language(settings.stt_language.clone());
+    }
+
     Ok(())
 }
 
@@ -407,6 +420,86 @@ pub async fn get_license_tier(
     state: tauri::State<'_, AppState>,
 ) -> Result<LicenseTier, String> {
     Ok(state.license_manager.current_tier())
+}
+
+// ---------------------------------------------------------------------------
+// Local whisper model management IPC commands
+// ---------------------------------------------------------------------------
+
+/// List available local whisper models from the built-in catalog.
+#[tauri::command]
+pub async fn get_whisper_models() -> &'static [voxink_core::whisper::models::WhisperModel] {
+    voxink_core::whisper::models::MODEL_CATALOG
+}
+
+/// Check the download / readiness status of a local whisper model.
+#[tauri::command]
+pub async fn get_model_status(
+    state: tauri::State<'_, AppState>,
+    model_id: String,
+) -> Result<voxink_core::whisper::models::ModelStatus, String> {
+    let model = voxink_core::whisper::models::model_by_id(&model_id)
+        .ok_or_else(|| format!("unknown model: {model_id}"))?;
+    Ok(voxink_core::whisper::models::get_model_status(
+        &state.models_dir,
+        model,
+    ))
+}
+
+/// Download a whisper model file with streaming progress events.
+///
+/// Emits `model-download-progress` events with `{ model_id, downloaded, total, progress }`
+/// so the frontend can display a progress bar.
+#[tauri::command]
+pub async fn download_whisper_model(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    model_id: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+
+    let model = voxink_core::whisper::models::model_by_id(&model_id)
+        .ok_or_else(|| format!("unknown model: {model_id}"))?;
+    let models_dir = state.models_dir.clone();
+    let model_id_for_cb = model_id.clone();
+
+    voxink_core::whisper::download::download_model(
+        model.url,
+        model.filename,
+        &models_dir,
+        move |downloaded, total| {
+            let progress = if total > 0 {
+                downloaded as f32 / total as f32
+            } else {
+                0.0
+            };
+            let _ = app.emit(
+                "model-download-progress",
+                serde_json::json!({
+                    "model_id": model_id_for_cb,
+                    "downloaded": downloaded,
+                    "total": total,
+                    "progress": progress,
+                }),
+            );
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Delete a downloaded whisper model file and any in-progress .part file.
+#[tauri::command]
+pub async fn delete_whisper_model(
+    state: tauri::State<'_, AppState>,
+    model_id: String,
+) -> Result<(), String> {
+    let model = voxink_core::whisper::models::model_by_id(&model_id)
+        .ok_or_else(|| format!("unknown model: {model_id}"))?;
+    voxink_core::whisper::models::delete_model(&state.models_dir, model)
+        .map_err(|e| e.to_string())
 }
 
 /// Simple semver comparison: is `latest` newer than `current`?
