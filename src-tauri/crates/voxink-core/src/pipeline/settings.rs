@@ -42,6 +42,10 @@ pub struct Settings {
     /// Tone preset for refinement output style (Casual, Professional, Email, Note, Social, Custom)
     #[serde(default)]
     pub tone_preset: TonePreset,
+    /// Custom API base URL for the "custom" provider (e.g., http://localhost:11434/ for Ollama).
+    /// Empty string means not configured.
+    #[serde(default)]
+    pub custom_base_url: String,
     /// Preferred microphone device name. None = system default.
     #[serde(default)]
     pub microphone_device: Option<String>,
@@ -67,6 +71,7 @@ impl Default for Settings {
             refinement_model: crate::api::groq::DEFAULT_LLM_MODEL.to_string(),
             refinement_prompt: String::new(),
             tone_preset: TonePreset::default(),
+            custom_base_url: String::new(),
             theme: "system".to_string(),
             ui_language: "en".to_string(),
             microphone_device: None,
@@ -145,5 +150,30 @@ mod tests {
         let json = r#"{"hotkey":"F5","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.tone_preset, TonePreset::Casual);
+    }
+
+    // -- custom_base_url tests --
+
+    #[test]
+    fn should_default_custom_base_url_to_empty() {
+        let settings = Settings::default();
+        assert_eq!(settings.custom_base_url, "");
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_custom_base_url() {
+        // Old settings JSON without custom_base_url field should get empty string default
+        let json = r#"{"hotkey":"F5","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.custom_base_url, "");
+    }
+
+    #[test]
+    fn should_roundtrip_custom_base_url() {
+        let mut settings = Settings::default();
+        settings.custom_base_url = "http://localhost:11434/".to_string();
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.custom_base_url, "http://localhost:11434/");
     }
 }
