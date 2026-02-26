@@ -144,5 +144,21 @@
     "activateFailed": "Activation failed: {{error}}",
     "keyInvalid": "Invalid license key.",
     "deactivateSuccess": "License deactivated."
-  }
+  },
+  "localWhisper": "Local (Whisper)",
+  "localWhisperHint": "Offline speech-to-text. Audio never leaves your computer.",
+  "modelTier": {
+    "quick": "Quick",
+    "balanced": "Balanced",
+    "quality": "Quality",
+    "maximum": "Maximum"
+  },
+  "modelNotDownloaded": "Not downloaded",
+  "modelReady": "Ready ({{size}} MB)",
+  "modelDownloading": "Downloading {{progress}}%...",
+  "downloadModel": "Download",
+  "deleteModel": "Delete Model",
+  "deleteModelConfirm": "Click again to confirm",
+  "downloadFailed": "Download failed: {{error}}",
+  "noApiKeyNeeded": "No API key needed — runs entirely offline."
 }

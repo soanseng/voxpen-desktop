@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-voxink-core = { path = "crates/voxink-core" }
+voxink-core = { path = "crates/voxink-core", default-features = false }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-store = "2"
@@ -42,3 +42,4 @@ tempfile = "3"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+local-whisper = ["voxink-core/local-whisper"]

@@ -33,6 +33,15 @@ pub enum AppError {
 
     #[error("Daily usage limit reached")]
     UsageLimitReached,
+
+    #[error("Model not downloaded: {0}")]
+    ModelNotDownloaded(String),
+
+    #[error("Model download failed: {0}")]
+    ModelDownload(String),
+
+    #[error("Local transcription failed: {0}")]
+    LocalTranscription(String),
 }
 
 // Tauri commands require errors to be Serialize
@@ -90,5 +99,32 @@ mod tests {
         let err = AppError::ApiKeyMissing("groq".to_string());
         let json = serde_json::to_string(&err).unwrap();
         assert_eq!(json, "\"API key not configured for groq\"");
+    }
+
+    #[test]
+    fn should_display_model_not_downloaded_error() {
+        let err = AppError::ModelNotDownloaded("ggml-small-q5_1.bin".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Model not downloaded: ggml-small-q5_1.bin"
+        );
+    }
+
+    #[test]
+    fn should_display_model_download_error() {
+        let err = AppError::ModelDownload("connection refused".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Model download failed: connection refused"
+        );
+    }
+
+    #[test]
+    fn should_display_local_transcription_error() {
+        let err = AppError::LocalTranscription("model load failed".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Local transcription failed: model load failed"
+        );
     }
 }

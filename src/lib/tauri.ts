@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Settings, LicenseInfo, LicenseTier, UsageStatus } from "../types/settings";
+import type { Settings, LicenseInfo, LicenseTier, UsageStatus, WhisperModel, ModelStatus } from "../types/settings";
 import type { TranscriptionEntry } from "../types/history";
 import type { DictionaryEntry } from "../types/dictionary";
 
@@ -118,4 +118,20 @@ export async function getUsageStatus(): Promise<UsageStatus> {
 
 export async function getLicenseTier(): Promise<LicenseTier> {
   return invoke<LicenseTier>("get_license_tier");
+}
+
+export async function getWhisperModels(): Promise<WhisperModel[]> {
+  return invoke<WhisperModel[]>("get_whisper_models");
+}
+
+export async function getModelStatus(modelId: string): Promise<ModelStatus> {
+  return invoke<ModelStatus>("get_model_status", { modelId });
+}
+
+export async function downloadWhisperModel(modelId: string): Promise<void> {
+  return invoke("download_whisper_model", { modelId });
+}
+
+export async function deleteWhisperModel(modelId: string): Promise<void> {
+  return invoke("delete_whisper_model", { modelId });
 }
