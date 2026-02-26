@@ -91,8 +91,9 @@ impl LlmProvider for GroqLlmProvider {
                 max_tokens: groq::LLM_MAX_TOKENS,
             };
             let custom_prompt = s.refinement_prompt.clone();
+            let tone_preset = s.tone_preset.clone();
             drop(s);
-            refine::refine(&text, &config, &language, &vocabulary, &custom_prompt).await
+            refine::refine(&text, &config, &language, &vocabulary, &custom_prompt, &tone_preset).await
         })
     }
 }
