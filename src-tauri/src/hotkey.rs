@@ -192,70 +192,70 @@ impl HotkeyManager {
                     match event.event_type {
                         rdev::EventType::KeyPress(k) => {
                             // Check PTT key
-                            if ptt_idx > 0 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize] {
-                                if !ptt_down.swap(true, Ordering::SeqCst) {
-                                    let app = app_handle.clone();
-                                    let s: tauri::State<'_, AppState> = app.state();
-                                    handle_hotkey_event(
-                                        &app,
-                                        &s,
-                                        ShortcutState::Pressed,
-                                        &rdev_state.processing,
-                                        false,
-                                        &RecordingMode::HoldToRecord,
-                                    );
-                                }
+                            if ptt_idx > 0
+                                && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize]
+                                && !ptt_down.swap(true, Ordering::SeqCst)
+                            {
+                                let app = app_handle.clone();
+                                let s: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &s,
+                                    ShortcutState::Pressed,
+                                    &rdev_state.processing,
+                                    false,
+                                    &RecordingMode::HoldToRecord,
+                                );
                             }
                             // Check Toggle key
                             if toggle_idx > 0
                                 && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
+                                && !toggle_down.swap(true, Ordering::SeqCst)
                             {
-                                if !toggle_down.swap(true, Ordering::SeqCst) {
-                                    let app = app_handle.clone();
-                                    let s: tauri::State<'_, AppState> = app.state();
-                                    handle_hotkey_event(
-                                        &app,
-                                        &s,
-                                        ShortcutState::Pressed,
-                                        &rdev_state.processing,
-                                        false,
-                                        &RecordingMode::Toggle,
-                                    );
-                                }
+                                let app = app_handle.clone();
+                                let s: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &s,
+                                    ShortcutState::Pressed,
+                                    &rdev_state.processing,
+                                    false,
+                                    &RecordingMode::Toggle,
+                                );
                             }
                         }
                         rdev::EventType::KeyRelease(k) => {
                             // Check PTT key
-                            if ptt_idx > 0 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize] {
-                                if ptt_down.swap(false, Ordering::SeqCst) {
-                                    let app = app_handle.clone();
-                                    let s: tauri::State<'_, AppState> = app.state();
-                                    handle_hotkey_event(
-                                        &app,
-                                        &s,
-                                        ShortcutState::Released,
-                                        &rdev_state.processing,
-                                        false,
-                                        &RecordingMode::HoldToRecord,
-                                    );
-                                }
+                            if ptt_idx > 0
+                                && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize]
+                                && ptt_down.swap(false, Ordering::SeqCst)
+                            {
+                                let app = app_handle.clone();
+                                let s: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &s,
+                                    ShortcutState::Released,
+                                    &rdev_state.processing,
+                                    false,
+                                    &RecordingMode::HoldToRecord,
+                                );
                             }
                             // Check Toggle key
                             if toggle_idx > 0
                                 && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
+                                && toggle_down.swap(false, Ordering::SeqCst)
                             {
-                                if toggle_down.swap(false, Ordering::SeqCst) {
-                                    let app = app_handle.clone();
-                                    let s: tauri::State<'_, AppState> = app.state();
-                                    handle_hotkey_event(
-                                        &app,
-                                        &s,
-                                        ShortcutState::Released,
-                                        &rdev_state.processing,
-                                        false,
-                                        &RecordingMode::Toggle,
-                                    );
-                                }
+                                let app = app_handle.clone();
+                                let s: tauri::State<'_, AppState> = app.state();
+                                handle_hotkey_event(
+                                    &app,
+                                    &s,
+                                    ShortcutState::Released,
+                                    &rdev_state.processing,
+                                    false,
+                                    &RecordingMode::Toggle,
+                                );
                             }
                         }
                         _ => {}
@@ -393,6 +393,7 @@ fn handle_hotkey_event(
             let recorder = state.recorder.clone();
             let recording_started = state.recording_started.clone();
             let settings = state.settings.clone();
+            let license_mgr = state.license_manager.clone();
             let app_for_err = app.clone();
             let processing_flag = processing.clone();
 
@@ -400,6 +401,20 @@ fn handle_hotkey_event(
             recording_started.store(false, Ordering::SeqCst);
 
             tauri::async_runtime::spawn(async move {
+                // License usage gate
+                let usage_status = license_mgr.check_access().await;
+                match &usage_status {
+                    voxink_core::licensing::UsageStatus::Exhausted => {
+                        let _ = app_for_err.emit("usage-exhausted", ());
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    voxink_core::licensing::UsageStatus::Warning { remaining } => {
+                        let _ = app_for_err.emit("usage-warning", remaining);
+                    }
+                    _ => {}
+                }
+
                 // Set preferred microphone device before starting
                 let mic_device = {
                     let s = settings.lock().await;
@@ -444,6 +459,7 @@ fn handle_hotkey_event(
             let settings = state.settings.clone();
             let history = state.history.clone();
             let dictionary = state.dictionary.clone();
+            let license_mgr = state.license_manager.clone();
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
 
@@ -536,6 +552,9 @@ fn handle_hotkey_event(
                     if let Err(e) = history.insert(&entry) {
                         eprintln!("history insert error: {e}");
                     }
+
+                    // Record usage for licensing
+                    let _ = license_mgr.record_usage();
 
                     if auto_paste {
                         let text = final_text.clone();

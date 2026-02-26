@@ -138,4 +138,11 @@ pub struct AppState {
     /// Signal set after recorder.start() succeeds so the release handler can
     /// wait for recording to actually begin before calling recorder.stop().
     pub recording_started: Arc<AtomicBool>,
+    pub license_manager: Arc<
+        voxink_core::licensing::LicenseManager<
+            voxink_core::licensing::DirectLemonSqueezy,
+            crate::licensing::TauriLicenseStore,
+            crate::licensing::SqliteUsageDb,
+        >,
+    >,
 }
