@@ -460,6 +460,7 @@ fn handle_hotkey_event(
             let history = state.history.clone();
             let dictionary = state.dictionary.clone();
             let license_mgr = state.license_manager.clone();
+            let app_for_usage = app.clone();
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
 
@@ -553,8 +554,9 @@ fn handle_hotkey_event(
                         eprintln!("history insert error: {e}");
                     }
 
-                    // Record usage for licensing
+                    // Record usage for licensing and update tray
                     let _ = license_mgr.record_usage();
+                    let _ = app_for_usage.emit("usage-updated", ());
 
                     if auto_paste {
                         let text = final_text.clone();

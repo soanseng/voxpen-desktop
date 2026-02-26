@@ -799,4 +799,95 @@ mod tests {
         assert_eq!(tier, LicenseTier::Free);
         assert!(mgr.license_info().is_none());
     }
+
+    // =======================================================================
+    // Full lifecycle integration tests
+    // =======================================================================
+
+    #[tokio::test]
+    async fn should_activate_then_exhaust_free_quota_after_deactivate() {
+        // 1. Start as Free
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![
+                VerifyBehavior::ActivateOk,
+                VerifyBehavior::DeactivateOk,
+            ]),
+            MockStore::new(None),
+            MockUsageDb::new(0),
+        );
+        assert_eq!(mgr.current_tier(), LicenseTier::Free);
+
+        // 2. Activate → Pro
+        mgr.activate("KEY-123").await.unwrap();
+        assert_eq!(mgr.current_tier(), LicenseTier::Pro);
+
+        // 3. Record usage as Pro → unlimited
+        let status = mgr.record_usage().unwrap();
+        assert_eq!(status, UsageStatus::Unlimited);
+
+        // 4. Deactivate → back to Free
+        mgr.deactivate().await.unwrap();
+        assert_eq!(mgr.current_tier(), LicenseTier::Free);
+
+        // 5. Pro record_usage returns Unlimited without incrementing the DB,
+        // so count is still 0. Now as Free, record 14 times to reach count 14.
+        // After each call i (0-based): count = i + 1, remaining = 15 - (i + 1) = 14 - i
+        // Warning when remaining <= 3, i.e. 14 - i <= 3, i.e. i >= 11
+        for i in 0..14 {
+            let status = mgr.record_usage().unwrap();
+            let count_after = (i + 1) as u32;
+            let remaining = 15 - count_after;
+            if remaining > 3 {
+                assert!(
+                    matches!(status, UsageStatus::Available { .. }),
+                    "Expected Available at iteration {i} (count={count_after}), got {status:?}"
+                );
+            } else {
+                assert!(
+                    matches!(status, UsageStatus::Warning { .. }),
+                    "Expected Warning at iteration {i} (count={count_after}), got {status:?}"
+                );
+            }
+        }
+
+        // Count is now 14. Next record → count 15 → Exhausted
+        let status = mgr.record_usage().unwrap();
+        assert_eq!(status, UsageStatus::Exhausted);
+
+        // 6. Further usage should be blocked
+        let result = mgr.record_usage();
+        assert!(
+            matches!(result, Err(AppError::UsageLimitReached)),
+            "Expected UsageLimitReached, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_exhaust_free_quota_then_activate_pro_for_unlimited() {
+        // 1. Start as Free, already at limit
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![VerifyBehavior::ActivateOk]),
+            MockStore::new(None),
+            MockUsageDb::new(15),
+        );
+
+        // 2. Verify exhausted
+        let status = mgr.check_access().await;
+        assert_eq!(status, UsageStatus::Exhausted);
+
+        // 3. Recording should fail
+        let result = mgr.record_usage();
+        assert!(matches!(result, Err(AppError::UsageLimitReached)));
+
+        // 4. Activate Pro → should unlock
+        mgr.activate("KEY-PRO").await.unwrap();
+        assert_eq!(mgr.current_tier(), LicenseTier::Pro);
+
+        // 5. Now usage should be unlimited even though count is 15
+        let status = mgr.record_usage().unwrap();
+        assert_eq!(status, UsageStatus::Unlimited);
+
+        let status = mgr.check_access().await;
+        assert_eq!(status, UsageStatus::Unlimited);
+    }
 }

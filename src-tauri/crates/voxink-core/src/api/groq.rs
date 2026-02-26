@@ -84,6 +84,97 @@ pub async fn transcribe(config: &SttConfig, wav_data: &[u8]) -> Result<String, A
     transcribe_with_base_url(config, wav_data, GROQ_BASE_URL).await
 }
 
+/// Transcribe an audio file (any format the API supports: wav, mp3, flac, m4a, ogg).
+///
+/// Sends the raw file bytes with the correct filename and MIME type.
+/// For files > 25MB, callers should chunk WAV data first via `audio::chunker`.
+pub async fn transcribe_file(
+    config: &SttConfig,
+    file_data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    provider: &str,
+) -> Result<String, AppError> {
+    let base_url = base_url_for_provider(provider);
+    transcribe_file_with_base_url(config, file_data, filename, mime_type, provider, base_url).await
+}
+
+/// Internal: transcribe file with configurable base URL (for testing).
+pub(crate) async fn transcribe_file_with_base_url(
+    config: &SttConfig,
+    file_data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    provider: &str,
+    base_url: &str,
+) -> Result<String, AppError> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(std::time::Duration::from_secs(300)) // 5 min for large files
+        .build()
+        .map_err(AppError::Network)?;
+
+    let file_part = multipart::Part::bytes(file_data.to_vec())
+        .file_name(filename.to_string())
+        .mime_str(mime_type)
+        .map_err(|e| AppError::Transcription(e.to_string()))?;
+
+    let mut form = multipart::Form::new()
+        .part("file", file_part)
+        .text("model", config.model.clone())
+        .text("response_format", config.response_format.clone());
+
+    if let Some(code) = config.language.code() {
+        form = form.text("language", code.to_string());
+    }
+
+    let prompt = config
+        .prompt_override
+        .as_deref()
+        .unwrap_or(config.language.prompt());
+    form = form.text("prompt", prompt.to_string());
+
+    let path = if provider == "groq" {
+        "openai/v1/audio/transcriptions"
+    } else {
+        "v1/audio/transcriptions"
+    };
+    let url = format!("{base_url}{path}");
+
+    let response = client
+        .post(&url)
+        .bearer_auth(&config.api_key)
+        .multipart(form)
+        .send()
+        .await?;
+
+    let status = response.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(AppError::ApiKeyMissing(provider.to_string()));
+    }
+
+    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+        return Err(AppError::Transcription("file too large (max 25MB)".to_string()));
+    }
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::Transcription(format!(
+            "HTTP {}: {}",
+            status.as_u16(),
+            body
+        )));
+    }
+
+    let whisper: WhisperResponse = response
+        .json()
+        .await
+        .map_err(|e| AppError::Transcription(format!("failed to parse response: {e}")))?;
+
+    Ok(whisper.text)
+}
+
 /// Internal: transcribe with configurable base URL (for testing with wiremock).
 pub(crate) async fn transcribe_with_base_url(
     config: &SttConfig,
@@ -649,6 +740,122 @@ mod tests {
             Err(AppError::ApiKeyMissing(provider)) => assert_eq!(provider, "openrouter"),
             other => panic!("expected ApiKeyMissing(openrouter), got {:?}", other),
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // transcribe_file tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn should_transcribe_file_with_mp3_mime_type() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .and(header("authorization", "Bearer file-key"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"text": "file transcription"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("file-key", Language::Auto);
+        let fake_mp3 = vec![0xFF, 0xFB, 0x90, 0x00]; // fake MP3 header bytes
+
+        let result = transcribe_file_with_base_url(
+            &config,
+            &fake_mp3,
+            "recording.mp3",
+            "audio/mpeg",
+            "groq",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        assert_eq!(result.unwrap(), "file transcription");
+    }
+
+    #[tokio::test]
+    async fn should_transcribe_file_with_openai_provider_path() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/audio/transcriptions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"text": "openai file result"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("openai-key", Language::English);
+        let fake_data = vec![0u8; 100];
+
+        let result = transcribe_file_with_base_url(
+            &config,
+            &fake_data,
+            "audio.wav",
+            "audio/wav",
+            "openai",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        assert_eq!(result.unwrap(), "openai file result");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_on_file_too_large_413() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .respond_with(ResponseTemplate::new(413).set_body_string("too large"))
+            .mount(&server)
+            .await;
+
+        let config = test_config("key", Language::Auto);
+        let result = transcribe_file_with_base_url(
+            &config,
+            &[0u8; 100],
+            "big.wav",
+            "audio/wav",
+            "groq",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        match result {
+            Err(AppError::Transcription(msg)) => assert!(msg.contains("too large")),
+            other => panic!("expected Transcription error, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_return_api_key_error_on_file_transcribe_401() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let config = test_config("bad-key", Language::Auto);
+        let result = transcribe_file_with_base_url(
+            &config,
+            &[0u8; 10],
+            "test.mp3",
+            "audio/mpeg",
+            "groq",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        assert!(matches!(result, Err(AppError::ApiKeyMissing(_))));
     }
 
     // -----------------------------------------------------------------------

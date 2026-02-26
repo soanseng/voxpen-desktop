@@ -49,6 +49,11 @@ export type ModelStatus =
   | { status: "Downloading"; progress: number }
   | { status: "Ready"; size_bytes: number };
 
+export interface FileTranscriptionResult {
+  text: string;
+  refined: string | null;
+}
+
 export const defaultSettings: Settings = {
   hotkey_ptt: "RAlt",
   hotkey_toggle: "CommandOrControl+Shift+V",

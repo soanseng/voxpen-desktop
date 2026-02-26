@@ -9,7 +9,7 @@ import {
   deactivateLicense,
 } from "../../lib/tauri";
 
-const PURCHASE_URL = "https://voxink.lemonsqueezy.com/buy";
+const PURCHASE_URL = "https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1";
 const FREE_DAILY_LIMIT = 15;
 
 function maskKey(key: string): string {

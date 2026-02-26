@@ -67,7 +67,7 @@ function PulsingDots({ color }: { color: string }) {
   );
 }
 
-const PURCHASE_URL = "https://voxink.lemonsqueezy.com/buy";
+const PURCHASE_URL = "https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1";
 
 export default function Overlay() {
   const { t } = useTranslation();

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 use voxink_core::dictionary::DictionaryEntry;
@@ -376,26 +377,32 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
 /// Activate a license key and store the result.
 #[tauri::command]
 pub async fn activate_license(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     key: String,
 ) -> Result<LicenseInfo, String> {
-    state
+    let info = state
         .license_manager
         .activate(&key)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("usage-updated", ());
+    Ok(info)
 }
 
 /// Deactivate the current license and clear local storage.
 #[tauri::command]
 pub async fn deactivate_license(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     state
         .license_manager
         .deactivate()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("usage-updated", ());
+    Ok(())
 }
 
 /// Get the stored license information, if any.
@@ -420,6 +427,151 @@ pub async fn get_license_tier(
     state: tauri::State<'_, AppState>,
 ) -> Result<LicenseTier, String> {
     Ok(state.license_manager.current_tier())
+}
+
+// ---------------------------------------------------------------------------
+// Audio file transcription (Pro feature)
+// ---------------------------------------------------------------------------
+
+/// Result of a file transcription.
+#[derive(Debug, Clone, Serialize)]
+pub struct FileTranscriptionResult {
+    pub text: String,
+    pub refined: Option<String>,
+}
+
+/// Supported audio MIME types for file transcription.
+fn mime_for_extension(ext: &str) -> Option<&'static str> {
+    match ext {
+        "wav" => Some("audio/wav"),
+        "mp3" => Some("audio/mpeg"),
+        "flac" => Some("audio/flac"),
+        "m4a" => Some("audio/mp4"),
+        "ogg" | "oga" => Some("audio/ogg"),
+        "webm" => Some("audio/webm"),
+        _ => None,
+    }
+}
+
+/// Transcribe an audio file (Pro only).
+///
+/// Reads the file, validates format and size, sends to the STT API,
+/// optionally refines with LLM, records usage, and saves to history.
+#[tauri::command]
+pub async fn transcribe_file(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+) -> Result<FileTranscriptionResult, String> {
+    use voxink_core::api::groq::{self, SttConfig, ChatConfig};
+    use voxink_core::pipeline::refine;
+    use voxink_core::licensing::LicenseTier;
+
+    // Pro gate
+    let tier = state.license_manager.current_tier();
+    if tier != LicenseTier::Pro {
+        return Err("File transcription requires a Pro license.".to_string());
+    }
+
+    // Validate file extension
+    let path = std::path::Path::new(&file_path);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    let mime = mime_for_extension(&ext)
+        .ok_or_else(|| format!("Unsupported format: .{ext}. Supported: wav, mp3, flac, m4a, ogg, webm"))?;
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("audio.wav")
+        .to_string();
+
+    // Read file
+    let file_data = std::fs::read(&file_path)
+        .map_err(|e| format!("Failed to read file: {e}"))?;
+
+    // Size check (25MB API limit)
+    if file_data.len() > 25 * 1024 * 1024 {
+        return Err("File too large (max 25 MB). Please use a shorter audio clip.".to_string());
+    }
+
+    // Build STT config from settings
+    let s = state.settings.lock().await;
+    let stt_provider = s.stt_provider.clone();
+    let api_key = crate::state::get_api_key_from_handle(&app, &stt_provider)
+        .map_err(|e| e.to_string())?;
+    let config = SttConfig {
+        api_key,
+        model: s.stt_model.clone(),
+        language: s.stt_language.clone(),
+        response_format: "verbose_json".to_string(),
+        prompt_override: None,
+    };
+    let refinement_enabled = s.refinement_enabled;
+    let refinement_provider = s.refinement_provider.clone();
+    let refinement_model = s.refinement_model.clone();
+    let custom_prompt = s.refinement_prompt.clone();
+    let tone_preset = s.tone_preset.clone();
+    let custom_base_url = s.custom_base_url.clone();
+    let language = s.stt_language.clone();
+    drop(s);
+
+    // Transcribe
+    let text = groq::transcribe_file(&config, &file_data, &filename, mime, &stt_provider)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Optional LLM refinement
+    let refined = if refinement_enabled {
+        let llm_key = crate::state::get_api_key_from_handle(&app, &refinement_provider)
+            .map_err(|e| e.to_string())?;
+        let chat_config = ChatConfig {
+            api_key: llm_key,
+            model: refinement_model,
+            temperature: groq::LLM_TEMPERATURE,
+            max_tokens: groq::LLM_MAX_TOKENS,
+        };
+        match refine::refine(
+            &text, &chat_config, &language, &[], &custom_prompt,
+            &tone_preset, &refinement_provider, &custom_base_url,
+        ).await {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!("refinement failed for file transcription: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Record usage
+    let _ = state.license_manager.record_usage();
+    let _ = app.emit("usage-updated", ());
+
+    // Save to history
+    let entry = voxink_core::history::TranscriptionEntry {
+        id: uuid::Uuid::new_v4().to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64,
+        original_text: text.clone(),
+        refined_text: refined.clone(),
+        language: language.clone(),
+        audio_duration_ms: 0, // unknown for file uploads
+        provider: stt_provider,
+    };
+    if let Err(e) = state.history.insert(&entry) {
+        eprintln!("history insert error: {e}");
+    }
+
+    Ok(FileTranscriptionResult {
+        text,
+        refined,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -512,4 +664,36 @@ fn version_newer(latest: &str, current: &str) -> bool {
     let l = parse(latest);
     let c = parse(current);
     l > c
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_return_correct_mime_for_supported_extensions() {
+        assert_eq!(mime_for_extension("wav"), Some("audio/wav"));
+        assert_eq!(mime_for_extension("mp3"), Some("audio/mpeg"));
+        assert_eq!(mime_for_extension("flac"), Some("audio/flac"));
+        assert_eq!(mime_for_extension("m4a"), Some("audio/mp4"));
+        assert_eq!(mime_for_extension("ogg"), Some("audio/ogg"));
+        assert_eq!(mime_for_extension("oga"), Some("audio/ogg"));
+        assert_eq!(mime_for_extension("webm"), Some("audio/webm"));
+    }
+
+    #[test]
+    fn should_return_none_for_unsupported_extensions() {
+        assert_eq!(mime_for_extension("txt"), None);
+        assert_eq!(mime_for_extension("pdf"), None);
+        assert_eq!(mime_for_extension("mp4"), None);
+        assert_eq!(mime_for_extension(""), None);
+    }
+
+    #[test]
+    fn should_compare_versions_correctly() {
+        assert!(version_newer("1.1.0", "1.0.0"));
+        assert!(version_newer("2.0.0", "1.9.9"));
+        assert!(!version_newer("1.0.0", "1.0.0"));
+        assert!(!version_newer("0.9.0", "1.0.0"));
+    }
 }

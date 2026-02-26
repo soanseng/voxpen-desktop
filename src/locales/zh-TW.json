@@ -160,5 +160,21 @@
   "deleteModel": "刪除模型",
   "deleteModelConfirm": "再按一次確認刪除",
   "downloadFailed": "下載失敗：{{error}}",
-  "noApiKeyNeeded": "無需 API 金鑰 — 完全離線運行。"
+  "noApiKeyNeeded": "無需 API 金鑰 — 完全離線運行。",
+  "fileTranscription": "檔案",
+  "fileTranscribe": {
+    "title": "音訊檔案轉錄",
+    "description": "轉錄音訊檔案（wav、mp3、flac、m4a、ogg、webm）。僅限 Pro 版。",
+    "proRequired": "此功能需要 Pro 授權。",
+    "selectFile": "選擇音訊檔案",
+    "dragHint": "或將音訊檔案拖放至此處",
+    "supported": "支援格式：WAV、MP3、FLAC、M4A、OGG、WebM（最大 25 MB）",
+    "transcribing": "轉錄中...",
+    "result": "轉錄結果",
+    "refinedResult": "潤飾後",
+    "copyResult": "複製",
+    "copiedResult": "已複製！",
+    "transcribeAnother": "轉錄另一個檔案",
+    "error": "轉錄失敗：{{error}}"
+  }
 }

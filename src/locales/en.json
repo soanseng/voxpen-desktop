@@ -160,5 +160,21 @@
   "deleteModel": "Delete Model",
   "deleteModelConfirm": "Click again to confirm",
   "downloadFailed": "Download failed: {{error}}",
-  "noApiKeyNeeded": "No API key needed — runs entirely offline."
+  "noApiKeyNeeded": "No API key needed — runs entirely offline.",
+  "fileTranscription": "File",
+  "fileTranscribe": {
+    "title": "Audio File Transcription",
+    "description": "Transcribe audio files (wav, mp3, flac, m4a, ogg, webm). Pro only.",
+    "proRequired": "This feature requires a Pro license.",
+    "selectFile": "Select Audio File",
+    "dragHint": "or drag and drop an audio file here",
+    "supported": "Supported: WAV, MP3, FLAC, M4A, OGG, WebM (max 25 MB)",
+    "transcribing": "Transcribing...",
+    "result": "Transcription",
+    "refinedResult": "Refined",
+    "copyResult": "Copy",
+    "copiedResult": "Copied!",
+    "transcribeAnother": "Transcribe Another",
+    "error": "Transcription failed: {{error}}"
+  }
 }

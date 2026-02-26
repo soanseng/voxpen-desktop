@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Settings, LicenseInfo, LicenseTier, UsageStatus, WhisperModel, ModelStatus } from "../types/settings";
+import type { Settings, LicenseInfo, LicenseTier, UsageStatus, WhisperModel, ModelStatus, FileTranscriptionResult } from "../types/settings";
 import type { TranscriptionEntry } from "../types/history";
 import type { DictionaryEntry } from "../types/dictionary";
 
@@ -134,4 +134,8 @@ export async function downloadWhisperModel(modelId: string): Promise<void> {
 
 export async function deleteWhisperModel(modelId: string): Promise<void> {
   return invoke("delete_whisper_model", { modelId });
+}
+
+export async function transcribeFile(filePath: string): Promise<FileTranscriptionResult> {
+  return invoke<FileTranscriptionResult>("transcribe_file", { filePath });
 }

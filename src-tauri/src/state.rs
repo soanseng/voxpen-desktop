@@ -147,6 +147,13 @@ impl LlmProvider for GroqLlmProvider {
     }
 }
 
+/// Resolve the API key for a given provider from the AppHandle.
+///
+/// Public wrapper for use in Tauri commands.
+pub fn get_api_key_from_handle(app: &AppHandle, provider: &str) -> Result<String, AppError> {
+    get_api_key(app, provider)
+}
+
 /// Resolve the API key for a given provider.
 ///
 /// 1. Try the encrypted Tauri store (secrets.json) — set via save_api_key command

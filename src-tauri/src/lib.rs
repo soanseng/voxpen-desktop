@@ -16,7 +16,7 @@ use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     path::BaseDirectory,
     tray::TrayIconBuilder,
-    Emitter, Manager,
+    Emitter, Listener, Manager,
 };
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
@@ -52,14 +52,36 @@ const ALL_TONES: &[(&str, TonePreset)] = &[
     ("Custom", TonePreset::Custom),
 ];
 
+/// Format the tray usage text based on license tier and usage status.
+fn format_usage_text(tier: &voxink_core::licensing::LicenseTier, status: &voxink_core::licensing::UsageStatus) -> String {
+    use voxink_core::licensing::{LicenseTier, UsageStatus, FREE_DAILY_LIMIT};
+    match tier {
+        LicenseTier::Pro => "Unlimited (Pro)".to_string(),
+        LicenseTier::Free => {
+            let used = match status {
+                UsageStatus::Available { remaining } | UsageStatus::Warning { remaining } => {
+                    FREE_DAILY_LIMIT - remaining
+                }
+                UsageStatus::Exhausted => FREE_DAILY_LIMIT,
+                UsageStatus::Unlimited => 0,
+            };
+            format!("Free: {used}/{FREE_DAILY_LIMIT} today")
+        }
+    }
+}
+
 /// Build the tray menu with language submenu, tone submenu, and microphone submenu.
+///
+/// Returns the menu and the usage `MenuItem` so the caller can update its text later.
 fn build_tray_menu(
     app: &tauri::App,
     current_lang: &Language,
     current_tone: &TonePreset,
     mic_devices: &[String],
     current_mic: &Option<String>,
-) -> tauri::Result<Menu<tauri::Wry>> {
+    usage_text: &str,
+    is_pro: bool,
+) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>)> {
     // Language submenu
     let mut lang_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
     for (label, lang) in ALL_LANGUAGES {
@@ -104,15 +126,15 @@ fn build_tray_menu(
         mic_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
 
-    let usage_item = MenuItem::with_id(app, "usage_info", "Free: 0/15 today", false, None::<&str>)?;
-    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", true, None::<&str>)?;
+    let usage_item = MenuItem::with_id(app, "usage_info", usage_text, false, None::<&str>)?;
+    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", !is_pro, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit VoxInk", true, None::<&str>)?;
 
-    Menu::with_items(
+    let menu = Menu::with_items(
         app,
         &[
             &usage_item,
@@ -126,7 +148,8 @@ fn build_tray_menu(
             &sep2,
             &quit_item,
         ],
-    )
+    )?;
+    Ok((menu, usage_item))
 }
 
 pub fn run() {
@@ -137,6 +160,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // Initialize shared settings
@@ -226,9 +250,18 @@ pub fn run() {
                 let state: tauri::State<'_, AppState> = app.state();
                 let controller = state.controller.clone();
 
+                // Query initial license status for tray display
+                let state_ref: tauri::State<'_, AppState> = app.state();
+                let tier = state_ref.license_manager.current_tier();
+                let initial_usage = tauri::async_runtime::block_on(
+                    state_ref.license_manager.check_access(),
+                );
+                let usage_text = format_usage_text(&tier, &initial_usage);
+                let is_pro = tier == voxink_core::licensing::LicenseTier::Pro;
+
                 // Build system tray menu
                 let mic_devices = audio::list_input_devices();
-                let menu = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None)?;
+                let (menu, usage_item) = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None, &usage_text, is_pro)?;
 
                 let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("failed to load tray icon");
@@ -251,7 +284,7 @@ pub fn run() {
                                 app.exit(0);
                             }
                             "upgrade_pro" => {
-                                let _ = open::that("https://voxink.lemonsqueezy.com/buy");
+                                let _ = open::that("https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1");
                             }
                             "check_update" => {
                                 tauri::async_runtime::spawn(async move {
@@ -401,6 +434,20 @@ pub fn run() {
                         }
                     }
                 });
+
+                // Listen for usage-updated events and refresh the tray menu item
+                let license_mgr_for_tray = {
+                    let s: tauri::State<'_, AppState> = app.state();
+                    s.license_manager.clone()
+                };
+                app.listen("usage-updated", move |_event| {
+                    let tier = license_mgr_for_tray.current_tier();
+                    let status = tauri::async_runtime::block_on(
+                        license_mgr_for_tray.check_access(),
+                    );
+                    let text = format_usage_text(&tier, &status);
+                    let _ = usage_item.set_text(&text);
+                });
             }
 
             // Register dual hotkeys from saved settings
@@ -467,7 +514,60 @@ pub fn run() {
             commands::get_license_info,
             commands::get_usage_status,
             commands::get_license_tier,
+            commands::transcribe_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use voxink_core::licensing::{LicenseTier, UsageStatus};
+
+    #[test]
+    fn should_format_pro_tier_as_unlimited() {
+        let text = format_usage_text(&LicenseTier::Pro, &UsageStatus::Unlimited);
+        assert_eq!(text, "Unlimited (Pro)");
+    }
+
+    #[test]
+    fn should_format_pro_tier_regardless_of_status() {
+        // Even if somehow status is Available, Pro tier says Unlimited
+        let text = format_usage_text(&LicenseTier::Pro, &UsageStatus::Available { remaining: 5 });
+        assert_eq!(text, "Unlimited (Pro)");
+    }
+
+    #[test]
+    fn should_format_free_tier_with_zero_usage() {
+        let text = format_usage_text(
+            &LicenseTier::Free,
+            &UsageStatus::Available { remaining: 15 },
+        );
+        assert_eq!(text, "Free: 0/15 today");
+    }
+
+    #[test]
+    fn should_format_free_tier_with_partial_usage() {
+        let text = format_usage_text(
+            &LicenseTier::Free,
+            &UsageStatus::Available { remaining: 10 },
+        );
+        assert_eq!(text, "Free: 5/15 today");
+    }
+
+    #[test]
+    fn should_format_free_tier_with_warning() {
+        let text = format_usage_text(
+            &LicenseTier::Free,
+            &UsageStatus::Warning { remaining: 2 },
+        );
+        assert_eq!(text, "Free: 13/15 today");
+    }
+
+    #[test]
+    fn should_format_free_tier_exhausted() {
+        let text = format_usage_text(&LicenseTier::Free, &UsageStatus::Exhausted);
+        assert_eq!(text, "Free: 15/15 today");
+    }
 }
