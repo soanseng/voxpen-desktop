@@ -81,6 +81,8 @@ fn build_tray_menu(
         mic_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
 
+    let usage_item = MenuItem::with_id(app, "usage_info", "Free: 0/15 today", false, None::<&str>)?;
+    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
@@ -90,6 +92,8 @@ fn build_tray_menu(
     Menu::with_items(
         app,
         &[
+            &usage_item,
+            &upgrade_item,
             &lang_submenu,
             &mic_submenu,
             &sep1,
@@ -192,6 +196,9 @@ pub fn run() {
                             }
                             "quit" => {
                                 app.exit(0);
+                            }
+                            "upgrade_pro" => {
+                                let _ = open::that("https://voxink.lemonsqueezy.com/buy");
                             }
                             "check_update" => {
                                 tauri::async_runtime::spawn(async move {

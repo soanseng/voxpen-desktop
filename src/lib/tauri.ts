@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Settings } from "../types/settings";
+import type { Settings, LicenseInfo, LicenseTier, UsageStatus } from "../types/settings";
 import type { TranscriptionEntry } from "../types/history";
 import type { DictionaryEntry } from "../types/dictionary";
 
@@ -97,4 +97,24 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
 
 export async function setHotkey(shortcut: string, kind: string): Promise<void> {
   return invoke("set_hotkey", { shortcut, kind });
+}
+
+export async function activateLicense(key: string): Promise<LicenseInfo> {
+  return invoke<LicenseInfo>("activate_license", { key });
+}
+
+export async function deactivateLicense(): Promise<void> {
+  return invoke("deactivate_license");
+}
+
+export async function getLicenseInfo(): Promise<LicenseInfo | null> {
+  return invoke<LicenseInfo | null>("get_license_info");
+}
+
+export async function getUsageStatus(): Promise<UsageStatus> {
+  return invoke<UsageStatus>("get_usage_status");
+}
+
+export async function getLicenseTier(): Promise<LicenseTier> {
+  return invoke<LicenseTier>("get_license_tier");
 }

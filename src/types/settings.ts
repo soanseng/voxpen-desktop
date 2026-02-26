@@ -16,6 +16,24 @@ export interface Settings {
   microphone_device: string | null;
 }
 
+export type LicenseTier = "Free" | "Pro";
+
+export interface LicenseInfo {
+  tier: LicenseTier;
+  license_key: string;
+  instance_id: string;
+  licensed_version: number;
+  activated_at: number;
+  last_verified_at: number;
+  verification_grace_until: number | null;
+}
+
+export type UsageStatus =
+  | { type: "Available"; data: { remaining: number } }
+  | { type: "Warning"; data: { remaining: number } }
+  | { type: "Exhausted" }
+  | { type: "Unlimited" };
+
 export const defaultSettings: Settings = {
   hotkey_ptt: "RAlt",
   hotkey_toggle: "CommandOrControl+Shift+V",
