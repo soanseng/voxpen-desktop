@@ -72,7 +72,8 @@ fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen
 
 /// Build the tray menu with language submenu, tone submenu, and microphone submenu.
 ///
-/// Returns the menu and the usage `MenuItem` so the caller can update its text later.
+/// Returns the menu, the usage `MenuItem`, and the upgrade `MenuItem` so the
+/// caller can update them dynamically after license changes.
 fn build_tray_menu(
     app: &tauri::App,
     current_lang: &Language,
@@ -81,7 +82,7 @@ fn build_tray_menu(
     current_mic: &Option<String>,
     usage_text: &str,
     is_pro: bool,
-) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>)> {
+) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> {
     // Language submenu
     let mut lang_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
     for (label, lang) in ALL_LANGUAGES {
@@ -149,7 +150,7 @@ fn build_tray_menu(
             &quit_item,
         ],
     )?;
-    Ok((menu, usage_item))
+    Ok((menu, usage_item, upgrade_item))
 }
 
 pub fn run() {
@@ -261,7 +262,7 @@ pub fn run() {
 
                 // Build system tray menu
                 let mic_devices = audio::list_input_devices();
-                let (menu, usage_item) = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None, &usage_text, is_pro)?;
+                let (menu, usage_item, upgrade_item) = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None, &usage_text, is_pro)?;
 
                 let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("failed to load tray icon");
@@ -447,6 +448,14 @@ pub fn run() {
                     );
                     let text = format_usage_text(&tier, &status);
                     let _ = usage_item.set_text(&text);
+                });
+
+                // Listen for license-tier-changed to update the "Upgrade to Pro" item
+                app.listen("license-tier-changed", move |event| {
+                    let is_now_pro = serde_json::from_str::<String>(event.payload())
+                        .map(|t| t == "Pro")
+                        .unwrap_or(false);
+                    let _ = upgrade_item.set_enabled(!is_now_pro);
                 });
             }
 
