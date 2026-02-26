@@ -25,6 +25,15 @@ fn config_from_settings(settings: &Settings) -> PipelineConfig {
     }
 }
 
+/// Open a URL in the system's default browser.
+///
+/// Tauri's webview CSP blocks `window.open()` for external URLs,
+/// so the frontend must delegate to this Rust command instead.
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|e| e.to_string())
+}
+
 /// Change a hotkey at runtime. `kind` is "ptt" or "toggle".
 #[tauri::command]
 pub async fn set_hotkey(

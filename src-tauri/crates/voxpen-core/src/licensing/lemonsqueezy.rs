@@ -144,8 +144,12 @@ impl LemonSqueezyClient {
 // ---------------------------------------------------------------------------
 
 /// Top-level response from LemonSqueezy license endpoints.
+///
+/// The activate endpoint returns `activated`, while the validate endpoint
+/// returns `valid`. We accept both via `#[serde(alias)]`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LsLicenseResponse {
+    #[serde(alias = "activated")]
     pub valid: bool,
     pub error: Option<String>,
     pub license_key: Option<LsLicenseKey>,
@@ -184,9 +188,10 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    /// Real LemonSqueezy activate endpoint returns `activated`, not `valid`.
     fn activation_success_json() -> serde_json::Value {
         serde_json::json!({
-            "valid": true,
+            "activated": true,
             "error": null,
             "license_key": {
                 "id": 1234,
@@ -209,7 +214,7 @@ mod tests {
 
     fn activation_invalid_json() -> serde_json::Value {
         serde_json::json!({
-            "valid": false,
+            "activated": false,
             "error": "The license key is invalid.",
             "license_key": null,
             "instance": null,
@@ -359,5 +364,27 @@ mod tests {
             }
             other => panic!("expected License error, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn should_deserialize_response_with_activated_field() {
+        let json = r#"{"activated":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1},"instance":{"id":"i","name":"n"},"meta":{"store_id":1,"product_id":2,"variant_id":3}}"#;
+        let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.valid);
+    }
+
+    #[test]
+    fn should_deserialize_response_with_valid_field() {
+        let json = r#"{"valid":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1},"instance":{"id":"i","name":"n"},"meta":{"store_id":1,"product_id":2,"variant_id":3}}"#;
+        let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.valid);
+    }
+
+    #[test]
+    fn should_ignore_unknown_fields_in_response() {
+        let json = r#"{"activated":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1,"created_at":"2026-01-01","expires_at":null},"instance":{"id":"i","name":"n","created_at":"2026-01-01"},"meta":{"store_id":1,"order_id":99,"order_item_id":88,"product_id":2,"product_name":"VoxPen Pro","variant_id":3,"variant_name":"Default","customer_id":77,"customer_name":"Test","customer_email":"test@example.com"}}"#;
+        let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.valid);
+        assert_eq!(resp.meta.unwrap().product_id, Some(2));
     }
 }

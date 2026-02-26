@@ -7,6 +7,7 @@ import {
   getUsageStatus,
   activateLicense,
   deactivateLicense,
+  openUrl,
 } from "../../lib/tauri";
 
 const PURCHASE_URL = "https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1";
@@ -249,7 +250,7 @@ export default function LicenseSection() {
           {/* Purchase button */}
           <button
             type="button"
-            onClick={() => window.open(PURCHASE_URL, "_blank")}
+            onClick={() => void openUrl(PURCHASE_URL)}
             className={
               "w-full rounded-lg border border-blue-500 px-4 py-2.5 text-sm font-medium " +
               "text-blue-600 transition-colors hover:bg-blue-50 " +

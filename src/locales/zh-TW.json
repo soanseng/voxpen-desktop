@@ -124,7 +124,7 @@
     "help": "加入的詞彙會協助語音引擎更準確地辨識人名、地名與專有名詞。"
   },
   "license": {
-    "tab": "License",
+    "tab": "授權",
     "free": "VoxPen 免費版",
     "pro": "VoxPen Pro",
     "usageToday": "今日：{{used}} / {{limit}}",

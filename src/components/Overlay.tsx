@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "../lib/tauri";
 
 interface PipelineEvent {
   type:
@@ -165,7 +166,7 @@ export default function Overlay() {
           <button
             type="button"
             onClick={() => {
-              window.open(PURCHASE_URL, "_blank");
+              void openUrl(PURCHASE_URL);
             }}
             className="rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-400"
           >

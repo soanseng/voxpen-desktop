@@ -488,6 +488,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::open_url,
             commands::set_hotkey,
             commands::get_settings,
             commands::save_settings,

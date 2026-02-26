@@ -3,6 +3,10 @@ import type { Settings, LicenseInfo, LicenseTier, UsageStatus, WhisperModel, Mod
 import type { TranscriptionEntry } from "../types/history";
 import type { DictionaryEntry } from "../types/dictionary";
 
+export async function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
+
 export async function getSettings(): Promise<Settings> {
   return invoke<Settings>("get_settings");
 }
