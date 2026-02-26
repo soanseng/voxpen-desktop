@@ -36,6 +36,18 @@ export type UsageStatus =
   | { type: "Exhausted" }
   | { type: "Unlimited" };
 
+export interface CategorizedUsageStatus {
+  voice_input: UsageStatus;
+  refinement: UsageStatus;
+  file_transcription: UsageStatus;
+}
+
+export const FREE_LIMITS = {
+  VoiceInput: 30,
+  Refinement: 10,
+  FileTranscription: 2,
+} as const;
+
 export interface WhisperModel {
   id: string;
   tier: string;

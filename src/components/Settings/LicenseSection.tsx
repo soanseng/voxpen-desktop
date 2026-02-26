@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import type { LicenseInfo, UsageStatus } from "../../types/settings";
+import type { LicenseInfo, CategorizedUsageStatus, UsageStatus } from "../../types/settings";
+import { FREE_LIMITS } from "../../types/settings";
 import {
   getLicenseInfo,
   getUsageStatus,
@@ -11,30 +12,78 @@ import {
 } from "../../lib/tauri";
 
 const PURCHASE_URL = "https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1";
-const FREE_DAILY_LIMIT = 15;
 
 function maskKey(key: string): string {
   if (key.length <= 8) return key;
   return key.slice(0, 4) + "\u00B7\u00B7\u00B7\u00B7" + key.slice(-4);
 }
 
-function usageUsedCount(status: UsageStatus): number {
+function usageUsedCount(status: UsageStatus, limit: number): number {
   switch (status.type) {
     case "Available":
-      return FREE_DAILY_LIMIT - status.data.remaining;
+      return limit - status.data.remaining;
     case "Warning":
-      return FREE_DAILY_LIMIT - status.data.remaining;
+      return limit - status.data.remaining;
     case "Exhausted":
-      return FREE_DAILY_LIMIT;
+      return limit;
     case "Unlimited":
       return 0;
   }
 }
 
+function UsageBar({
+  label,
+  status,
+  limit,
+  t,
+}: {
+  label: string;
+  status: UsageStatus;
+  limit: number;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const used = usageUsedCount(status, limit);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {label}
+        </span>
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {t("license.usageToday", {
+            used: String(used),
+            limit: String(limit),
+          })}
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div
+          className={
+            "h-full rounded-full transition-all duration-300 " +
+            (status.type === "Exhausted"
+              ? "bg-amber-500"
+              : status.type === "Warning"
+                ? "bg-amber-400"
+                : "bg-blue-500")
+          }
+          style={{
+            width: `${Math.min(100, (used / limit) * 100)}%`,
+          }}
+        />
+      </div>
+      {status.type === "Exhausted" && (
+        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+          {t("license.exhausted")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function LicenseSection() {
   const { t } = useTranslation();
   const [license, setLicense] = useState<LicenseInfo | null>(null);
-  const [usage, setUsage] = useState<UsageStatus | null>(null);
+  const [usage, setUsage] = useState<CategorizedUsageStatus | null>(null);
   const [key, setKey] = useState("");
   const [activating, setActivating] = useState(false);
   const [message, setMessage] = useState<{
@@ -132,37 +181,27 @@ export default function LicenseSection() {
         )}
       </div>
 
-      {/* Usage bar (Free tier only) */}
+      {/* Usage bars (Free tier only) */}
       {!isPro && usage && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {t("license.usageToday", {
-                used: String(usageUsedCount(usage)),
-                limit: String(FREE_DAILY_LIMIT),
-              })}
-            </span>
-            {usage.type === "Exhausted" && (
-              <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                {t("license.exhausted")}
-              </span>
-            )}
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <div
-              className={
-                "h-full rounded-full transition-all duration-300 " +
-                (usage.type === "Exhausted"
-                  ? "bg-amber-500"
-                  : usage.type === "Warning"
-                    ? "bg-amber-400"
-                    : "bg-blue-500")
-              }
-              style={{
-                width: `${Math.min(100, (usageUsedCount(usage) / FREE_DAILY_LIMIT) * 100)}%`,
-              }}
-            />
-          </div>
+        <div className="space-y-4">
+          <UsageBar
+            label={t("license.voiceInput")}
+            status={usage.voice_input}
+            limit={FREE_LIMITS.VoiceInput}
+            t={t}
+          />
+          <UsageBar
+            label={t("license.refinementLabel")}
+            status={usage.refinement}
+            limit={FREE_LIMITS.Refinement}
+            t={t}
+          />
+          <UsageBar
+            label={t("license.fileTranscriptionLabel")}
+            status={usage.file_transcription}
+            limit={FREE_LIMITS.FileTranscription}
+            t={t}
+          />
         </div>
       )}
 

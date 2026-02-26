@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::licensing::types::UsageCategory;
+
 /// Application-wide error type, matching Android's error categories.
 /// Uses `thiserror` for ergonomic `Display` + `Error` impls.
 #[derive(Debug, thiserror::Error)]
@@ -31,8 +33,8 @@ pub enum AppError {
     #[error("License error: {0}")]
     License(String),
 
-    #[error("Daily usage limit reached")]
-    UsageLimitReached,
+    #[error("Daily {0} limit reached")]
+    UsageLimitReached(UsageCategory),
 
     #[error("Model not downloaded: {0}")]
     ModelNotDownloaded(String),
@@ -57,6 +59,7 @@ impl Serialize for AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::licensing::types::UsageCategory;
 
     #[test]
     fn should_display_api_key_missing_error() {
@@ -90,8 +93,20 @@ mod tests {
 
     #[test]
     fn should_display_usage_limit_error() {
-        let err = AppError::UsageLimitReached;
-        assert_eq!(err.to_string(), "Daily usage limit reached");
+        let err = AppError::UsageLimitReached(UsageCategory::VoiceInput);
+        assert_eq!(err.to_string(), "Daily voice input limit reached");
+    }
+
+    #[test]
+    fn should_display_usage_limit_error_refinement() {
+        let err = AppError::UsageLimitReached(UsageCategory::Refinement);
+        assert_eq!(err.to_string(), "Daily AI refinement limit reached");
+    }
+
+    #[test]
+    fn should_display_usage_limit_error_file() {
+        let err = AppError::UsageLimitReached(UsageCategory::FileTranscription);
+        assert_eq!(err.to_string(), "Daily file transcription limit reached");
     }
 
     #[test]

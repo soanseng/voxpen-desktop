@@ -1,10 +1,30 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
-/// License tier: Free (15 transcriptions/day) or Pro (unlimited).
+/// License tier: Free (per-category daily limits) or Pro (unlimited).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LicenseTier {
     Free,
     Pro,
+}
+
+/// Category of usage being tracked independently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum UsageCategory {
+    VoiceInput,
+    Refinement,
+    FileTranscription,
+}
+
+impl fmt::Display for UsageCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UsageCategory::VoiceInput => write!(f, "voice input"),
+            UsageCategory::Refinement => write!(f, "AI refinement"),
+            UsageCategory::FileTranscription => write!(f, "file transcription"),
+        }
+    }
 }
 
 /// Persisted license information for an activated Pro license.
@@ -45,10 +65,31 @@ pub struct UsageRecord {
     pub count: u32,
 }
 
-/// Maximum free transcriptions per day.
-pub const FREE_DAILY_LIMIT: u32 = 15;
-/// Remaining count at or below which we show a warning.
-pub const WARNING_THRESHOLD: u32 = 3;
+/// Maximum free uses per day for a given category.
+pub fn free_daily_limit(category: UsageCategory) -> u32 {
+    match category {
+        UsageCategory::VoiceInput => 30,
+        UsageCategory::Refinement => 10,
+        UsageCategory::FileTranscription => 2,
+    }
+}
+
+/// Remaining count at or below which we show a warning for a given category.
+pub fn warning_threshold(category: UsageCategory) -> u32 {
+    match category {
+        UsageCategory::VoiceInput => 5,
+        UsageCategory::Refinement => 2,
+        UsageCategory::FileTranscription => 1,
+    }
+}
+
+/// Aggregated usage status for all categories (Free tier).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CategorizedUsageStatus {
+    pub voice_input: UsageStatus,
+    pub refinement: UsageStatus,
+    pub file_transcription: UsageStatus,
+}
 /// Days between required license verifications.
 pub const VERIFY_INTERVAL_DAYS: i64 = 7;
 /// Days of grace after a failed verification before downgrading.
@@ -161,8 +202,12 @@ mod tests {
 
     #[test]
     fn should_have_correct_constant_values() {
-        assert_eq!(FREE_DAILY_LIMIT, 15);
-        assert_eq!(WARNING_THRESHOLD, 3);
+        assert_eq!(free_daily_limit(UsageCategory::VoiceInput), 30);
+        assert_eq!(free_daily_limit(UsageCategory::Refinement), 10);
+        assert_eq!(free_daily_limit(UsageCategory::FileTranscription), 2);
+        assert_eq!(warning_threshold(UsageCategory::VoiceInput), 5);
+        assert_eq!(warning_threshold(UsageCategory::Refinement), 2);
+        assert_eq!(warning_threshold(UsageCategory::FileTranscription), 1);
         assert_eq!(VERIFY_INTERVAL_DAYS, 7);
         assert_eq!(VERIFY_GRACE_DAYS, 7);
         assert_eq!(OFFLINE_GRACE_DAYS, 30);
@@ -176,5 +221,40 @@ mod tests {
         assert!(json.contains("\"type\":\"Available\""));
         // serde serializes struct variant content as an object
         assert!(json.contains("\"remaining\":5"), "actual json: {json}");
+    }
+
+    #[test]
+    fn should_roundtrip_usage_category() {
+        for cat in [
+            UsageCategory::VoiceInput,
+            UsageCategory::Refinement,
+            UsageCategory::FileTranscription,
+        ] {
+            let json = serde_json::to_string(&cat).unwrap();
+            let deserialized: UsageCategory = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, cat);
+        }
+    }
+
+    #[test]
+    fn should_roundtrip_categorized_usage_status() {
+        let status = CategorizedUsageStatus {
+            voice_input: UsageStatus::Available { remaining: 25 },
+            refinement: UsageStatus::Warning { remaining: 2 },
+            file_transcription: UsageStatus::Exhausted,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: CategorizedUsageStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, status);
+    }
+
+    #[test]
+    fn should_display_usage_category() {
+        assert_eq!(UsageCategory::VoiceInput.to_string(), "voice input");
+        assert_eq!(UsageCategory::Refinement.to_string(), "AI refinement");
+        assert_eq!(
+            UsageCategory::FileTranscription.to_string(),
+            "file transcription"
+        );
     }
 }

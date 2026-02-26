@@ -401,9 +401,10 @@ fn handle_hotkey_event(
             recording_started.store(false, Ordering::SeqCst);
 
             tauri::async_runtime::spawn(async move {
-                // License usage gate
-                let usage_status = license_mgr.check_access().await;
-                match &usage_status {
+                // License usage gate — check VoiceInput category specifically
+                let voice_status = license_mgr
+                    .check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
+                match &voice_status {
                     voxpen_core::licensing::UsageStatus::Exhausted => {
                         let _ = app_for_err.emit("usage-exhausted", ());
                         processing_flag.store(false, Ordering::SeqCst);
@@ -533,6 +534,7 @@ fn handle_hotkey_event(
                         }
                         _ => (final_text.clone(), None),
                     };
+                    let has_refined = refined.is_some();
 
                     let s = settings.lock().await;
                     let entry = voxpen_core::history::TranscriptionEntry {
@@ -554,8 +556,13 @@ fn handle_hotkey_event(
                         eprintln!("history insert error: {e}");
                     }
 
-                    // Record usage for licensing and update tray
-                    let _ = license_mgr.record_usage();
+                    // Record per-category usage for licensing and update tray
+                    let _ = license_mgr
+                        .record_usage(voxpen_core::licensing::UsageCategory::VoiceInput);
+                    if has_refined {
+                        let _ = license_mgr
+                            .record_usage(voxpen_core::licensing::UsageCategory::Refinement);
+                    }
                     let _ = app_for_usage.emit("usage-updated", ());
 
                     if auto_paste {

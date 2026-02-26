@@ -52,20 +52,21 @@ const ALL_TONES: &[(&str, TonePreset)] = &[
     ("Custom", TonePreset::Custom),
 ];
 
-/// Format the tray usage text based on license tier and usage status.
-fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen_core::licensing::UsageStatus) -> String {
-    use voxpen_core::licensing::{LicenseTier, UsageStatus, FREE_DAILY_LIMIT};
+/// Format the tray usage text based on license tier and categorized usage status.
+fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen_core::licensing::CategorizedUsageStatus) -> String {
+    use voxpen_core::licensing::{LicenseTier, UsageStatus, free_daily_limit, UsageCategory};
     match tier {
         LicenseTier::Pro => "Unlimited (Pro)".to_string(),
         LicenseTier::Free => {
-            let used = match status {
+            let voice_limit = free_daily_limit(UsageCategory::VoiceInput);
+            let voice_used = match &status.voice_input {
                 UsageStatus::Available { remaining } | UsageStatus::Warning { remaining } => {
-                    FREE_DAILY_LIMIT - remaining
+                    voice_limit - remaining
                 }
-                UsageStatus::Exhausted => FREE_DAILY_LIMIT,
+                UsageStatus::Exhausted => voice_limit,
                 UsageStatus::Unlimited => 0,
             };
-            format!("Free: {used}/{FREE_DAILY_LIMIT} today")
+            format!("Free: {voice_used}/{voice_limit} voice today")
         }
     }
 }
@@ -533,51 +534,62 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use voxpen_core::licensing::{LicenseTier, UsageStatus};
+    use voxpen_core::licensing::{CategorizedUsageStatus, LicenseTier, UsageStatus};
+
+    fn all_unlimited() -> CategorizedUsageStatus {
+        CategorizedUsageStatus {
+            voice_input: UsageStatus::Unlimited,
+            refinement: UsageStatus::Unlimited,
+            file_transcription: UsageStatus::Unlimited,
+        }
+    }
+
+    fn free_status(voice: UsageStatus) -> CategorizedUsageStatus {
+        CategorizedUsageStatus {
+            voice_input: voice,
+            refinement: UsageStatus::Available { remaining: 10 },
+            file_transcription: UsageStatus::Available { remaining: 2 },
+        }
+    }
 
     #[test]
     fn should_format_pro_tier_as_unlimited() {
-        let text = format_usage_text(&LicenseTier::Pro, &UsageStatus::Unlimited);
+        let text = format_usage_text(&LicenseTier::Pro, &all_unlimited());
         assert_eq!(text, "Unlimited (Pro)");
     }
 
     #[test]
     fn should_format_pro_tier_regardless_of_status() {
-        // Even if somehow status is Available, Pro tier says Unlimited
-        let text = format_usage_text(&LicenseTier::Pro, &UsageStatus::Available { remaining: 5 });
+        let status = free_status(UsageStatus::Available { remaining: 5 });
+        let text = format_usage_text(&LicenseTier::Pro, &status);
         assert_eq!(text, "Unlimited (Pro)");
     }
 
     #[test]
     fn should_format_free_tier_with_zero_usage() {
-        let text = format_usage_text(
-            &LicenseTier::Free,
-            &UsageStatus::Available { remaining: 15 },
-        );
-        assert_eq!(text, "Free: 0/15 today");
+        let status = free_status(UsageStatus::Available { remaining: 30 });
+        let text = format_usage_text(&LicenseTier::Free, &status);
+        assert_eq!(text, "Free: 0/30 voice today");
     }
 
     #[test]
     fn should_format_free_tier_with_partial_usage() {
-        let text = format_usage_text(
-            &LicenseTier::Free,
-            &UsageStatus::Available { remaining: 10 },
-        );
-        assert_eq!(text, "Free: 5/15 today");
+        let status = free_status(UsageStatus::Available { remaining: 20 });
+        let text = format_usage_text(&LicenseTier::Free, &status);
+        assert_eq!(text, "Free: 10/30 voice today");
     }
 
     #[test]
     fn should_format_free_tier_with_warning() {
-        let text = format_usage_text(
-            &LicenseTier::Free,
-            &UsageStatus::Warning { remaining: 2 },
-        );
-        assert_eq!(text, "Free: 13/15 today");
+        let status = free_status(UsageStatus::Warning { remaining: 2 });
+        let text = format_usage_text(&LicenseTier::Free, &status);
+        assert_eq!(text, "Free: 28/30 voice today");
     }
 
     #[test]
     fn should_format_free_tier_exhausted() {
-        let text = format_usage_text(&LicenseTier::Free, &UsageStatus::Exhausted);
-        assert_eq!(text, "Free: 15/15 today");
+        let status = free_status(UsageStatus::Exhausted);
+        let text = format_usage_text(&LicenseTier::Free, &status);
+        assert_eq!(text, "Free: 30/30 voice today");
     }
 }

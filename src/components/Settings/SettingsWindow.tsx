@@ -230,6 +230,11 @@ export default function SettingsWindow() {
           <p className="text-xs text-gray-400 dark:text-gray-500">
             VoxPen v{appVersion}
           </p>
+          {licenseTier === "Free" && (
+            <p className="mt-2 text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+              {t("license.freeFooter")}
+            </p>
+          )}
         </div>
       </nav>
 
@@ -248,7 +253,7 @@ export default function SettingsWindow() {
           )}
           {activeTab === "dictionary" && <DictionarySection />}
           {activeTab === "fileTranscription" && (
-            <FileTranscriptionSection tier={licenseTier} />
+            <FileTranscriptionSection />
           )}
           {activeTab === "appearance" && (
             <AppearanceSection settings={settings} onUpdate={updateSetting} />

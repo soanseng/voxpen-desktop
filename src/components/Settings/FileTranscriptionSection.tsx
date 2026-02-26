@@ -2,21 +2,15 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { transcribeFile } from "../../lib/tauri";
-import type { LicenseTier, FileTranscriptionResult } from "../../types/settings";
+import type { FileTranscriptionResult } from "../../types/settings";
 
-interface Props {
-  tier: LicenseTier;
-}
-
-export default function FileTranscriptionSection({ tier }: Props) {
+export default function FileTranscriptionSection() {
   const { t } = useTranslation();
   const [transcribing, setTranscribing] = useState(false);
   const [result, setResult] = useState<FileTranscriptionResult | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<"original" | "refined" | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
-
-  const isPro = tier === "Pro";
 
   async function handleSelectFile() {
     const file = await open({
@@ -66,13 +60,7 @@ export default function FileTranscriptionSection({ tier }: Props) {
         {t("fileTranscribe.description")}
       </p>
 
-      {!isPro ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-            {t("fileTranscribe.proRequired")}
-          </p>
-        </div>
-      ) : result ? (
+      {result ? (
         /* Result view */
         <div className="space-y-4">
           {/* Original */}

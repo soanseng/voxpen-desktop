@@ -1,9 +1,9 @@
 use crate::error::AppError;
 use crate::licensing::types::{
-    LicenseInfo, LicenseTier, UsageStatus, FREE_DAILY_LIMIT, OFFLINE_GRACE_DAYS,
-    VERIFY_GRACE_DAYS, VERIFY_INTERVAL_DAYS,
+    CategorizedUsageStatus, LicenseInfo, LicenseTier, UsageCategory, UsageStatus,
+    free_daily_limit, OFFLINE_GRACE_DAYS, VERIFY_GRACE_DAYS, VERIFY_INTERVAL_DAYS,
 };
-use crate::licensing::usage::{compute_status, today_local};
+use crate::licensing::usage::{compute_categorized_status, compute_status, today_local};
 use crate::licensing::verifier::LicenseVerifier;
 
 /// Current app major version — licenses are bound to a major version.
@@ -20,10 +20,10 @@ pub trait LicenseStore: Send + Sync {
     fn clear(&self) -> Result<(), AppError>;
 }
 
-/// Trait for daily usage counting.
+/// Trait for daily usage counting (per-category).
 pub trait UsageDb: Send + Sync {
-    fn get_count(&self, date: &str) -> u32;
-    fn increment(&self, date: &str) -> Result<u32, AppError>;
+    fn get_count(&self, date: &str, category: UsageCategory) -> u32;
+    fn increment(&self, date: &str, category: UsageCategory) -> Result<u32, AppError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,40 +67,61 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
         self.store.load()
     }
 
-    /// Check access: piggyback a silent verify, then return usage status.
+    /// Check access: piggyback a silent verify, then return categorized usage status.
     ///
-    /// For Pro users, returns `Unlimited`.
-    /// For Free users, returns the computed status based on today's count.
-    pub async fn check_access(&self) -> UsageStatus {
+    /// For Pro users, returns all `Unlimited`.
+    /// For Free users, returns computed per-category status based on today's counts.
+    pub async fn check_access(&self) -> CategorizedUsageStatus {
         // Piggyback verify — errors are swallowed (best-effort)
         let _ = self.verify_if_needed().await;
 
         match self.current_tier() {
-            LicenseTier::Pro => UsageStatus::Unlimited,
+            LicenseTier::Pro => CategorizedUsageStatus {
+                voice_input: UsageStatus::Unlimited,
+                refinement: UsageStatus::Unlimited,
+                file_transcription: UsageStatus::Unlimited,
+            },
             LicenseTier::Free => {
-                let count = self.usage_db.get_count(&today_local());
-                compute_status(count)
+                let date = today_local();
+                let voice = self.usage_db.get_count(&date, UsageCategory::VoiceInput);
+                let refine = self.usage_db.get_count(&date, UsageCategory::Refinement);
+                let file = self
+                    .usage_db
+                    .get_count(&date, UsageCategory::FileTranscription);
+                compute_categorized_status(voice, refine, file)
             }
         }
     }
 
-    /// Record one transcription usage, returning the new status.
+    /// Check a single category's status (sync, no piggyback verify).
+    /// Used by hotkey pre-gate to quickly check VoiceInput.
+    pub fn check_category(&self, category: UsageCategory) -> UsageStatus {
+        match self.current_tier() {
+            LicenseTier::Pro => UsageStatus::Unlimited,
+            LicenseTier::Free => {
+                let count = self.usage_db.get_count(&today_local(), category);
+                compute_status(category, count)
+            }
+        }
+    }
+
+    /// Record one usage for a specific category, returning the new status.
     ///
     /// Pro users always get `Unlimited`. Free users get an error if exhausted.
-    pub fn record_usage(&self) -> Result<UsageStatus, AppError> {
+    pub fn record_usage(&self, category: UsageCategory) -> Result<UsageStatus, AppError> {
         if self.current_tier() == LicenseTier::Pro {
             return Ok(UsageStatus::Unlimited);
         }
 
         let date = today_local();
-        let current_count = self.usage_db.get_count(&date);
+        let current_count = self.usage_db.get_count(&date, category);
 
-        if current_count >= FREE_DAILY_LIMIT {
-            return Err(AppError::UsageLimitReached);
+        if current_count >= free_daily_limit(category) {
+            return Err(AppError::UsageLimitReached(category));
         }
 
-        let new_count = self.usage_db.increment(&date)?;
-        Ok(compute_status(new_count))
+        let new_count = self.usage_db.increment(&date, category)?;
+        Ok(compute_status(category, new_count))
     }
 
     /// Activate a license key, storing the result on success.
@@ -146,7 +167,9 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
         {
             Ok(()) => {}
             Err(ref e) if e.to_string().contains("instance_id not found") => {
-                eprintln!("[license] deactivate: instance already gone on server, clearing locally");
+                eprintln!(
+                    "[license] deactivate: instance already gone on server, clearing locally"
+                );
             }
             Err(ref e) if e.to_string().contains("HTTP 404") => {
                 eprintln!("[license] deactivate: 404 from server, clearing locally");
@@ -257,6 +280,7 @@ fn hostname_or_default() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::Mutex;
@@ -294,23 +318,33 @@ mod tests {
     // -- Mock UsageDb -------------------------------------------------------
 
     struct MockUsageDb {
-        count: Mutex<u32>,
+        counts: Mutex<HashMap<UsageCategory, u32>>,
     }
 
     impl MockUsageDb {
-        fn new(initial: u32) -> Self {
+        fn new(voice: u32, refine: u32, file: u32) -> Self {
+            let mut m = HashMap::new();
+            m.insert(UsageCategory::VoiceInput, voice);
+            m.insert(UsageCategory::Refinement, refine);
+            m.insert(UsageCategory::FileTranscription, file);
             Self {
-                count: Mutex::new(initial),
+                counts: Mutex::new(m),
             }
+        }
+
+        /// Convenience: all categories start at the same count.
+        fn uniform(count: u32) -> Self {
+            Self::new(count, count, count)
         }
     }
 
     impl UsageDb for MockUsageDb {
-        fn get_count(&self, _date: &str) -> u32 {
-            *self.count.lock().unwrap()
+        fn get_count(&self, _date: &str, category: UsageCategory) -> u32 {
+            *self.counts.lock().unwrap().get(&category).unwrap_or(&0)
         }
-        fn increment(&self, _date: &str) -> Result<u32, AppError> {
-            let mut val = self.count.lock().unwrap();
+        fn increment(&self, _date: &str, category: UsageCategory) -> Result<u32, AppError> {
+            let mut m = self.counts.lock().unwrap();
+            let val = m.entry(category).or_insert(0);
             *val += 1;
             Ok(*val)
         }
@@ -466,7 +500,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
     }
@@ -477,7 +511,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(Some(pro_license(now))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.current_tier(), LicenseTier::Pro);
     }
@@ -487,7 +521,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(Some(pro_license_wrong_version())),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
     }
@@ -497,50 +531,87 @@ mod tests {
     // =======================================================================
 
     #[tokio::test]
-    async fn check_access_should_return_unlimited_for_pro() {
+    async fn check_access_should_return_all_unlimited_for_pro() {
         let now = chrono::Utc::now().timestamp();
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(Some(pro_license(now))),
-            MockUsageDb::new(5),
+            MockUsageDb::uniform(5),
         );
-        assert_eq!(mgr.check_access().await, UsageStatus::Unlimited);
+        let status = mgr.check_access().await;
+        assert_eq!(status.voice_input, UsageStatus::Unlimited);
+        assert_eq!(status.refinement, UsageStatus::Unlimited);
+        assert_eq!(status.file_transcription, UsageStatus::Unlimited);
     }
 
     #[tokio::test]
-    async fn check_access_should_return_available_for_free_low_count() {
+    async fn check_access_should_return_per_category_status_for_free() {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(3),
+            MockUsageDb::new(3, 8, 1),
+        );
+        let status = mgr.check_access().await;
+        assert_eq!(
+            status.voice_input,
+            UsageStatus::Available { remaining: 27 }
         );
         assert_eq!(
-            mgr.check_access().await,
-            UsageStatus::Available { remaining: 12 }
-        );
-    }
-
-    #[tokio::test]
-    async fn check_access_should_return_warning_for_free_high_count() {
-        let mgr = LicenseManager::new(
-            MockVerifier::new(vec![]),
-            MockStore::new(None),
-            MockUsageDb::new(13),
-        );
-        assert_eq!(
-            mgr.check_access().await,
+            status.refinement,
             UsageStatus::Warning { remaining: 2 }
         );
+        assert_eq!(
+            status.file_transcription,
+            UsageStatus::Warning { remaining: 1 }
+        );
     }
 
     #[tokio::test]
-    async fn check_access_should_return_exhausted_for_free_at_limit() {
+    async fn check_access_should_return_exhausted_per_category() {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(15),
+            MockUsageDb::new(30, 10, 2),
         );
-        assert_eq!(mgr.check_access().await, UsageStatus::Exhausted);
+        let status = mgr.check_access().await;
+        assert_eq!(status.voice_input, UsageStatus::Exhausted);
+        assert_eq!(status.refinement, UsageStatus::Exhausted);
+        assert_eq!(status.file_transcription, UsageStatus::Exhausted);
+    }
+
+    // =======================================================================
+    // check_category tests
+    // =======================================================================
+
+    #[test]
+    fn check_category_should_return_unlimited_for_pro() {
+        let now = chrono::Utc::now().timestamp();
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(Some(pro_license(now))),
+            MockUsageDb::uniform(0),
+        );
+        assert_eq!(
+            mgr.check_category(UsageCategory::VoiceInput),
+            UsageStatus::Unlimited
+        );
+    }
+
+    #[test]
+    fn check_category_should_return_status_for_free() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(None),
+            MockUsageDb::new(25, 0, 0),
+        );
+        assert_eq!(
+            mgr.check_category(UsageCategory::VoiceInput),
+            UsageStatus::Warning { remaining: 5 }
+        );
+        assert_eq!(
+            mgr.check_category(UsageCategory::Refinement),
+            UsageStatus::Available { remaining: 10 }
+        );
     }
 
     // =======================================================================
@@ -553,21 +624,24 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(Some(pro_license(now))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
-        assert_eq!(mgr.record_usage().unwrap(), UsageStatus::Unlimited);
+        assert_eq!(
+            mgr.record_usage(UsageCategory::VoiceInput).unwrap(),
+            UsageStatus::Unlimited
+        );
     }
 
     #[test]
-    fn record_usage_should_increment_count_for_free() {
+    fn record_usage_should_increment_voice_for_free() {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::new(0, 0, 0),
         );
-        // After increment: count = 1, remaining = 14
-        let status = mgr.record_usage().unwrap();
-        assert_eq!(status, UsageStatus::Available { remaining: 14 });
+        // After increment: count = 1, remaining = 29
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
+        assert_eq!(status, UsageStatus::Available { remaining: 29 });
     }
 
     #[test]
@@ -575,11 +649,11 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(11),
+            MockUsageDb::new(24, 0, 0),
         );
-        // After increment: count = 12, remaining = 3
-        let status = mgr.record_usage().unwrap();
-        assert_eq!(status, UsageStatus::Warning { remaining: 3 });
+        // After increment: count = 25, remaining = 5 (== warning_threshold)
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
+        assert_eq!(status, UsageStatus::Warning { remaining: 5 });
     }
 
     #[test]
@@ -587,10 +661,10 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(14),
+            MockUsageDb::new(29, 0, 0),
         );
-        // After increment: count = 15
-        let status = mgr.record_usage().unwrap();
+        // After increment: count = 30 => Exhausted
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
         assert_eq!(status, UsageStatus::Exhausted);
     }
 
@@ -599,10 +673,39 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(15),
+            MockUsageDb::new(30, 0, 0),
         );
-        let result = mgr.record_usage();
-        assert!(matches!(result, Err(AppError::UsageLimitReached)));
+        let result = mgr.record_usage(UsageCategory::VoiceInput);
+        assert!(matches!(
+            result,
+            Err(AppError::UsageLimitReached(UsageCategory::VoiceInput))
+        ));
+    }
+
+    #[test]
+    fn record_usage_should_track_refinement_independently() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(None),
+            MockUsageDb::new(0, 9, 0),
+        );
+        // After increment: refine count = 10 => Exhausted
+        let status = mgr.record_usage(UsageCategory::Refinement).unwrap();
+        assert_eq!(status, UsageStatus::Exhausted);
+    }
+
+    #[test]
+    fn record_usage_should_track_file_transcription_independently() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(None),
+            MockUsageDb::new(0, 0, 2),
+        );
+        let result = mgr.record_usage(UsageCategory::FileTranscription);
+        assert!(matches!(
+            result,
+            Err(AppError::UsageLimitReached(UsageCategory::FileTranscription))
+        ));
     }
 
     // =======================================================================
@@ -614,7 +717,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ActivateOk]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let info = mgr.activate("KEY-NEW").await.unwrap();
@@ -633,7 +736,7 @@ mod tests {
                 "invalid key".to_string(),
             )]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let result = mgr.activate("BAD-KEY").await;
@@ -651,7 +754,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::DeactivateOk]),
             MockStore::new(Some(pro_license(now))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         assert_eq!(mgr.current_tier(), LicenseTier::Pro);
@@ -664,7 +767,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let result = mgr.deactivate().await;
@@ -680,7 +783,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.verify_if_needed().await.unwrap(), LicenseTier::Free);
     }
@@ -690,7 +793,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]),
             MockStore::new(Some(pro_license_wrong_version())),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.verify_if_needed().await.unwrap(), LicenseTier::Free);
         // Should have cleared the store
@@ -704,7 +807,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![]), // no verify behavior needed
             MockStore::new(Some(pro_license(now - 86400))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.verify_if_needed().await.unwrap(), LicenseTier::Pro);
     }
@@ -717,7 +820,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateOk]),
             MockStore::new(Some(pro_license(stale_time))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -736,7 +839,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateInvalid]),
             MockStore::new(Some(pro_license(stale_time))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -759,7 +862,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateInvalid]),
             MockStore::new(Some(pro_license_with_grace(stale_time, grace_until))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -775,7 +878,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateInvalid]),
             MockStore::new(Some(pro_license_with_grace(stale_time, grace_until))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -791,7 +894,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateErr]), // network error
             MockStore::new(Some(pro_license(stale_time))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -806,7 +909,7 @@ mod tests {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ValidateErr]), // network error
             MockStore::new(Some(pro_license(stale_time))),
-            MockUsageDb::new(0),
+            MockUsageDb::uniform(0),
         );
 
         let tier = mgr.verify_if_needed().await.unwrap();
@@ -819,89 +922,116 @@ mod tests {
     // =======================================================================
 
     #[tokio::test]
-    async fn should_activate_then_exhaust_free_quota_after_deactivate() {
-        // 1. Start as Free
+    async fn should_activate_then_exhaust_free_voice_quota_after_deactivate() {
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![
                 VerifyBehavior::ActivateOk,
                 VerifyBehavior::DeactivateOk,
             ]),
             MockStore::new(None),
-            MockUsageDb::new(0),
+            MockUsageDb::new(0, 0, 0),
         );
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
 
-        // 2. Activate → Pro
+        // Activate → Pro
         mgr.activate("KEY-123").await.unwrap();
         assert_eq!(mgr.current_tier(), LicenseTier::Pro);
 
-        // 3. Record usage as Pro → unlimited
-        let status = mgr.record_usage().unwrap();
+        // Record usage as Pro → unlimited
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
         assert_eq!(status, UsageStatus::Unlimited);
 
-        // 4. Deactivate → back to Free
+        // Deactivate → back to Free
         mgr.deactivate().await.unwrap();
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
 
-        // 5. Pro record_usage returns Unlimited without incrementing the DB,
-        // so count is still 0. Now as Free, record 14 times to reach count 14.
-        // After each call i (0-based): count = i + 1, remaining = 15 - (i + 1) = 14 - i
-        // Warning when remaining <= 3, i.e. 14 - i <= 3, i.e. i >= 11
-        for i in 0..14 {
-            let status = mgr.record_usage().unwrap();
+        // Exhaust voice quota (30 times)
+        for i in 0..29 {
+            let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
             let count_after = (i + 1) as u32;
-            let remaining = 15 - count_after;
-            if remaining > 3 {
+            let remaining = 30 - count_after;
+            if remaining > 5 {
                 assert!(
                     matches!(status, UsageStatus::Available { .. }),
-                    "Expected Available at iteration {i} (count={count_after}), got {status:?}"
+                    "Expected Available at i={i}, got {status:?}"
                 );
             } else {
                 assert!(
                     matches!(status, UsageStatus::Warning { .. }),
-                    "Expected Warning at iteration {i} (count={count_after}), got {status:?}"
+                    "Expected Warning at i={i}, got {status:?}"
                 );
             }
         }
 
-        // Count is now 14. Next record → count 15 → Exhausted
-        let status = mgr.record_usage().unwrap();
+        // count = 29 → next record → 30 → Exhausted
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
         assert_eq!(status, UsageStatus::Exhausted);
 
-        // 6. Further usage should be blocked
-        let result = mgr.record_usage();
+        // Further usage should be blocked
+        let result = mgr.record_usage(UsageCategory::VoiceInput);
         assert!(
-            matches!(result, Err(AppError::UsageLimitReached)),
+            matches!(
+                result,
+                Err(AppError::UsageLimitReached(UsageCategory::VoiceInput))
+            ),
             "Expected UsageLimitReached, got {result:?}"
         );
     }
 
     #[tokio::test]
     async fn should_exhaust_free_quota_then_activate_pro_for_unlimited() {
-        // 1. Start as Free, already at limit
         let mgr = LicenseManager::new(
             MockVerifier::new(vec![VerifyBehavior::ActivateOk]),
             MockStore::new(None),
-            MockUsageDb::new(15),
+            MockUsageDb::new(30, 10, 2),
         );
 
-        // 2. Verify exhausted
+        // Verify exhausted
         let status = mgr.check_access().await;
-        assert_eq!(status, UsageStatus::Exhausted);
+        assert_eq!(status.voice_input, UsageStatus::Exhausted);
+        assert_eq!(status.refinement, UsageStatus::Exhausted);
+        assert_eq!(status.file_transcription, UsageStatus::Exhausted);
 
-        // 3. Recording should fail
-        let result = mgr.record_usage();
-        assert!(matches!(result, Err(AppError::UsageLimitReached)));
+        // Recording should fail
+        let result = mgr.record_usage(UsageCategory::VoiceInput);
+        assert!(matches!(
+            result,
+            Err(AppError::UsageLimitReached(UsageCategory::VoiceInput))
+        ));
 
-        // 4. Activate Pro → should unlock
+        // Activate Pro → should unlock
         mgr.activate("KEY-PRO").await.unwrap();
         assert_eq!(mgr.current_tier(), LicenseTier::Pro);
 
-        // 5. Now usage should be unlimited even though count is 15
-        let status = mgr.record_usage().unwrap();
+        // Now usage should be unlimited
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
         assert_eq!(status, UsageStatus::Unlimited);
 
-        let status = mgr.check_access().await;
-        assert_eq!(status, UsageStatus::Unlimited);
+        let access = mgr.check_access().await;
+        assert_eq!(access.voice_input, UsageStatus::Unlimited);
+    }
+
+    #[tokio::test]
+    async fn independent_categories_do_not_interfere() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(None),
+            MockUsageDb::new(29, 0, 0),
+        );
+
+        // Voice is near limit
+        let status = mgr.record_usage(UsageCategory::VoiceInput).unwrap();
+        assert_eq!(status, UsageStatus::Exhausted);
+
+        // But refinement is fresh
+        let status = mgr.record_usage(UsageCategory::Refinement).unwrap();
+        assert_eq!(status, UsageStatus::Available { remaining: 9 });
+
+        // And file is fresh
+        let status = mgr.record_usage(UsageCategory::FileTranscription).unwrap();
+        assert_eq!(
+            status,
+            UsageStatus::Warning { remaining: 1 }
+        );
     }
 }

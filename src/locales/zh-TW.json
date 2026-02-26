@@ -143,7 +143,11 @@
     "activateSuccess": "授權啟用成功。",
     "activateFailed": "啟用失敗：{{error}}",
     "keyInvalid": "無效的授權碼。",
-    "deactivateSuccess": "已停用授權。"
+    "deactivateSuccess": "已停用授權。",
+    "voiceInput": "語音輸入",
+    "refinementLabel": "AI 潤飾",
+    "fileTranscriptionLabel": "檔案轉錄",
+    "freeFooter": "免費版 — 每日 30 次語音輸入，體驗 AI 潤稿。升級 Pro 解鎖無限使用。"
   },
   "localWhisper": "本機 (Whisper)",
   "localWhisperHint": "離線語音轉文字。音訊不會離開您的電腦。",
@@ -164,8 +168,7 @@
   "fileTranscription": "檔案",
   "fileTranscribe": {
     "title": "音訊檔案轉錄",
-    "description": "轉錄音訊檔案（wav、mp3、flac、m4a、ogg、webm）。僅限 Pro 版。",
-    "proRequired": "此功能需要 Pro 授權。",
+    "description": "轉錄音訊檔案（wav、mp3、flac、m4a、ogg、webm）。免費版：每日 2 次，Pro：無限次。",
     "selectFile": "選擇音訊檔案",
     "dragHint": "或將音訊檔案拖放至此處",
     "supported": "支援格式：WAV、MP3、FLAC、M4A、OGG、WebM（最大 25 MB）",

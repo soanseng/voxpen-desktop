@@ -3,7 +3,9 @@ use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 use voxpen_core::dictionary::DictionaryEntry;
-use voxpen_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
+use voxpen_core::licensing::types::{
+    CategorizedUsageStatus, LicenseInfo, LicenseTier, UsageCategory,
+};
 use voxpen_core::pipeline::prompts;
 use voxpen_core::history::TranscriptionEntry;
 use voxpen_core::pipeline::controller::PipelineConfig;
@@ -424,11 +426,11 @@ pub async fn get_license_info(
     Ok(state.license_manager.license_info())
 }
 
-/// Check usage access: piggyback verify + return current status.
+/// Check usage access: piggyback verify + return per-category status.
 #[tauri::command]
 pub async fn get_usage_status(
     state: tauri::State<'_, AppState>,
-) -> Result<UsageStatus, String> {
+) -> Result<CategorizedUsageStatus, String> {
     Ok(state.license_manager.check_access().await)
 }
 
@@ -464,8 +466,9 @@ fn mime_for_extension(ext: &str) -> Option<&'static str> {
     }
 }
 
-/// Transcribe an audio file (Pro only).
+/// Transcribe an audio file.
 ///
+/// Free users get 2/day; Pro users are unlimited.
 /// Reads the file, validates format and size, sends to the STT API,
 /// optionally refines with LLM, records usage, and saves to history.
 #[tauri::command]
@@ -476,12 +479,14 @@ pub async fn transcribe_file(
 ) -> Result<FileTranscriptionResult, String> {
     use voxpen_core::api::groq::{self, SttConfig, ChatConfig};
     use voxpen_core::pipeline::refine;
-    use voxpen_core::licensing::LicenseTier;
+    use voxpen_core::licensing::UsageStatus;
 
-    // Pro gate
-    let tier = state.license_manager.current_tier();
-    if tier != LicenseTier::Pro {
-        return Err("File transcription requires a Pro license.".to_string());
+    // Check FileTranscription quota
+    let file_status = state
+        .license_manager
+        .check_category(UsageCategory::FileTranscription);
+    if file_status == UsageStatus::Exhausted {
+        return Err("Daily file transcription limit reached. Upgrade to Pro for unlimited access.".to_string());
     }
 
     // Validate file extension
@@ -558,8 +563,15 @@ pub async fn transcribe_file(
         None
     };
 
-    // Record usage
-    let _ = state.license_manager.record_usage();
+    // Record per-category usage
+    let _ = state
+        .license_manager
+        .record_usage(UsageCategory::FileTranscription);
+    if refined.is_some() {
+        let _ = state
+            .license_manager
+            .record_usage(UsageCategory::Refinement);
+    }
     let _ = app.emit("usage-updated", ());
 
     // Save to history
