@@ -130,15 +130,29 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
     }
 
     /// Deactivate the current license, clearing local storage.
+    ///
+    /// If the remote API reports `instance_id not found` (HTTP 404), the
+    /// instance is already gone server-side, so we still clear locally.
     pub async fn deactivate(&self) -> Result<(), AppError> {
         let info = self
             .store
             .load()
             .ok_or_else(|| AppError::License("no active license".to_string()))?;
 
-        self.verifier
+        match self
+            .verifier
             .deactivate(&info.license_key, &info.instance_id)
-            .await?;
+            .await
+        {
+            Ok(()) => {}
+            Err(ref e) if e.to_string().contains("instance_id not found") => {
+                eprintln!("[license] deactivate: instance already gone on server, clearing locally");
+            }
+            Err(ref e) if e.to_string().contains("HTTP 404") => {
+                eprintln!("[license] deactivate: 404 from server, clearing locally");
+            }
+            Err(e) => return Err(e),
+        }
 
         self.store.clear()
     }
