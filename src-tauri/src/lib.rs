@@ -5,6 +5,7 @@ mod dictionary;
 mod history;
 mod hotkey;
 mod keyboard;
+mod licensing;
 mod state;
 
 use std::sync::atomic::AtomicBool;
@@ -80,6 +81,8 @@ fn build_tray_menu(
         mic_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
 
+    let usage_item = MenuItem::with_id(app, "usage_info", "Free: 0/15 today", false, None::<&str>)?;
+    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
@@ -89,6 +92,8 @@ fn build_tray_menu(
     Menu::with_items(
         app,
         &[
+            &usage_item,
+            &upgrade_item,
             &lang_submenu,
             &mic_submenu,
             &sep1,
@@ -136,7 +141,16 @@ pub fn run() {
             let history_db =
                 history::HistoryDb::open(db_path.clone()).expect("failed to open history DB");
             let dictionary_db =
-                dictionary::DictionaryDb::open(db_path).expect("failed to open dictionary DB");
+                dictionary::DictionaryDb::open(db_path.clone()).expect("failed to open dictionary DB");
+
+            // Initialize licensing
+            let license_store = licensing::TauriLicenseStore::new(app.handle().clone());
+            let usage_db = licensing::SqliteUsageDb::open(db_path)
+                .expect("failed to open usage DB");
+            let verifier = voxink_core::licensing::DirectLemonSqueezy::new();
+            let license_mgr = voxink_core::licensing::LicenseManager::new(
+                verifier, license_store, usage_db,
+            );
 
             // Create shared app state
             let app_state = AppState {
@@ -149,6 +163,7 @@ pub fn run() {
                 dictionary: Arc::new(dictionary_db),
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
                 recording_started: Arc::new(AtomicBool::new(false)),
+                license_manager: Arc::new(license_mgr),
             };
             app.manage(app_state);
 
@@ -181,6 +196,9 @@ pub fn run() {
                             }
                             "quit" => {
                                 app.exit(0);
+                            }
+                            "upgrade_pro" => {
+                                let _ = open::that("https://voxink.lemonsqueezy.com/buy");
                             }
                             "check_update" => {
                                 tauri::async_runtime::spawn(async move {
@@ -364,6 +382,11 @@ pub fn run() {
             commands::delete_dictionary_entry,
             commands::list_input_devices,
             commands::check_for_update,
+            commands::activate_license,
+            commands::deactivate_license,
+            commands::get_license_info,
+            commands::get_usage_status,
+            commands::get_license_tier,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

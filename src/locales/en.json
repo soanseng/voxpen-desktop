@@ -103,5 +103,27 @@
     "empty": "Add names, places, and terms to improve voice recognition accuracy.",
     "duplicate": "Word already exists.",
     "help": "Words you add here help the voice engine recognize names, places, and special terms more accurately."
+  },
+  "license": {
+    "tab": "License",
+    "free": "VoxInk Free",
+    "pro": "VoxInk Pro",
+    "usageToday": "Today: {{used}} / {{limit}}",
+    "enterKey": "Enter license key...",
+    "activate": "Activate",
+    "activating": "Activating...",
+    "deactivate": "Deactivate this device",
+    "purchase": "Purchase Pro",
+    "validFor": "Valid for: v{{version}}.x",
+    "devices": "Devices: {{used}} / {{limit}}",
+    "lastVerified": "Last verified: {{date}}",
+    "exhausted": "Daily limit reached",
+    "upgradePrompt": "Upgrade to Pro",
+    "warningRemaining": "{{count}} left today",
+    "verificationFailed": "License verification failed. Please reconnect within {{days}} days.",
+    "activateSuccess": "License activated successfully.",
+    "activateFailed": "Activation failed: {{error}}",
+    "keyInvalid": "Invalid license key.",
+    "deactivateSuccess": "License deactivated."
   }
 }

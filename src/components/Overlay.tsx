@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface PipelineEvent {
   type:
@@ -66,10 +67,15 @@ function PulsingDots({ color }: { color: string }) {
   );
 }
 
+const PURCHASE_URL = "https://voxink.lemonsqueezy.com/buy";
+
 export default function Overlay() {
   const { t } = useTranslation();
   const [state, setState] = useState<PipelineEvent>({ type: "Idle" });
+  const [usageRemaining, setUsageRemaining] = useState<number | null>(null);
+  const [usageExhausted, setUsageExhausted] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exhaustedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const unlisten = listen<PipelineEvent>("pipeline-state", (event) => {
@@ -79,6 +85,11 @@ export default function Overlay() {
       }
 
       setState(event.payload);
+
+      // Clear usage warning when not recording
+      if (event.payload.type !== "Recording") {
+        setUsageRemaining(null);
+      }
 
       const eventType = event.payload.type;
       if (eventType === "Result" || eventType === "Refined") {
@@ -94,16 +105,75 @@ export default function Overlay() {
       }
     });
 
+    const unlistenWarning = listen<number>("usage-warning", (event) => {
+      setUsageRemaining(event.payload);
+    });
+
+    const unlistenExhausted = listen("usage-exhausted", () => {
+      setUsageExhausted(true);
+      // Make overlay clickable for the upgrade button
+      getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
+
+      if (exhaustedTimer.current !== null) {
+        clearTimeout(exhaustedTimer.current);
+      }
+      exhaustedTimer.current = setTimeout(() => {
+        setUsageExhausted(false);
+        getCurrentWindow().setIgnoreCursorEvents(true).catch(() => {});
+        exhaustedTimer.current = null;
+      }, 5000);
+    });
+
     return () => {
       unlisten.then((fn) => fn());
+      unlistenWarning.then((fn) => fn());
+      unlistenExhausted.then((fn) => fn());
       if (hideTimer.current !== null) {
         clearTimeout(hideTimer.current);
+      }
+      if (exhaustedTimer.current !== null) {
+        clearTimeout(exhaustedTimer.current);
       }
     };
   }, []);
 
-  if (state.type === "Idle") {
+  if (state.type === "Idle" && !usageExhausted) {
     return null;
+  }
+
+  // Exhausted state: amber overlay with upgrade button
+  if (usageExhausted) {
+    return (
+      <div className="flex h-screen w-screen items-end justify-center pb-0">
+        <div className="flex items-center gap-3 rounded-full bg-amber-900/90 px-5 py-2 shadow-lg backdrop-blur-md">
+          <svg
+            className="h-4 w-4 text-amber-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+            />
+          </svg>
+          <span className="text-xs font-medium text-amber-300">
+            {t("license.exhausted")}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              window.open(PURCHASE_URL, "_blank");
+            }}
+            className="rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-400"
+          >
+            {t("license.upgradePrompt")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const isRecording = state.type === "Recording";
@@ -124,6 +194,12 @@ export default function Overlay() {
           50% { opacity: 1; transform: scale(1.2); }
         }
       `}</style>
+      <div
+        className={
+          "flex flex-col items-center gap-1 " +
+          "transition-all duration-300"
+        }
+      >
       <div
         className={
           "flex items-center gap-3 rounded-full px-5 py-2 shadow-lg backdrop-blur-md " +
@@ -198,6 +274,13 @@ export default function Overlay() {
             </span>
           </>
         )}
+      </div>
+      {/* Usage warning subtitle during recording */}
+      {isRecording && usageRemaining !== null && (
+        <span className="text-[10px] font-medium text-amber-400/80">
+          {t("license.warningRemaining", { count: usageRemaining })}
+        </span>
+      )}
       </div>
     </div>
   );

@@ -103,5 +103,27 @@
     "empty": "加入人名、地名、專有名詞，提升語音辨識準確度。",
     "duplicate": "此詞彙已存在。",
     "help": "加入的詞彙會協助語音引擎更準確地辨識人名、地名與專有名詞。"
+  },
+  "license": {
+    "tab": "License",
+    "free": "VoxInk 免費版",
+    "pro": "VoxInk Pro",
+    "usageToday": "今日：{{used}} / {{limit}}",
+    "enterKey": "輸入授權碼...",
+    "activate": "啟用",
+    "activating": "啟用中...",
+    "deactivate": "停用此裝置",
+    "purchase": "購買 Pro 版",
+    "validFor": "適用於：v{{version}}.x",
+    "devices": "裝置：{{used}} / {{limit}}",
+    "lastVerified": "上次驗證：{{date}}",
+    "exhausted": "今日額度已用完",
+    "upgradePrompt": "升級至 Pro",
+    "warningRemaining": "今日剩餘 {{count}} 次",
+    "verificationFailed": "授權驗證失敗，請在 {{days}} 天內重新連線。",
+    "activateSuccess": "授權啟用成功。",
+    "activateFailed": "啟用失敗：{{error}}",
+    "keyInvalid": "無效的授權碼。",
+    "deactivateSuccess": "已停用授權。"
   }
 }

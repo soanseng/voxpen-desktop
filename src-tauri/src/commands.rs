@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri_plugin_store::StoreExt;
 
 use voxink_core::dictionary::DictionaryEntry;
+use voxink_core::licensing::types::{LicenseInfo, LicenseTier, UsageStatus};
 use voxink_core::pipeline::prompts;
 use voxink_core::history::TranscriptionEntry;
 use voxink_core::pipeline::controller::PipelineConfig;
@@ -353,6 +354,59 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
         update_available,
         download_url: html_url,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Licensing IPC commands
+// ---------------------------------------------------------------------------
+
+/// Activate a license key and store the result.
+#[tauri::command]
+pub async fn activate_license(
+    state: tauri::State<'_, AppState>,
+    key: String,
+) -> Result<LicenseInfo, String> {
+    state
+        .license_manager
+        .activate(&key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Deactivate the current license and clear local storage.
+#[tauri::command]
+pub async fn deactivate_license(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .license_manager
+        .deactivate()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get the stored license information, if any.
+#[tauri::command]
+pub async fn get_license_info(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<LicenseInfo>, String> {
+    Ok(state.license_manager.license_info())
+}
+
+/// Check usage access: piggyback verify + return current status.
+#[tauri::command]
+pub async fn get_usage_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<UsageStatus, String> {
+    Ok(state.license_manager.check_access().await)
+}
+
+/// Get the current license tier (Free or Pro).
+#[tauri::command]
+pub async fn get_license_tier(
+    state: tauri::State<'_, AppState>,
+) -> Result<LicenseTier, String> {
+    Ok(state.license_manager.current_tier())
 }
 
 /// Simple semver comparison: is `latest` newer than `current`?
