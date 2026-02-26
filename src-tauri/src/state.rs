@@ -154,6 +154,15 @@ pub fn get_api_key_from_handle(app: &AppHandle, provider: &str) -> Result<String
     get_api_key(app, provider)
 }
 
+/// Check if a provider can work without an API key.
+///
+/// Returns `true` for the `"custom"` provider name and for URL-like provider
+/// strings (e.g. `"http://localhost:11434/"`), which typically point at local
+/// inference servers that do not require authentication.
+fn is_keyless_provider(provider: &str) -> bool {
+    provider == "custom" || provider.starts_with("http://") || provider.starts_with("https://")
+}
+
 /// Resolve the API key for a given provider.
 ///
 /// 1. Try the encrypted Tauri store (secrets.json) — set via save_api_key command
@@ -177,6 +186,13 @@ fn get_api_key(app: &AppHandle, provider: &str) -> Result<String, AppError> {
         if !key.is_empty() {
             return Ok(key);
         }
+    }
+
+    // Local/custom endpoints (e.g. Ollama) may not require an API key.
+    // Return empty string instead of error so the request proceeds with
+    // a no-op Bearer header that local servers simply ignore.
+    if is_keyless_provider(provider) {
+        return Ok(String::new());
     }
 
     Err(AppError::ApiKeyMissing(provider.to_string()))
