@@ -60,8 +60,9 @@ export async function searchHistory(
 
 export async function getDefaultRefinementPrompt(
   language: string,
+  tone: string,
 ): Promise<string> {
-  return invoke<string>("get_default_refinement_prompt", { language });
+  return invoke<string>("get_default_refinement_prompt", { language, tone });
 }
 
 export async function getDictionaryEntries(): Promise<DictionaryEntry[]> {

@@ -344,7 +344,8 @@ export default function RefinementSection({
             type="button"
             onClick={async () => {
               const lang = settings.stt_language;
-              const prompt = await getDefaultRefinementPrompt(lang);
+              const tone = settings.tone_preset || "Casual";
+              const prompt = await getDefaultRefinementPrompt(lang, tone);
               setDefaultPrompt(prompt);
               onUpdate("refinement_prompt", "");
               setPromptResetMsg(true);
@@ -371,7 +372,8 @@ export default function RefinementSection({
           onChange={(e) => onUpdate("refinement_prompt", e.target.value)}
           onFocus={async () => {
             if (!defaultPrompt) {
-              const prompt = await getDefaultRefinementPrompt(settings.stt_language);
+              const tone = settings.tone_preset || "Casual";
+              const prompt = await getDefaultRefinementPrompt(settings.stt_language, tone);
               setDefaultPrompt(prompt);
             }
           }}
