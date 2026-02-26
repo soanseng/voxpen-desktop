@@ -6,15 +6,19 @@ use crate::pipeline::vocabulary;
 
 /// Orchestrate text refinement via LLM.
 ///
-/// Composes prompt resolution + optional vocabulary suffix + `groq::chat_completion()`.
-/// Mirrors Android's `RefineTextUseCase`.
+/// Composes prompt resolution + optional vocabulary suffix, then routes
+/// the chat completion request to the correct provider endpoint.
 ///
 /// Prompt resolution priority:
-/// - `Custom` tone with non-empty `custom_prompt` → use custom prompt
-/// - `Custom` tone with empty `custom_prompt` → fallback to `for_language()` (Casual)
-/// - Any other tone → use `for_language_and_tone()`
+/// - `Custom` tone with non-empty `custom_prompt` -> use custom prompt
+/// - `Custom` tone with empty `custom_prompt` -> fallback to `for_language()` (Casual)
+/// - Any other tone -> use `for_language_and_tone()`
 ///
 /// If `vocab_words` is non-empty, appends a vocabulary suffix to the system prompt.
+///
+/// `custom_base_url` overrides the resolved base URL when the provider is
+/// `"custom"` and the URL is non-empty.
+#[allow(clippy::too_many_arguments)]
 pub async fn refine(
     text: &str,
     config: &ChatConfig,
@@ -22,6 +26,8 @@ pub async fn refine(
     vocab_words: &[String],
     custom_prompt: &str,
     tone_preset: &TonePreset,
+    provider: &str,
+    custom_base_url: &str,
 ) -> Result<String, AppError> {
     if text.is_empty() {
         return Err(AppError::Refinement("no text to refine".to_string()));
@@ -35,7 +41,13 @@ pub async fn refine(
     if let Some(suffix) = vocabulary::build_llm_suffix(vocab_words, language) {
         system_prompt.push_str(&suffix);
     }
-    groq::chat_completion(config, &system_prompt, text).await
+
+    let base_url = if provider == "custom" && !custom_base_url.is_empty() {
+        custom_base_url
+    } else {
+        groq::base_url_for_provider(provider)
+    };
+    groq::chat_completion_with_provider(config, &system_prompt, text, provider, base_url).await
 }
 
 /// Internal: refine with configurable base URL (for testing with wiremock).
@@ -44,6 +56,7 @@ async fn refine_with_base_url(
     text: &str,
     config: &ChatConfig,
     language: &Language,
+    provider: &str,
     base_url: &str,
     custom_prompt: &str,
     tone_preset: &TonePreset,
@@ -57,7 +70,7 @@ async fn refine_with_base_url(
         TonePreset::Custom => prompts::for_language(language).to_string(),
         _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
     };
-    groq::chat_completion_with_base_url(config, &system_prompt, text, base_url).await
+    groq::chat_completion_with_provider(config, &system_prompt, text, provider, base_url).await
 }
 
 #[cfg(test)]
@@ -99,6 +112,7 @@ mod tests {
             "嗯 那個 你好世界",
             &config,
             &Language::Chinese,
+            "groq",
             &format!("{}/", server.uri()),
             "",
             &TonePreset::Casual,
@@ -111,7 +125,8 @@ mod tests {
     #[tokio::test]
     async fn should_reject_empty_text() {
         let config = test_config("key");
-        let result = refine("", &config, &Language::Auto, &[], "", &TonePreset::Casual).await;
+        let result =
+            refine("", &config, &Language::Auto, &[], "", &TonePreset::Casual, "groq", "").await;
 
         match result {
             Err(AppError::Refinement(msg)) => assert_eq!(msg, "no text to refine"),
@@ -123,7 +138,9 @@ mod tests {
     async fn should_reject_empty_text_with_vocabulary() {
         let config = test_config("key");
         let vocab = vec!["語墨".to_string()];
-        let result = refine("", &config, &Language::Auto, &vocab, "", &TonePreset::Casual).await;
+        let result =
+            refine("", &config, &Language::Auto, &vocab, "", &TonePreset::Casual, "groq", "")
+                .await;
         assert!(matches!(result, Err(AppError::Refinement(_))));
     }
 
@@ -142,6 +159,7 @@ mod tests {
             "some text",
             &config,
             &Language::English,
+            "groq",
             &format!("{}/", server.uri()),
             "",
             &TonePreset::Casual,
@@ -166,6 +184,7 @@ mod tests {
             "some text",
             &config,
             &Language::English,
+            "groq",
             &format!("{}/", server.uri()),
             "my custom prompt",
             &TonePreset::Custom,
@@ -189,6 +208,7 @@ mod tests {
             "some text",
             &config,
             &Language::English,
+            "groq",
             &format!("{}/", server.uri()),
             "", // empty custom prompt
             &TonePreset::Custom,

@@ -12,6 +12,7 @@ export interface Settings {
   refinement_model: string;
   refinement_prompt: string;
   tone_preset: "Casual" | "Professional" | "Email" | "Note" | "Social" | "Custom";
+  custom_base_url: string;
   theme: "system" | "light" | "dark";
   ui_language: string;
   microphone_device: string | null;
@@ -49,6 +50,7 @@ export const defaultSettings: Settings = {
   refinement_model: "openai/gpt-oss-120b",
   refinement_prompt: "",
   tone_preset: "Casual",
+  custom_base_url: "",
   theme: "system",
   ui_language: "en",
   microphone_device: null,

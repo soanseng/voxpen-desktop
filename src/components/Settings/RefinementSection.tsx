@@ -20,26 +20,35 @@ const TONE_PRESETS = [
 const REFINEMENT_PROVIDERS = [
   { value: "groq", label: "Groq" },
   { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "custom", label: "Custom Server" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "custom", label: "Custom / Ollama" },
 ];
 
-function getModelsForProvider(provider: string) {
+interface ModelOption {
+  value: string;
+  label: string;
+  tag?: "recommended" | "budget" | "multilingual" | "quality";
+}
+
+function getModelsForProvider(provider: string): ModelOption[] {
   switch (provider) {
     case "groq":
       return [
-        { value: "openai/gpt-oss-120b", label: "openai/gpt-oss-120b" },
-        { value: "openai/gpt-oss-20b", label: "openai/gpt-oss-20b" },
+        { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B", tag: "recommended" },
+        { value: "openai/gpt-oss-20b", label: "GPT-OSS 20B", tag: "budget" },
+        { value: "qwen/qwen3-32b", label: "Qwen3 32B", tag: "multilingual" },
       ];
     case "openai":
       return [
-        { value: "gpt-4o", label: "GPT-4o" },
-        { value: "gpt-4o-mini", label: "GPT-4o mini" },
+        { value: "gpt-5-nano", label: "GPT-5 Nano", tag: "recommended" },
+        { value: "gpt-5-mini", label: "GPT-5 Mini", tag: "quality" },
+        { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
       ];
-    case "anthropic":
+    case "openrouter":
       return [
-        { value: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5" },
-        { value: "claude-haiku-4-5-20250514", label: "Claude Haiku 4.5" },
+        { value: "google/gemini-3-flash", label: "Gemini 3 Flash", tag: "recommended" },
+        { value: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5", tag: "multilingual" },
+        { value: "deepseek/deepseek-chat", label: "DeepSeek Chat", tag: "budget" },
       ];
     default:
       return [];
@@ -125,6 +134,8 @@ export default function RefinementSection({
     const newModels = getModelsForProvider(provider);
     if (newModels.length > 0) {
       onUpdate("refinement_model", newModels[0].value);
+    } else {
+      onUpdate("refinement_model", "");
     }
   }
 
@@ -345,8 +356,8 @@ export default function RefinementSection({
         </div>
       )}
 
-      {/* Model */}
-      {models.length > 0 && (
+      {/* Model — preset dropdown + custom override for known providers */}
+      {settings.refinement_provider !== "custom" && (
         <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>
           <label
             htmlFor="refinement-model"
@@ -354,25 +365,121 @@ export default function RefinementSection({
           >
             {t("model")}
           </label>
-          <select
-            id="refinement-model"
-            value={settings.refinement_model}
-            onChange={(e) => onUpdate("refinement_model", e.target.value)}
-            disabled={disabled}
-            className={
-              "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
-              "px-3 py-2 text-sm text-gray-900 " +
-              "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
-              "disabled:cursor-not-allowed " +
-              "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            }
-          >
-            {models.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          {models.length > 0 && (
+            <select
+              id="refinement-model"
+              value={
+                models.some((m) => m.value === settings.refinement_model)
+                  ? settings.refinement_model
+                  : ""
+              }
+              onChange={(e) => onUpdate("refinement_model", e.target.value)}
+              disabled={disabled}
+              className={
+                "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "disabled:cursor-not-allowed " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              }
+            >
+              {!models.some((m) => m.value === settings.refinement_model) && (
+                <option value="" disabled>
+                  —
+                </option>
+              )}
+              {models.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}{m.tag ? ` \u2014 ${t(`modelTag.${m.tag}`)}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* Custom model name override */}
+          <div className="mt-2">
+            <input
+              type="text"
+              value={
+                models.some((m) => m.value === settings.refinement_model)
+                  ? ""
+                  : settings.refinement_model
+              }
+              onChange={(e) => onUpdate("refinement_model", e.target.value)}
+              placeholder={t("customModelPlaceholder")}
+              disabled={disabled}
+              className={
+                "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "disabled:cursor-not-allowed " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {t("customModelHint")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Model & Base URL — custom/Ollama provider */}
+      {settings.refinement_provider === "custom" && (
+        <div className={`space-y-4 ${disabled ? "opacity-40" : ""}`}>
+          <div className="space-y-2">
+            <label
+              htmlFor="custom-base-url"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              {t("baseUrl")}
+            </label>
+            <input
+              id="custom-base-url"
+              type="text"
+              value={settings.custom_base_url}
+              onChange={(e) => onUpdate("custom_base_url", e.target.value)}
+              placeholder="http://localhost:11434/"
+              disabled={disabled}
+              className={
+                "w-full max-w-md rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "disabled:cursor-not-allowed " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {t("baseUrlHint")}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label
+              htmlFor="custom-model"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              {t("model")}
+            </label>
+            <input
+              id="custom-model"
+              type="text"
+              value={settings.refinement_model}
+              onChange={(e) => onUpdate("refinement_model", e.target.value)}
+              placeholder="llama3.1:8b"
+              disabled={disabled}
+              className={
+                "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "disabled:cursor-not-allowed " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
+          </div>
         </div>
       )}
 

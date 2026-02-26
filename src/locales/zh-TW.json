@@ -101,6 +101,16 @@
   "vietnamese": "Tiếng Việt",
   "indonesian": "Bahasa Indonesia",
   "thai": "ภาษาไทย",
+  "modelTag": {
+    "recommended": "推薦",
+    "budget": "省錢",
+    "quality": "品質最佳",
+    "multilingual": "多語言"
+  },
+  "customModelPlaceholder": "或輸入模型名稱...",
+  "customModelHint": "輸入任何模型 ID 來覆蓋預設清單。",
+  "baseUrl": "API 位址",
+  "baseUrlHint": "API 端點位址（例如 Ollama 的 http://localhost:11434/）",
   "dictionary": "自定義詞典",
   "dictionaryDescription": "加入自定義詞彙以提升語音辨識與文字潤飾準確度。",
   "dict": {

@@ -3,9 +3,23 @@ use std::fmt;
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CONNECT_TIMEOUT, GROQ_BASE_URL, READ_WRITE_TIMEOUT};
+use crate::api::{CONNECT_TIMEOUT, GROQ_BASE_URL, OPENAI_BASE_URL, OPENROUTER_BASE_URL, READ_WRITE_TIMEOUT};
 use crate::error::AppError;
 use crate::pipeline::state::Language;
+
+/// Resolve the API base URL for a given provider name.
+///
+/// Returns the known base URL for built-in providers, or the provider string
+/// itself if it's unrecognized (for custom/Ollama setups where the provider
+/// string IS the base URL).
+pub fn base_url_for_provider(provider: &str) -> &str {
+    match provider {
+        "groq" => GROQ_BASE_URL,
+        "openai" => OPENAI_BASE_URL,
+        "openrouter" => OPENROUTER_BASE_URL,
+        other => other,
+    }
+}
 
 /// Default Whisper model (faster, good accuracy)
 pub const DEFAULT_STT_MODEL: &str = "whisper-large-v3-turbo";
@@ -200,23 +214,30 @@ struct ChatChoice {
     message: ChatMessage,
 }
 
-/// Refine text via Groq's chat completion API.
+/// Refine text via Groq's chat completion API (convenience wrapper).
 ///
-/// Sends a chat request with system prompt + user text to the LLM.
+/// Sends a chat request with system prompt + user text to the Groq LLM.
 /// Returns the refined text on success.
 pub async fn chat_completion(
     config: &ChatConfig,
     system_prompt: &str,
     user_text: &str,
 ) -> Result<String, AppError> {
-    chat_completion_with_base_url(config, system_prompt, user_text, GROQ_BASE_URL).await
+    chat_completion_with_provider(config, system_prompt, user_text, "groq", GROQ_BASE_URL).await
 }
 
-/// Internal: chat completion with configurable base URL (for testing with wiremock).
-pub(crate) async fn chat_completion_with_base_url(
+/// Send a chat completion request to any OpenAI-compatible provider.
+///
+/// Routes to the correct endpoint path based on provider:
+/// - Groq: `{base_url}openai/v1/chat/completions`
+/// - OpenAI/OpenRouter/others: `{base_url}v1/chat/completions`
+///
+/// For OpenRouter, adds required `HTTP-Referer` and `X-Title` headers.
+pub(crate) async fn chat_completion_with_provider(
     config: &ChatConfig,
     system_prompt: &str,
     user_text: &str,
+    provider: &str,
     base_url: &str,
 ) -> Result<String, AppError> {
     let client = reqwest::Client::builder()
@@ -241,19 +262,32 @@ pub(crate) async fn chat_completion_with_base_url(
         max_tokens: config.max_tokens,
     };
 
-    let url = format!("{base_url}openai/v1/chat/completions");
+    // Groq's OpenAI-compatible endpoint has an extra "openai/" prefix
+    let path = if provider == "groq" {
+        "openai/v1/chat/completions"
+    } else {
+        "v1/chat/completions"
+    };
+    let url = format!("{base_url}{path}");
 
-    let response = client
+    let mut req = client
         .post(&url)
         .bearer_auth(&config.api_key)
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
+
+    // OpenRouter requires these headers for their API
+    if provider == "openrouter" {
+        req = req
+            .header("HTTP-Referer", "https://voxink.app")
+            .header("X-Title", "VoxInk");
+    }
+
+    let response = req.send().await?;
 
     let status = response.status();
 
     if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(AppError::ApiKeyMissing("groq".to_string()));
+        return Err(AppError::ApiKeyMissing(provider.to_string()));
     }
 
     if !status.is_success() {
@@ -435,10 +469,11 @@ mod tests {
 
         let config = test_chat_config("test-chat-key");
 
-        let result = chat_completion_with_base_url(
+        let result = chat_completion_with_provider(
             &config,
             "你是一個語音轉文字的編輯助手。",
             "嗯那個就是我想說你好",
+            "groq",
             &format!("{}/", server.uri()),
         )
         .await;
@@ -458,10 +493,11 @@ mod tests {
 
         let config = test_chat_config("bad-key");
 
-        let result = chat_completion_with_base_url(
+        let result = chat_completion_with_provider(
             &config,
             "system prompt",
             "user text",
+            "groq",
             &format!("{}/", server.uri()),
         )
         .await;
@@ -481,10 +517,11 @@ mod tests {
 
         let config = test_chat_config("test-key");
 
-        let result = chat_completion_with_base_url(
+        let result = chat_completion_with_provider(
             &config,
             "system prompt",
             "user text",
+            "groq",
             &format!("{}/", server.uri()),
         )
         .await;
@@ -518,10 +555,11 @@ mod tests {
 
         let config = test_chat_config("test-key");
 
-        let result = chat_completion_with_base_url(
+        let result = chat_completion_with_provider(
             &config,
             "system prompt",
             "user text",
+            "groq",
             &format!("{}/", server.uri()),
         )
         .await;
@@ -532,5 +570,110 @@ mod tests {
             }
             other => panic!("expected Refinement error, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn should_add_openrouter_headers_when_provider_is_openrouter() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(header("HTTP-Referer", "https://voxink.app"))
+            .and(header("X-Title", "VoxInk"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response_json("refined")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_chat_config("test-key");
+        let result = chat_completion_with_provider(
+            &config,
+            "prompt",
+            "text",
+            "openrouter",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "refined");
+    }
+
+    #[tokio::test]
+    async fn should_use_v1_path_for_openai_provider() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response_json("refined")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_chat_config("test-key");
+        let result = chat_completion_with_provider(
+            &config,
+            "prompt",
+            "text",
+            "openai",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_include_provider_name_in_401_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
+            .mount(&server)
+            .await;
+
+        let config = test_chat_config("bad-key");
+        let result = chat_completion_with_provider(
+            &config,
+            "prompt",
+            "text",
+            "openrouter",
+            &format!("{}/", server.uri()),
+        )
+        .await;
+
+        match result {
+            Err(AppError::ApiKeyMissing(provider)) => assert_eq!(provider, "openrouter"),
+            other => panic!("expected ApiKeyMissing(openrouter), got {:?}", other),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // base_url_for_provider tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn should_resolve_base_url_for_known_providers() {
+        assert_eq!(base_url_for_provider("groq"), "https://api.groq.com/");
+        assert_eq!(base_url_for_provider("openai"), "https://api.openai.com/");
+        assert_eq!(
+            base_url_for_provider("openrouter"),
+            "https://openrouter.ai/api/"
+        );
+    }
+
+    #[test]
+    fn should_return_provider_string_as_url_for_custom() {
+        assert_eq!(
+            base_url_for_provider("http://localhost:11434/"),
+            "http://localhost:11434/"
+        );
+        assert_eq!(
+            base_url_for_provider("https://my-server.example.com/"),
+            "https://my-server.example.com/"
+        );
     }
 }

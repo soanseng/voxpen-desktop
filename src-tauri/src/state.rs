@@ -92,8 +92,20 @@ impl LlmProvider for GroqLlmProvider {
             };
             let custom_prompt = s.refinement_prompt.clone();
             let tone_preset = s.tone_preset.clone();
+            let provider = s.refinement_provider.clone();
+            let custom_base_url = s.custom_base_url.clone();
             drop(s);
-            refine::refine(&text, &config, &language, &vocabulary, &custom_prompt, &tone_preset).await
+            refine::refine(
+                &text,
+                &config,
+                &language,
+                &vocabulary,
+                &custom_prompt,
+                &tone_preset,
+                &provider,
+                &custom_base_url,
+            )
+            .await
         })
     }
 }
