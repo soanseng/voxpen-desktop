@@ -57,7 +57,7 @@ async fn refine_with_base_url(
         TonePreset::Custom => prompts::for_language(language).to_string(),
         _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
     };
-    groq::chat_completion_with_base_url(config, &system_prompt, text, base_url).await
+    groq::chat_completion_with_provider(config, &system_prompt, text, "groq", base_url).await
 }
 
 #[cfg(test)]
