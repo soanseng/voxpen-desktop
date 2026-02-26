@@ -3,9 +3,23 @@ use std::fmt;
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CONNECT_TIMEOUT, GROQ_BASE_URL, READ_WRITE_TIMEOUT};
+use crate::api::{CONNECT_TIMEOUT, GROQ_BASE_URL, OPENAI_BASE_URL, OPENROUTER_BASE_URL, READ_WRITE_TIMEOUT};
 use crate::error::AppError;
 use crate::pipeline::state::Language;
+
+/// Resolve the API base URL for a given provider name.
+///
+/// Returns the known base URL for built-in providers, or the provider string
+/// itself if it's unrecognized (for custom/Ollama setups where the provider
+/// string IS the base URL).
+pub fn base_url_for_provider(provider: &str) -> &str {
+    match provider {
+        "groq" => GROQ_BASE_URL,
+        "openai" => OPENAI_BASE_URL,
+        "openrouter" => OPENROUTER_BASE_URL,
+        other => other,
+    }
+}
 
 /// Default Whisper model (faster, good accuracy)
 pub const DEFAULT_STT_MODEL: &str = "whisper-large-v3-turbo";
@@ -532,5 +546,31 @@ mod tests {
             }
             other => panic!("expected Refinement error, got {:?}", other),
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // base_url_for_provider tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn should_resolve_base_url_for_known_providers() {
+        assert_eq!(base_url_for_provider("groq"), "https://api.groq.com/");
+        assert_eq!(base_url_for_provider("openai"), "https://api.openai.com/");
+        assert_eq!(
+            base_url_for_provider("openrouter"),
+            "https://openrouter.ai/api/"
+        );
+    }
+
+    #[test]
+    fn should_return_provider_string_as_url_for_custom() {
+        assert_eq!(
+            base_url_for_provider("http://localhost:11434/"),
+            "http://localhost:11434/"
+        );
+        assert_eq!(
+            base_url_for_provider("https://my-server.example.com/"),
+            "https://my-server.example.com/"
+        );
     }
 }
