@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::pipeline::state::{Language, RecordingMode};
+use crate::pipeline::state::{Language, RecordingMode, TonePreset};
 
 /// Application settings, serialized for Tauri IPC and persistent storage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -39,6 +39,9 @@ pub struct Settings {
     pub theme: String,
     /// UI language: "en" or "zh-TW"
     pub ui_language: String,
+    /// Tone preset for refinement output style (Casual, Professional, Email, Note, Social, Custom)
+    #[serde(default)]
+    pub tone_preset: TonePreset,
     /// Preferred microphone device name. None = system default.
     #[serde(default)]
     pub microphone_device: Option<String>,
@@ -63,6 +66,7 @@ impl Default for Settings {
             refinement_provider: "groq".to_string(),
             refinement_model: crate::api::groq::DEFAULT_LLM_MODEL.to_string(),
             refinement_prompt: String::new(),
+            tone_preset: TonePreset::default(),
             theme: "system".to_string(),
             ui_language: "en".to_string(),
             microphone_device: None,
@@ -116,5 +120,30 @@ mod tests {
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.hotkey_ptt, "F5"); // migrated from old "hotkey"
         assert_eq!(settings.hotkey_toggle, "CommandOrControl+Shift+V"); // default
+    }
+
+    // -- TonePreset in Settings tests --
+
+    #[test]
+    fn should_default_tone_to_casual() {
+        let settings = Settings::default();
+        assert_eq!(settings.tone_preset, TonePreset::Casual);
+    }
+
+    #[test]
+    fn should_roundtrip_tone_preset_in_settings() {
+        let mut settings = Settings::default();
+        settings.tone_preset = TonePreset::Professional;
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.tone_preset, TonePreset::Professional);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_tone() {
+        // Old settings JSON without tone_preset field should get Casual default
+        let json = r#"{"hotkey":"F5","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.tone_preset, TonePreset::Casual);
     }
 }

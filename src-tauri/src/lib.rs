@@ -23,7 +23,7 @@ use tokio::sync::Mutex;
 
 use voxink_core::pipeline::controller::{PipelineConfig, PipelineController};
 use voxink_core::pipeline::settings::Settings;
-use voxink_core::pipeline::state::{Language, PipelineState};
+use voxink_core::pipeline::state::{Language, PipelineState, TonePreset};
 
 use state::{AppState, GroqLlmProvider, GroqSttProvider};
 
@@ -42,10 +42,21 @@ const ALL_LANGUAGES: &[(&str, Language)] = &[
     ("ภาษาไทย", Language::Thai),
 ];
 
-/// Build the tray menu with language submenu and microphone submenu.
+/// All supported tone presets for the tray submenu.
+const ALL_TONES: &[(&str, TonePreset)] = &[
+    ("Casual", TonePreset::Casual),
+    ("Professional", TonePreset::Professional),
+    ("Email", TonePreset::Email),
+    ("Note", TonePreset::Note),
+    ("Social", TonePreset::Social),
+    ("Custom", TonePreset::Custom),
+];
+
+/// Build the tray menu with language submenu, tone submenu, and microphone submenu.
 fn build_tray_menu(
     app: &tauri::App,
     current_lang: &Language,
+    current_tone: &TonePreset,
     mic_devices: &[String],
     current_mic: &Option<String>,
 ) -> tauri::Result<Menu<tauri::Wry>> {
@@ -60,6 +71,18 @@ fn build_tray_menu(
     let lang_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
         lang_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let lang_submenu = Submenu::with_items(app, "Language", true, &lang_refs)?;
+
+    // Tone submenu
+    let mut tone_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for (label, tone) in ALL_TONES {
+        let id = format!("tone_{}", serde_json::to_string(tone).unwrap_or_default().trim_matches('"'));
+        let checked = tone == current_tone;
+        let item = CheckMenuItem::with_id(app, &id, *label, true, checked, None::<&str>)?;
+        tone_items.push(item);
+    }
+    let tone_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        tone_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let tone_submenu = Submenu::with_items(app, "Tone", true, &tone_refs)?;
 
     // Microphone submenu
     let default_mic = CheckMenuItem::with_id(
@@ -95,6 +118,7 @@ fn build_tray_menu(
             &usage_item,
             &upgrade_item,
             &lang_submenu,
+            &tone_submenu,
             &mic_submenu,
             &sep1,
             &update_item,
@@ -175,7 +199,7 @@ pub fn run() {
 
                 // Build system tray menu
                 let mic_devices = audio::list_input_devices();
-                let menu = build_tray_menu(app, &Language::Auto, &mic_devices, &None)?;
+                let menu = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None)?;
 
                 let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("failed to load tray icon");
@@ -239,6 +263,29 @@ pub fn run() {
                                             llm_model: settings_clone.refinement_model.clone(),
                                         });
                                         drop(ctrl);
+
+                                        // Persist
+                                        if let Ok(store) = app.store("settings.json") {
+                                            if let Ok(value) = serde_json::to_value(&settings_clone) {
+                                                store.set("settings", value);
+                                                let _ = store.save();
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            _ if id.starts_with("tone_") => {
+                                let tone_str = id.strip_prefix("tone_").unwrap_or("");
+                                let tone: Option<TonePreset> =
+                                    serde_json::from_str(&format!("\"{tone_str}\"")).ok();
+                                if let Some(tone) = tone {
+                                    let app = app.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        let state: tauri::State<'_, AppState> = app.state();
+                                        let mut s = state.settings.lock().await;
+                                        s.tone_preset = tone;
+                                        let settings_clone = s.clone();
+                                        drop(s);
 
                                         // Persist
                                         if let Ok(store) = app.store("settings.json") {
