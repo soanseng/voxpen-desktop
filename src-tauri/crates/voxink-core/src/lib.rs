@@ -4,4 +4,5 @@ pub mod error;
 pub mod dictionary;
 pub mod history;
 pub mod input;
+pub mod licensing;
 pub mod pipeline;
