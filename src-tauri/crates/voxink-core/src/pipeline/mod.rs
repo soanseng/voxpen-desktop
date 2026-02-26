@@ -5,3 +5,6 @@ pub mod settings;
 pub mod state;
 pub mod transcribe;
 pub mod vocabulary;
+
+// Convenience re-exports for commonly used types
+pub use state::TonePreset;
