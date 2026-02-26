@@ -97,7 +97,7 @@ impl SttProvider for LocalSttProvider {
 
             // Run inference on a blocking thread since whisper.cpp is CPU-bound
             tokio::task::spawn_blocking(move || {
-                let mut ctx_guard = ctx_arc.lock().expect("context lock poisoned");
+                let ctx_guard = ctx_arc.lock().expect("context lock poisoned");
                 let whisper_ctx = ctx_guard.as_ref().ok_or_else(|| {
                     AppError::LocalTranscription("context was invalidated".to_string())
                 })?;

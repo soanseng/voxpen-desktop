@@ -79,6 +79,14 @@ impl SttProvider for GroqSttProvider {
                 return local_stt.transcribe(pcm_data, vocabulary_hint).await;
             }
 
+            // Guard: "local" selected but local-whisper feature not compiled in
+            #[cfg(not(feature = "local-whisper"))]
+            if s.stt_provider == "local" {
+                return Err(AppError::Transcription(
+                    "local whisper is not available in this build".to_string(),
+                ));
+            }
+
             // Cloud STT path
             let api_key = get_api_key(&app_handle, &s.stt_provider)?;
             let config = SttConfig {
