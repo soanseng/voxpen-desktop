@@ -11,10 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-release:
+  build:
     name: Build (${{ matrix.label }})
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -68,71 +68,125 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build and release
+      - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
-          tagName: v__VERSION__
-          releaseName: 'VoxPen Desktop v__VERSION__'
-          releaseBody: |
-            ## What's New / 更新內容
+          args: ${{ matrix.args }}
 
-            ### Dual Hotkeys / 雙快捷鍵
-            - Separate **Push-to-Talk** (hold to record) and **Hands-free** (toggle on/off) hotkeys
-            - 獨立的**按住錄音** (Push-to-Talk) 和**免持模式** (Toggle) 快捷鍵
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.label }}
+          path: |
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.sig
+            src-tauri/target/**/release/bundle/**/*.json
+          if-no-files-found: error
 
-            ### 11 Languages / 11 種語言
-            - Added French, German, Spanish, Korean, Vietnamese, Indonesian, Thai
-            - 新增法語、德語、西班牙語、韓語、越南語、印尼語、泰語
+  publish:
+    name: Publish to voxpen-releases
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
-            ### Microphone Selection / 麥克風選擇
-            - Choose a specific input device in Settings or the system tray
-            - 在設定或系統匣選擇特定麥克風裝置
+      - name: Flatten release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( \
+            -name '*.dmg' -o \
+            -name '*.exe' -o \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.sig' \
+          \) -exec cp {} release-files/ \;
+          ls -la release-files/
 
-            ### Custom Dictionary / 自定義詞典
-            - Add names, places, and special terms to improve voice recognition accuracy
-            - 新增人名、地名、專有名詞以提升語音辨識準確度
+      - name: Generate latest.json for Tauri updater
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          BASE_URL="https://github.com/soanseng/voxpen-releases/releases/download/${TAG}"
 
-            ### Enhanced System Tray / 增強系統匣
-            - Quick language switch, microphone selection, check for updates
-            - 快速切換語言、選擇麥克風、檢查更新
+          # Find signature files
+          WINDOWS_SIG=""
+          MACOS_SIG=""
+          LINUX_SIG=""
 
-            ### Other / 其他
-            - Dynamic version display / 動態版本號顯示
-            - Windows stability fixes (thread safety, paste timing) / Windows 穩定性修復
+          for f in release-files/*.exe.sig; do
+            [ -f "$f" ] && WINDOWS_SIG=$(cat "$f")
+          done
+          for f in release-files/*.dmg.sig; do
+            [ -f "$f" ] && MACOS_SIG=$(cat "$f")
+          done
+          for f in release-files/*.AppImage.sig; do
+            [ -f "$f" ] && LINUX_SIG=$(cat "$f")
+          done
 
-            ---
+          # Find artifact filenames
+          WINDOWS_FILE=$(ls release-files/*.exe 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          MACOS_FILE=$(ls release-files/*.dmg 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          LINUX_FILE=$(ls release-files/*.AppImage 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
 
+          # Build latest.json
+          cat > release-files/latest.json << ENDJSON
+          {
+            "version": "${VERSION}",
+            "notes": "VoxPen Desktop ${TAG}",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WINDOWS_SIG}",
+                "url": "${BASE_URL}/${WINDOWS_FILE}"
+              },
+              "darwin-aarch64": {
+                "signature": "${MACOS_SIG}",
+                "url": "${BASE_URL}/${MACOS_FILE}"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "${BASE_URL}/${LINUX_FILE}"
+              }
+            }
+          }
+          ENDJSON
+
+          cat release-files/latest.json
+
+      - name: Create release on voxpen-releases
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: soanseng/voxpen-releases
+          token: ${{ secrets.RELEASE_PAT }}
+          tag_name: ${{ github.ref_name }}
+          name: 'VoxPen Desktop ${{ github.ref_name }}'
+          body: |
             ## Downloads / 下載
 
             | Platform / 平台 | File / 檔案 | Notes / 說明 |
             |----------|------|-------|
             | **Windows x64** | `.exe` (NSIS installer) | 不需管理員權限 / No admin required |
             | **macOS arm64** | `.dmg` (Apple Silicon) | M1 / M2 / M3+ |
-            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 (含 Arch) |
+            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 |
 
             ### ⚠️ Windows Security / Windows 安全提示
             This app is **not code-signed**. Windows SmartScreen may show a warning.
             Click **"More info"** → **"Run anyway"** to proceed.
 
-            此應用**未經程式碼簽章**。Windows SmartScreen 可能顯示警告。
-            點擊「**更多資訊**」→「**仍要執行**」即可繼續安裝。
-
             ### ⚠️ macOS Security / macOS 安全提示
-            This app is **not notarized**. macOS Gatekeeper may block it.
-            Right-click the app → **Open** → **Open** to bypass.
-            If it shows "damaged", run in Terminal:
-            ```
-            xattr -cr /Applications/VoxPen\ Desktop.app
-            ```
-
-            此應用**未經 Apple 公證**。macOS Gatekeeper 可能阻擋開啟。
-            對應用程式右鍵 →「**打開**」→「**打開**」即可繞過。
-            如顯示「已損壞」，請在終端機執行：
-            ```
-            xattr -cr /Applications/VoxPen\ Desktop.app
-            ```
-          releaseDraft: true
+            This app is **not notarized**. Right-click → **Open** → **Open** to bypass.
+            If "damaged": `xattr -cr /Applications/VoxPen\ Desktop.app`
+          draft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          files: release-files/*
