@@ -120,6 +120,20 @@ jobs:
           \) -exec cp {} release-files/ \;
           ls -la release-files/
 
+      - name: Create fixed-name copies for website downloads
+        run: |
+          # macOS
+          DMG=$(ls release-files/*.dmg 2>/dev/null | head -1)
+          [ -n "$DMG" ] && cp "$DMG" release-files/VoxPen.Desktop_aarch64.dmg
+          # Windows
+          EXE=$(ls release-files/*.exe 2>/dev/null | head -1)
+          [ -n "$EXE" ] && cp "$EXE" release-files/VoxPen.Desktop_x64-setup.exe
+          # Linux AppImage
+          APPIMAGE=$(ls release-files/*.AppImage 2>/dev/null | head -1)
+          [ -n "$APPIMAGE" ] && cp "$APPIMAGE" release-files/VoxPen.Desktop_amd64.AppImage
+          echo "Fixed-name copies:"
+          ls -la release-files/VoxPen.Desktop_* 2>/dev/null || echo "(none created yet - will be populated at build time)"
+
       - name: Generate latest.json for Tauri updater
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
