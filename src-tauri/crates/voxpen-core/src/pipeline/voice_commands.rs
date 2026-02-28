@@ -110,8 +110,8 @@ fn normalize_spaces(s: &str) -> String {
             prev_space = false;
         }
     }
-    // Trim leading/trailing spaces (but not newlines)
-    out.trim_matches(' ').to_string()
+    // Trim leading/trailing whitespace (spaces and newlines).
+    out.trim().to_string()
 }
 
 #[cfg(test)]
@@ -185,5 +185,16 @@ mod tests {
     fn should_normalize_extra_spaces_after_replacement() {
         let result = apply("done period ", &Language::English);
         assert!(!result.contains("  "), "double space found: {:?}", result);
+    }
+
+    #[test]
+    fn should_trim_leading_newline_when_command_is_first_token() {
+        // "new paragraph" at the start produces leading "\n\n"; trim() removes it.
+        assert_eq!(apply("new paragraph body", &Language::English), "body");
+    }
+
+    #[test]
+    fn should_replace_english_full_stop() {
+        assert_eq!(apply("done full stop", &Language::English), "done.");
     }
 }
