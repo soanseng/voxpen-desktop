@@ -54,7 +54,7 @@
 ## P1 — Core UX Improvements
 
 ### Voice Commands for Formatting
-**Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-voice-commands.md`
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-voice-commands.md` · Guide: `docs/voice-commands.md`
 
 **What:** While dictating, spoken keywords insert formatting instead of text:
 - "新行" / "new line" / "새 줄" / "改行" → `\n`
