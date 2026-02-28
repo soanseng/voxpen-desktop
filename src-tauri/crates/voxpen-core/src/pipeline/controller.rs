@@ -165,6 +165,13 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
             }
         };
 
+        // Apply voice command substitutions (e.g. "comma" → ",") if enabled.
+        let raw_text = if self.config.voice_commands_enabled {
+            crate::pipeline::voice_commands::apply(&raw_text, &self.config.language)
+        } else {
+            raw_text
+        };
+
         // If refinement is disabled, emit Result and return
         if !self.config.refinement_enabled {
             let _ = self.state_tx.send(PipelineState::Result {
@@ -502,5 +509,40 @@ mod tests {
         let debug = format!("{:?}", config);
         assert!(!debug.contains("llm-key"));
         assert!(debug.contains("****"));
+    }
+
+    // -- Voice command tests --
+
+    #[tokio::test]
+    async fn should_apply_voice_commands_when_enabled() {
+        let mut config = config_with_key();
+        config.voice_commands_enabled = true;
+
+        let controller = PipelineController::new(
+            config,
+            mock_stt_success("hello comma world"),
+            mock_llm_unused(),
+        );
+        controller.on_start_recording().unwrap();
+
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
+
+        assert_eq!(result.unwrap(), "hello, world");
+    }
+
+    #[tokio::test]
+    async fn should_not_apply_voice_commands_when_disabled() {
+        let config = config_with_key(); // voice_commands_enabled = false by default
+
+        let controller = PipelineController::new(
+            config,
+            mock_stt_success("hello comma world"),
+            mock_llm_unused(),
+        );
+        controller.on_start_recording().unwrap();
+
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
+
+        assert_eq!(result.unwrap(), "hello comma world");
     }
 }
