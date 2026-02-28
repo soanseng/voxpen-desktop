@@ -35,6 +35,7 @@
 | ✅ Freemium licensing | LemonSqueezy + per-category usage quotas |
 | ✅ Audio file transcription | Drag-and-drop, WAV chunking |
 | ✅ Auto-structured output | List/step detection in Casual prompts → bullet or numbered format |
+| ✅ Translation Mode | Speak in one language, output in another. Toggle + target language in Settings |
 
 ---
 
@@ -111,7 +112,7 @@ Examples:
 ---
 
 ### Translation Mode
-**Status:** 📋
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-translation-mode.md`
 
 **What:** Speak in one language, output in another. User selects source + target language in settings or via quick toggle.
 
@@ -119,9 +120,7 @@ Examples:
 - Speak in Chinese → output in English
 - Speak in Japanese → output in Traditional Chinese
 
-**Approach:** Post-STT LLM step with translation prompt. Can reuse refinement pipeline with a "translate" prompt variant.
-
-**Scope:** Medium — new prompt type, UI toggle, no new APIs.
+**Approach:** Post-STT LLM step with translation prompt. Reuses refinement pipeline with a `for_translation()` prompt variant.
 
 ---
 
@@ -171,7 +170,7 @@ Examples:
 | Voice commands (punctuation, formatting) | ✅ | 📋 P1 |
 | 100+ languages | ✅ | 📋 P1 (expand from 4) |
 | Select text + voice edit | ✅ | 📋 P2 |
-| Translation | ✅ | 📋 P2 |
+| Translation | ✅ | ✅ Shipped |
 | Context-aware tone by app | ✅ | 💡 P3 |
 | Personal dictionary | ✅ | ✅ Shipped |
 | Filler word removal | ✅ | ✅ Shipped (via LLM) |
