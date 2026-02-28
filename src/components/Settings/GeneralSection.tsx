@@ -364,6 +364,36 @@ export default function GeneralSection({
           onChange={(v) => onUpdate("launch_at_login", v)}
         />
       </div>
+
+      {/* Max recording duration */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            最長錄音時間
+          </label>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Max Recording Duration (0 = unlimited)
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={0}
+            max={3600}
+            step={30}
+            value={settings.max_recording_secs}
+            onChange={(e) =>
+              onUpdate("max_recording_secs", parseInt(e.target.value) || 0)
+            }
+            className={
+              "w-20 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-right " +
+              "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+              "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            }
+          />
+          <span className="text-xs text-gray-400 dark:text-gray-500">秒</span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -16,6 +16,7 @@ export interface Settings {
   theme: "system" | "light" | "dark";
   ui_language: string;
   microphone_device: string | null;
+  max_recording_secs: number;
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -84,4 +85,5 @@ export const defaultSettings: Settings = {
   theme: "system",
   ui_language: "en",
   microphone_device: null,
+  max_recording_secs: 0,
 };
