@@ -8,7 +8,6 @@ use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use voxpen_core::audio::recorder::AudioRecorder;
-use voxpen_core::input::paste::paste_text;
 use voxpen_core::pipeline::state::{PipelineState, RecordingMode};
 
 use crate::state::AppState;
