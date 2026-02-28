@@ -26,8 +26,9 @@ const ZH_TW_PROMPT: &str = "\
 2. 如果說話者中途改口，只保留最終的意思
 3. 修正語法但保持原意
 4. 適當加入標點符號
-5. 不要添加原文沒有的內容
-6. 保持繁體中文
+5. 如果內容明顯是清單、步驟或列舉項目，請以條列式呈現（用 • 符號或 1. 2. 3. 編號）；一般口語內容則整理為連貫段落
+6. 不要添加原文沒有的內容
+7. 保持繁體中文
 只輸出整理後的文字，不要加任何解釋。";
 
 const EN_PROMPT: &str = "\
@@ -36,7 +37,8 @@ You are a voice-to-text editor. Clean up the following speech transcription into
 2. If the speaker corrected themselves mid-sentence, keep only the final version
 3. Fix grammar while preserving the original meaning
 4. Add proper punctuation
-5. Do not add content that wasn't in the original speech
+5. If the content is clearly a list, steps, or enumeration, present it as bullet points (• prefix) or numbered steps; otherwise write as flowing prose
+6. Do not add content that wasn't in the original speech
 Output only the cleaned text, no explanations.";
 
 const JA_PROMPT: &str = "\
@@ -45,7 +47,8 @@ const JA_PROMPT: &str = "\
 2. 言い直しがある場合は最終的な意味のみ残す
 3. 文法を修正し、原意を保持
 4. 適切に句読点を追加
-5. 原文にない内容を追加しない
+5. 内容が明らかにリスト・手順・列挙の場合は箇条書き（• または 1. 2. 3.）で提示する。一般的な発話は文章として整理する
+6. 原文にない内容を追加しない
 整理後のテキストのみ出力し、説明は不要です。";
 
 const KO_PROMPT: &str = "\
@@ -54,7 +57,8 @@ const KO_PROMPT: &str = "\
 2. 말하다 고친 부분은 최종 의미만 유지
 3. 문법을 교정하되 원래 의미 유지
 4. 적절한 문장부호 추가
-5. 원문에 없는 내용을 추가하지 않음
+5. 내용이 명확히 목록, 단계, 열거인 경우 글머리 기호(• 또는 1. 2. 3.)로 제시하고, 일반 발화는 문장으로 정리
+6. 원문에 없는 내용을 추가하지 않음
 정리된 텍스트만 출력하고 설명은 하지 마세요.";
 
 const FR_PROMPT: &str = "\
@@ -63,7 +67,8 @@ Vous êtes un éditeur de transcription vocale. Nettoyez la transcription suivan
 2. Si le locuteur s'est corrigé en cours de phrase, ne gardez que la version finale
 3. Corrigez la grammaire en préservant le sens original
 4. Ajoutez la ponctuation appropriée
-5. N'ajoutez pas de contenu absent du discours original
+5. Si le contenu est clairement une liste, des étapes ou une énumération, présentez-le sous forme de puces (•) ou de liste numérotée ; sinon, rédigez en prose
+6. N'ajoutez pas de contenu absent du discours original
 Produisez uniquement le texte nettoyé, sans explications.";
 
 const DE_PROMPT: &str = "\
@@ -72,7 +77,8 @@ Sie sind ein Sprache-zu-Text-Editor. Bereinigen Sie die folgende Sprachtranskrip
 2. Bei Selbstkorrekturen nur die endgültige Version beibehalten
 3. Grammatik korrigieren, dabei die ursprüngliche Bedeutung bewahren
 4. Angemessene Zeichensetzung hinzufügen
-5. Keine Inhalte hinzufügen, die nicht im Original vorkommen
+5. Wenn der Inhalt eindeutig eine Liste, Schritte oder eine Aufzählung ist, als Aufzählung (• oder 1. 2. 3.) darstellen; andernfalls als Fließtext
+6. Keine Inhalte hinzufügen, die nicht im Original vorkommen
 Geben Sie nur den bereinigten Text aus, ohne Erklärungen.";
 
 const ES_PROMPT: &str = "\
@@ -81,7 +87,8 @@ Eres un editor de transcripción de voz a texto. Limpia la siguiente transcripci
 2. Si el hablante se corrigió a mitad de frase, conserva solo la versión final
 3. Corrige la gramática preservando el significado original
 4. Añade la puntuación adecuada
-5. No añadas contenido que no estuviera en el discurso original
+5. Si el contenido es claramente una lista, pasos o enumeración, preséntalo con viñetas (•) o numerado; de lo contrario, escribe en prosa
+6. No añadas contenido que no estuviera en el discurso original
 Produce solo el texto limpio, sin explicaciones.";
 
 const VI_PROMPT: &str = "\
@@ -90,7 +97,8 @@ Bạn là trợ lý biên tập chuyển đổi giọng nói thành văn bản. 
 2. Nếu người nói sửa lại giữa chừng, chỉ giữ ý cuối cùng
 3. Sửa ngữ pháp nhưng giữ nguyên ý gốc
 4. Thêm dấu câu phù hợp
-5. Không thêm nội dung không có trong bản gốc
+5. Nếu nội dung rõ ràng là danh sách, các bước hoặc liệt kê, trình bày dạng gạch đầu dòng (•) hoặc đánh số; ngược lại viết thành đoạn văn
+6. Không thêm nội dung không có trong bản gốc
 Chỉ xuất văn bản đã chỉnh sửa, không giải thích.";
 
 const ID_PROMPT: &str = "\
@@ -99,7 +107,8 @@ Anda adalah editor transkripsi suara ke teks. Bersihkan transkripsi berikut menj
 2. Jika pembicara mengoreksi diri di tengah kalimat, pertahankan hanya versi akhir
 3. Perbaiki tata bahasa dengan mempertahankan makna asli
 4. Tambahkan tanda baca yang sesuai
-5. Jangan menambahkan konten yang tidak ada dalam ucapan asli
+5. Jika konten jelas berupa daftar, langkah-langkah, atau enumerasi, sajikan sebagai poin (•) atau bernomor; jika tidak, tulis sebagai prosa
+6. Jangan menambahkan konten yang tidak ada dalam ucapan asli
 Hasilkan hanya teks yang sudah dibersihkan, tanpa penjelasan.";
 
 const TH_PROMPT: &str = "\
@@ -108,7 +117,8 @@ const TH_PROMPT: &str = "\
 2. หากผู้พูดแก้ไขกลางประโยค ให้เก็บเฉพาะความหมายสุดท้าย
 3. แก้ไขไวยากรณ์โดยรักษาความหมายเดิม
 4. เพิ่มเครื่องหมายวรรคตอนที่เหมาะสม
-5. ไม่เพิ่มเนื้อหาที่ไม่มีในต้นฉบับ
+5. หากเนื้อหาเป็นรายการ ขั้นตอน หรือการระบุชัดเจน ให้แสดงเป็นหัวข้อย่อย (• หรือ 1. 2. 3.) มิฉะนั้นให้เขียนเป็นความเรียง
+6. ไม่เพิ่มเนื้อหาที่ไม่มีในต้นฉบับ
 แสดงเฉพาะข้อความที่แก้ไขแล้ว ไม่ต้องอธิบาย";
 
 const MIXED_PROMPT: &str = "\
@@ -117,7 +127,8 @@ const MIXED_PROMPT: &str = "\
 2. 如果說話者中途改口，只保留最終的意思
 3. 修正語法但保持原意和原本的語言選擇
 4. 適當加入標點符號
-5. 不要把外語強制翻譯成中文
+5. 如果內容明顯是清單、步驟或列舉項目，請以條列式呈現（用 • 符號或 1. 2. 3. 編號）；一般口語內容則整理為連貫段落
+6. 不要把外語強制翻譯成中文
 只輸出整理後的文字，不要加任何解釋。";
 
 // ---------------------------------------------------------------------------
