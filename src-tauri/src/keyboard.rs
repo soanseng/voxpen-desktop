@@ -58,13 +58,18 @@ impl KeySimulator for EnigoKeyboard {
         enigo
             .key(modifier, Direction::Press)
             .map_err(|e| AppError::Paste(format!("key press failed: {e}")))?;
-        enigo
-            .key(Key::Unicode('c'), Direction::Click)
-            .map_err(|e| AppError::Paste(format!("key click failed: {e}")))?;
-        enigo
-            .key(modifier, Direction::Release)
-            .map_err(|e| AppError::Paste(format!("key release failed: {e}")))?;
 
+        let click_result = enigo
+            .key(Key::Unicode('c'), Direction::Click)
+            .map_err(|e| AppError::Paste(format!("key click failed: {e}")));
+
+        // Always release the modifier, even if the click failed
+        let release_result = enigo
+            .key(modifier, Direction::Release)
+            .map_err(|e| AppError::Paste(format!("key release failed: {e}")));
+
+        click_result?;
+        release_result?;
         Ok(())
     }
 }
