@@ -366,6 +366,122 @@ fn resolve_action(
     }
 }
 
+/// Shared stop logic called by both manual key release and the auto-timeout task.
+///
+/// `pcm_data` must already be captured from the recorder before calling this.
+#[allow(clippy::too_many_arguments)]
+async fn do_stop_recording(
+    app: tauri::AppHandle,
+    controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
+    clipboard: Arc<crate::clipboard::ArboardClipboard>,
+    keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
+    history: Arc<crate::history::HistoryDb>,
+    dictionary: Arc<crate::dictionary::DictionaryDb>,
+    license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
+    pcm_data: Vec<i16>,
+    processing_flag: Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::sync::atomic::Ordering;
+    use voxpen_core::input::paste::paste_text;
+    use voxpen_core::pipeline::state::PipelineState;
+    use tauri::Emitter;
+
+    let pcm_len = pcm_data.len();
+
+    // Skip very short recordings (<0.5s at 16kHz)
+    if pcm_len < 8000 {
+        let ctrl = controller.lock().await;
+        ctrl.reset();
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    // Fetch vocabulary for prompt injection
+    let vocab_words = dictionary.get_words(500).unwrap_or_default();
+    let stt_lang = {
+        let s = settings.lock().await;
+        s.stt_language.clone()
+    };
+    let vocabulary_hint =
+        voxpen_core::pipeline::vocabulary::build_stt_hint(&vocab_words, &stt_lang);
+
+    // Run pipeline: STT + optional LLM refinement
+    let ctrl = controller.lock().await;
+    let result = ctrl
+        .on_stop_recording(pcm_data, vocabulary_hint, vocab_words)
+        .await;
+    let final_state = ctrl.current_state();
+    drop(ctrl);
+
+    // Save to history and auto-paste result
+    if let Ok(final_text) = &result {
+        let (original, refined) = match &final_state {
+            PipelineState::Refined { original, refined } => {
+                (original.clone(), Some(refined.clone()))
+            }
+            _ => (final_text.clone(), None),
+        };
+        let has_refined = refined.is_some();
+
+        let s = settings.lock().await;
+        let entry = voxpen_core::history::TranscriptionEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+            original_text: original,
+            refined_text: refined,
+            language: s.stt_language.clone(),
+            audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
+            provider: s.stt_provider.clone(),
+        };
+        let auto_paste = s.auto_paste;
+        drop(s);
+
+        if let Err(e) = history.insert(&entry) {
+            eprintln!("history insert error: {e}");
+        }
+
+        // Record per-category usage for licensing and update tray
+        let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::VoiceInput);
+        if has_refined {
+            let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::Refinement);
+        }
+        let _ = app.emit("usage-updated", ());
+
+        if auto_paste {
+            let text = final_text.clone();
+            let cb = clipboard.clone();
+            let kb = keyboard.clone();
+            match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
+                .await
+            {
+                Ok(Err(e)) => eprintln!("paste failed: {e}"),
+                Err(e) => eprintln!("paste task panicked: {e}"),
+                Ok(Ok(())) => {}
+            }
+        }
+    }
+
+    // Allow next hotkey press immediately after paste completes.
+    processing_flag.store(false, Ordering::SeqCst);
+
+    // Reset to idle after delay (cosmetic — clears overlay)
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let ctrl = controller.lock().await;
+    match ctrl.current_state() {
+        PipelineState::Result { .. }
+        | PipelineState::Refined { .. }
+        | PipelineState::Error { .. } => {
+            ctrl.reset();
+        }
+        _ => {}
+    }
+    drop(ctrl);
+}
+
 /// Shared press/release handler used by both combo and single-key backends.
 /// The recording `mode` is determined by which hotkey was pressed (PTT vs Toggle).
 fn handle_hotkey_event(
@@ -461,17 +577,17 @@ fn handle_hotkey_event(
             let history = state.history.clone();
             let dictionary = state.dictionary.clone();
             let license_mgr = state.license_manager.clone();
-            let app_for_usage = app.clone();
+            let app_handle = app.clone();
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
+            let timeout_handle = state.recording_timeout_handle.clone();
 
             tauri::async_runtime::spawn(async move {
+                use std::sync::atomic::Ordering;
+
                 // Wait for recording to actually start before stopping.
-                // Without this, the release can race ahead of the press async task,
-                // calling recorder.stop() before start() completes, leaving the
-                // recorder in a permanent Recording state.
-                let deadline =
-                    tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+                // Without this, the release can race ahead of the press async task.
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
                 while !recording_started.load(Ordering::SeqCst) {
                     if tokio::time::Instant::now() >= deadline {
                         eprintln!("recording never started, aborting release handler");
@@ -483,8 +599,13 @@ fn handle_hotkey_event(
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
-                // Clear the signal for the next cycle
                 recording_started.store(false, Ordering::SeqCst);
+
+                // Abort the auto-stop timeout — user stopped manually.
+                let handle = timeout_handle.lock().await.take();
+                if let Some(h) = handle {
+                    h.abort();
+                }
 
                 let pcm_data = match recorder.stop() {
                     Ok(data) => data,
@@ -498,107 +619,19 @@ fn handle_hotkey_event(
                     }
                 };
 
-                let pcm_len = pcm_data.len();
-
-                // Skip very short recordings (<0.5s at 16kHz)
-                if pcm_len < 8000 {
-                    let ctrl = controller.lock().await;
-                    ctrl.reset();
-                    processing_flag.store(false, Ordering::SeqCst);
-                    return;
-                }
-
-                // Fetch vocabulary for prompt injection
-                let vocab_words = dictionary.get_words(500).unwrap_or_default();
-                let stt_lang = {
-                    let s = settings.lock().await;
-                    s.stt_language.clone()
-                };
-                let vocabulary_hint = voxpen_core::pipeline::vocabulary::build_stt_hint(
-                    &vocab_words, &stt_lang,
-                );
-
-                // Run pipeline: STT + optional LLM refinement
-                let ctrl = controller.lock().await;
-                let result = ctrl
-                    .on_stop_recording(pcm_data, vocabulary_hint, vocab_words)
-                    .await;
-                let final_state = ctrl.current_state();
-                drop(ctrl);
-
-                // Save to history and auto-paste result
-                if let Ok(final_text) = &result {
-                    let (original, refined) = match &final_state {
-                        PipelineState::Refined { original, refined } => {
-                            (original.clone(), Some(refined.clone()))
-                        }
-                        _ => (final_text.clone(), None),
-                    };
-                    let has_refined = refined.is_some();
-
-                    let s = settings.lock().await;
-                    let entry = voxpen_core::history::TranscriptionEntry {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as i64,
-                        original_text: original,
-                        refined_text: refined,
-                        language: s.stt_language.clone(),
-                        audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
-                        provider: s.stt_provider.clone(),
-                    };
-                    let auto_paste = s.auto_paste;
-                    drop(s);
-
-                    if let Err(e) = history.insert(&entry) {
-                        eprintln!("history insert error: {e}");
-                    }
-
-                    // Record per-category usage for licensing and update tray
-                    let _ = license_mgr
-                        .record_usage(voxpen_core::licensing::UsageCategory::VoiceInput);
-                    if has_refined {
-                        let _ = license_mgr
-                            .record_usage(voxpen_core::licensing::UsageCategory::Refinement);
-                    }
-                    let _ = app_for_usage.emit("usage-updated", ());
-
-                    if auto_paste {
-                        let text = final_text.clone();
-                        let cb = clipboard.clone();
-                        let kb = keyboard.clone();
-                        match tokio::task::spawn_blocking(move || {
-                            paste_text(cb.as_ref(), kb.as_ref(), &text)
-                        })
-                        .await
-                        {
-                            Ok(Err(e)) => eprintln!("paste failed: {e}"),
-                            Err(e) => eprintln!("paste task panicked: {e}"),
-                            Ok(Ok(())) => {}
-                        }
-                    }
-                }
-
-                // Allow the next hotkey press immediately after paste completes.
-                // The idle-reset below is cosmetic (clears overlay after a delay).
-                processing_flag.store(false, Ordering::SeqCst);
-
-                // Reset to idle after delay (cosmetic — clears overlay)
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                let ctrl = controller.lock().await;
-                // Only reset if still in a terminal state (Result/Refined/Error).
-                // A new recording may have started during the 2s delay.
-                match ctrl.current_state() {
-                    PipelineState::Result { .. }
-                    | PipelineState::Refined { .. }
-                    | PipelineState::Error { .. } => {
-                        ctrl.reset();
-                    }
-                    _ => {} // New session in progress — don't reset
-                }
-                drop(ctrl);
+                do_stop_recording(
+                    app_handle,
+                    controller,
+                    clipboard,
+                    keyboard,
+                    settings,
+                    history,
+                    dictionary,
+                    license_mgr,
+                    pcm_data,
+                    processing_flag,
+                )
+                .await;
             });
         }
     }
