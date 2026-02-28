@@ -512,6 +512,11 @@ fn handle_hotkey_event(
             let license_mgr = state.license_manager.clone();
             let app_for_err = app.clone();
             let processing_flag = processing.clone();
+            let clipboard = state.clipboard.clone();
+            let keyboard = state.keyboard.clone();
+            let history = state.history.clone();
+            let dictionary = state.dictionary.clone();
+            let timeout_handle = state.recording_timeout_handle.clone();
 
             // Reset the signal before starting
             recording_started.store(false, Ordering::SeqCst);
@@ -555,6 +560,72 @@ fn handle_hotkey_event(
                     Ok(()) => {
                         // Signal that recording has actually started
                         recording_started.store(true, Ordering::SeqCst);
+
+                        // Read max duration setting
+                        let max_secs = {
+                            let s = settings.lock().await;
+                            s.max_recording_secs
+                        };
+
+                        if max_secs > 0 {
+                            let timeout_controller = controller.clone();
+                            let timeout_recorder = recorder.clone();
+                            let timeout_clipboard = clipboard.clone();
+                            let timeout_keyboard = keyboard.clone();
+                            let timeout_settings = settings.clone();
+                            let timeout_history = history.clone();
+                            let timeout_dictionary = dictionary.clone();
+                            let timeout_license_mgr = license_mgr.clone();
+                            let timeout_app = app_for_err.clone();
+                            let timeout_recording_started = recording_started.clone();
+                            let timeout_processing = processing_flag.clone();
+
+                            let handle = tauri::async_runtime::spawn(async move {
+                                use std::sync::atomic::Ordering;
+                                use tauri::Emitter;
+
+                                tokio::time::sleep(std::time::Duration::from_secs(
+                                    max_secs as u64,
+                                ))
+                                .await;
+
+                                // Only fire if still recording (user may have stopped manually just as timer fired)
+                                if !timeout_recording_started.load(Ordering::SeqCst) {
+                                    return;
+                                }
+                                timeout_recording_started.store(false, Ordering::SeqCst);
+
+                                let pcm_data = match timeout_recorder.stop() {
+                                    Ok(data) => data,
+                                    Err(e) => {
+                                        eprintln!("timeout: audio stop error: {e}");
+                                        let ctrl = timeout_controller.lock().await;
+                                        ctrl.reset();
+                                        timeout_processing.store(false, Ordering::SeqCst);
+                                        return;
+                                    }
+                                };
+
+                                // Notify frontend that this was an auto-stop
+                                let _ = timeout_app.emit("recording-timed-out", max_secs);
+
+                                do_stop_recording(
+                                    timeout_app,
+                                    timeout_controller,
+                                    timeout_clipboard,
+                                    timeout_keyboard,
+                                    timeout_settings,
+                                    timeout_history,
+                                    timeout_dictionary,
+                                    timeout_license_mgr,
+                                    pcm_data,
+                                    timeout_processing,
+                                )
+                                .await;
+                            });
+
+                            *timeout_handle.lock().await = Some(handle);
+                        }
                     }
                     Err(e) => {
                         let msg = format_audio_error(&e);
