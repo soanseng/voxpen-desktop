@@ -61,6 +61,11 @@ pub struct Settings {
     /// Default: English (most common translation target for CJK users).
     #[serde(default = "default_translation_target")]
     pub translation_target: Language,
+    /// Whether to replace spoken formatting keywords with punctuation characters.
+    /// E.g. "comma" → "," and "new line" → "\n". Applied after STT, before LLM refinement.
+    /// Default: false.
+    #[serde(default)]
+    pub voice_commands_enabled: bool,
 }
 
 fn default_hotkey_toggle() -> String {
@@ -98,6 +103,7 @@ impl Default for Settings {
             max_recording_secs: default_max_recording_secs(),
             translation_enabled: false,
             translation_target: default_translation_target(),
+            voice_commands_enabled: false,
         }
     }
 }
@@ -255,5 +261,21 @@ mod tests {
         let s2: Settings = serde_json::from_str(&json).unwrap();
         assert!(s2.translation_enabled);
         assert_eq!(s2.translation_target, Language::Chinese);
+    }
+
+    // -- voice_commands_enabled tests --
+
+    #[test]
+    fn should_default_voice_commands_enabled_to_false() {
+        let s = Settings::default();
+        assert!(!s.voice_commands_enabled);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_voice_commands() {
+        // Old JSON without voice_commands_enabled should deserialize with false
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert!(!s.voice_commands_enabled);
     }
 }

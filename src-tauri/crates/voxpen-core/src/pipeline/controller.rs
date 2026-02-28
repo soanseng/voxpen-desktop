@@ -50,6 +50,7 @@ pub struct PipelineConfig {
     pub refinement_enabled: bool,
     pub llm_api_key: Option<String>,
     pub llm_model: String,
+    pub voice_commands_enabled: bool,
 }
 
 // Custom Debug that masks API keys (S-6)
@@ -62,6 +63,7 @@ impl fmt::Debug for PipelineConfig {
             .field("refinement_enabled", &self.refinement_enabled)
             .field("llm_api_key", &self.llm_api_key.as_ref().map(|_| "****"))
             .field("llm_model", &self.llm_model)
+            .field("voice_commands_enabled", &self.voice_commands_enabled)
             .finish()
     }
 }
@@ -75,6 +77,7 @@ impl PipelineConfig {
             refinement_enabled: false,
             llm_api_key: None,
             llm_model: crate::api::groq::DEFAULT_LLM_MODEL.to_string(),
+            voice_commands_enabled: false,
         }
     }
 }

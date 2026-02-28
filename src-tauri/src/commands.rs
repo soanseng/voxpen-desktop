@@ -24,6 +24,7 @@ fn config_from_settings(settings: &Settings) -> PipelineConfig {
         refinement_enabled: settings.refinement_enabled,
         llm_api_key: None, // resolved by provider at call time
         llm_model: settings.refinement_model.clone(),
+        voice_commands_enabled: settings.voice_commands_enabled,
     }
 }
 

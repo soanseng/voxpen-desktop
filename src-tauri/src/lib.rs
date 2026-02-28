@@ -327,6 +327,7 @@ pub fn run() {
                                             refinement_enabled: settings_clone.refinement_enabled,
                                             llm_api_key: None,
                                             llm_model: settings_clone.refinement_model.clone(),
+                                            voice_commands_enabled: settings_clone.voice_commands_enabled,
                                         });
                                         drop(ctrl);
 
