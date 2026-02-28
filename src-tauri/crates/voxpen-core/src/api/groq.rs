@@ -81,7 +81,7 @@ pub struct WhisperResponse {
 /// Sends a multipart POST to Groq's OpenAI-compatible endpoint.
 /// Returns the transcribed text on success.
 pub async fn transcribe(config: &SttConfig, wav_data: &[u8]) -> Result<String, AppError> {
-    transcribe_with_base_url(config, wav_data, GROQ_BASE_URL).await
+    transcribe_with_base_url(config, wav_data, "groq", GROQ_BASE_URL).await
 }
 
 /// Transcribe an audio file (any format the API supports: wav, mp3, flac, m4a, ogg).
@@ -179,6 +179,7 @@ pub(crate) async fn transcribe_file_with_base_url(
 pub(crate) async fn transcribe_with_base_url(
     config: &SttConfig,
     wav_data: &[u8],
+    provider: &str,
     base_url: &str,
 ) -> Result<String, AppError> {
     let client = reqwest::Client::builder()
@@ -209,7 +210,12 @@ pub(crate) async fn transcribe_with_base_url(
         .unwrap_or(config.language.prompt());
     form = form.text("prompt", prompt.to_string());
 
-    let url = format!("{base_url}openai/v1/audio/transcriptions");
+    let path = if provider == "groq" {
+        "openai/v1/audio/transcriptions"
+    } else {
+        "v1/audio/transcriptions"
+    };
+    let url = format!("{base_url}{path}");
 
     let response = client
         .post(&url)
@@ -221,7 +227,7 @@ pub(crate) async fn transcribe_with_base_url(
     let status = response.status();
 
     if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(AppError::ApiKeyMissing("groq".to_string()));
+        return Err(AppError::ApiKeyMissing(provider.to_string()));
     }
 
     if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
@@ -432,8 +438,9 @@ mod tests {
         let config = test_config("test-key-123", Language::Chinese);
         let wav_data = crate::audio::encoder::pcm_to_wav(&[100, 200, 300]);
 
-        let result = transcribe_with_base_url(&config, &wav_data, &format!("{}/", server.uri()))
-            .await;
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "groq", &format!("{}/", server.uri()))
+                .await;
 
         assert_eq!(result.unwrap(), "你好世界");
     }
@@ -451,8 +458,9 @@ mod tests {
         let config = test_config("bad-key", Language::Auto);
         let wav_data = crate::audio::encoder::pcm_to_wav(&[100]);
 
-        let result = transcribe_with_base_url(&config, &wav_data, &format!("{}/", server.uri()))
-            .await;
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "groq", &format!("{}/", server.uri()))
+                .await;
 
         assert!(matches!(result, Err(AppError::ApiKeyMissing(_))));
     }
@@ -470,8 +478,9 @@ mod tests {
         let config = test_config("test-key", Language::Auto);
         let wav_data = crate::audio::encoder::pcm_to_wav(&[100]);
 
-        let result = transcribe_with_base_url(&config, &wav_data, &format!("{}/", server.uri()))
-            .await;
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "groq", &format!("{}/", server.uri()))
+                .await;
 
         match result {
             Err(AppError::Transcription(msg)) => assert!(msg.contains("too large")),
@@ -492,8 +501,9 @@ mod tests {
         let config = test_config("test-key", Language::English);
         let wav_data = crate::audio::encoder::pcm_to_wav(&[100]);
 
-        let result = transcribe_with_base_url(&config, &wav_data, &format!("{}/", server.uri()))
-            .await;
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "groq", &format!("{}/", server.uri()))
+                .await;
 
         match result {
             Err(AppError::Transcription(msg)) => {
@@ -520,8 +530,9 @@ mod tests {
         config.model = "whisper-large-v3".to_string();
         let wav_data = crate::audio::encoder::pcm_to_wav(&[100]);
 
-        let result = transcribe_with_base_url(&config, &wav_data, &format!("{}/", server.uri()))
-            .await;
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "groq", &format!("{}/", server.uri()))
+                .await;
         assert!(result.is_ok());
     }
 

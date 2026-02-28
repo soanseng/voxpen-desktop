@@ -96,8 +96,22 @@ impl SttProvider for GroqSttProvider {
                 response_format: "verbose_json".to_string(),
                 prompt_override: None,
             };
+            let provider = s.stt_provider.clone();
+            let custom_base_url = s.custom_base_url.clone();
             drop(s);
-            transcribe::transcribe(&pcm_data, &config, vocabulary_hint.as_deref()).await
+            let base_url = if provider == "custom" && !custom_base_url.is_empty() {
+                custom_base_url
+            } else {
+                groq::base_url_for_provider(&provider).to_string()
+            };
+            transcribe::transcribe(
+                &pcm_data,
+                &config,
+                vocabulary_hint.as_deref(),
+                &provider,
+                &base_url,
+            )
+            .await
         })
     }
 }

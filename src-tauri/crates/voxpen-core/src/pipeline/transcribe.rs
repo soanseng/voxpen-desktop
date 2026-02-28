@@ -4,7 +4,7 @@ use crate::error::AppError;
 
 /// Orchestrate PCM → WAV → STT transcription.
 ///
-/// Composes `encoder::pcm_to_wav()` + `groq::transcribe()`.
+/// Composes `encoder::pcm_to_wav()` + `groq::transcribe_with_base_url()`.
 /// Mirrors Android's `TranscribeAudioUseCase`.
 ///
 /// If `vocabulary_hint` is provided, it overrides the default language prompt
@@ -13,6 +13,8 @@ pub async fn transcribe(
     pcm_data: &[i16],
     config: &SttConfig,
     vocabulary_hint: Option<&str>,
+    provider: &str,
+    base_url: &str,
 ) -> Result<String, AppError> {
     if pcm_data.is_empty() {
         return Err(AppError::Audio("no audio data".to_string()));
@@ -24,7 +26,7 @@ pub async fn transcribe(
     }
 
     let wav_data = encoder::pcm_to_wav(pcm_data);
-    groq::transcribe(&config, &wav_data).await
+    groq::transcribe_with_base_url(&config, &wav_data, provider, base_url).await
 }
 
 /// Internal: transcribe with configurable base URL (for testing with wiremock).
@@ -32,6 +34,7 @@ pub async fn transcribe(
 async fn transcribe_with_base_url(
     pcm_data: &[i16],
     config: &SttConfig,
+    provider: &str,
     base_url: &str,
 ) -> Result<String, AppError> {
     if pcm_data.is_empty() {
@@ -39,7 +42,7 @@ async fn transcribe_with_base_url(
     }
 
     let wav_data = encoder::pcm_to_wav(pcm_data);
-    groq::transcribe_with_base_url(config, &wav_data, base_url).await
+    groq::transcribe_with_base_url(config, &wav_data, provider, base_url).await
 }
 
 #[cfg(test)]
@@ -52,7 +55,7 @@ mod tests {
     #[tokio::test]
     async fn should_reject_empty_pcm_data() {
         let config = SttConfig::new("key".to_string(), Language::Auto);
-        let result = transcribe(&[], &config, None).await;
+        let result = transcribe(&[], &config, None, "groq", "https://api.groq.com/").await;
 
         match result {
             Err(AppError::Audio(msg)) => assert_eq!(msg, "no audio data"),
@@ -77,8 +80,13 @@ mod tests {
         let config = SttConfig::new("test-key".to_string(), Language::English);
         let pcm_data = vec![100i16, 200, 300, -100, -200];
 
-        let result =
-            transcribe_with_base_url(&pcm_data, &config, &format!("{}/", server.uri())).await;
+        let result = transcribe_with_base_url(
+            &pcm_data,
+            &config,
+            "groq",
+            &format!("{}/", server.uri()),
+        )
+        .await;
 
         assert_eq!(result.unwrap(), "hello world");
     }
@@ -96,8 +104,13 @@ mod tests {
         let config = SttConfig::new("bad-key".to_string(), Language::Chinese);
         let pcm_data = vec![100i16];
 
-        let result =
-            transcribe_with_base_url(&pcm_data, &config, &format!("{}/", server.uri())).await;
+        let result = transcribe_with_base_url(
+            &pcm_data,
+            &config,
+            "groq",
+            &format!("{}/", server.uri()),
+        )
+        .await;
 
         assert!(matches!(result, Err(AppError::ApiKeyMissing(_))));
     }
