@@ -179,5 +179,8 @@
     "copiedResult": "Copied!",
     "transcribeAnother": "Transcribe Another",
     "error": "Transcription failed: {{error}}"
-  }
+  },
+  "translationEnabled": "Translation Mode",
+  "translationEnabledHint": "Translate your dictation to another language. Requires LLM Refinement to be enabled.",
+  "translationTarget": "Output Language"
 }

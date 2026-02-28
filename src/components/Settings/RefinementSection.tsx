@@ -24,6 +24,19 @@ const REFINEMENT_PROVIDERS = [
   { value: "custom", label: "Custom / Ollama" },
 ];
 
+const TRANSLATION_TARGETS: { value: Settings["stt_language"]; labelKey: string }[] = [
+  { value: "Chinese", labelKey: "chinese" },
+  { value: "English", labelKey: "english" },
+  { value: "Japanese", labelKey: "japanese" },
+  { value: "Korean", labelKey: "korean" },
+  { value: "French", labelKey: "french" },
+  { value: "German", labelKey: "german" },
+  { value: "Spanish", labelKey: "spanish" },
+  { value: "Vietnamese", labelKey: "vietnamese" },
+  { value: "Indonesian", labelKey: "indonesian" },
+  { value: "Thai", labelKey: "thai" },
+];
+
 interface ModelOption {
   value: string;
   label: string;
@@ -165,6 +178,57 @@ export default function RefinementSection({
           checked={settings.refinement_enabled}
           onChange={(v) => onUpdate("refinement_enabled", v)}
         />
+      </div>
+
+      {/* Translation Mode */}
+      <div className={`space-y-3 ${disabled ? "opacity-40" : ""}`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t("translationEnabled")}
+            </label>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {t("translationEnabledHint")}
+            </p>
+          </div>
+          <ToggleSwitch
+            id="translation-enabled"
+            checked={settings.translation_enabled}
+            onChange={(v) => onUpdate("translation_enabled", v)}
+          />
+        </div>
+
+        {settings.translation_enabled && (
+          <div className="space-y-1">
+            <label
+              htmlFor="translation-target"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              {t("translationTarget")}
+            </label>
+            <select
+              id="translation-target"
+              value={settings.translation_target}
+              onChange={(e) =>
+                onUpdate("translation_target", e.target.value as Settings["stt_language"])
+              }
+              disabled={disabled}
+              className={
+                "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "disabled:cursor-not-allowed " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              }
+            >
+              {TRANSLATION_TARGETS.map((lang) => (
+                <option key={lang.value} value={lang.value}>
+                  {t(lang.labelKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Tone Preset */}

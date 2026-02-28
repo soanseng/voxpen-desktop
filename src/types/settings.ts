@@ -17,6 +17,8 @@ export interface Settings {
   ui_language: string;
   microphone_device: string | null;
   max_recording_secs: number;
+  translation_enabled: boolean;
+  translation_target: "Auto" | "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -86,4 +88,6 @@ export const defaultSettings: Settings = {
   ui_language: "en",
   microphone_device: null,
   max_recording_secs: 0,
+  translation_enabled: false,
+  translation_target: "English",
 };

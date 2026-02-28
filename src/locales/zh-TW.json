@@ -179,5 +179,8 @@
     "copiedResult": "已複製！",
     "transcribeAnother": "轉錄另一個檔案",
     "error": "轉錄失敗：{{error}}"
-  }
+  },
+  "translationEnabled": "翻譯模式",
+  "translationEnabledHint": "將語音翻譯為另一種語言輸出。需啟用文字潤飾功能。",
+  "translationTarget": "輸出語言"
 }
