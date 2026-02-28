@@ -152,6 +152,41 @@ pub fn for_language_and_tone(lang: &Language, tone: &TonePreset) -> &'static str
 }
 
 // ---------------------------------------------------------------------------
+// Translation prompt
+// ---------------------------------------------------------------------------
+
+/// Returns a translation prompt directing the LLM to translate speech from
+/// `_source` language into `target`. Returns `String` (not `&'static str`)
+/// because the content is assembled at runtime from the target language name.
+pub fn for_translation(_source: &Language, target: &Language) -> String {
+    let target_name = match target {
+        Language::Chinese    => "Traditional Chinese (繁體中文)",
+        Language::English    => "English",
+        Language::Japanese   => "Japanese (日本語)",
+        Language::Korean     => "Korean (한국어)",
+        Language::French     => "French (Français)",
+        Language::German     => "German (Deutsch)",
+        Language::Spanish    => "Spanish (Español)",
+        Language::Vietnamese => "Vietnamese (Tiếng Việt)",
+        Language::Indonesian => "Indonesian (Bahasa Indonesia)",
+        Language::Thai       => "Thai (ภาษาไทย)",
+        Language::Auto       => "the most appropriate language",
+    };
+
+    format!(
+        "You are a voice-to-text translator. Translate the following speech \
+transcription into {target}:
+1. Translate naturally and fluently — not word-for-word
+2. Remove filler words and false starts from the original
+3. If the speaker corrected themselves mid-sentence, translate only the final version
+4. Add proper punctuation in the target language
+5. Do not add content that was not in the original speech
+Output only the translated text, no explanations.",
+        target = target_name
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Professional tone prompts
 // ---------------------------------------------------------------------------
 
@@ -846,5 +881,43 @@ mod tests {
         for lang in &all {
             assert!(!for_language(lang).is_empty());
         }
+    }
+}
+
+#[cfg(test)]
+mod translation_tests {
+    use super::*;
+
+    #[test]
+    fn should_return_nonempty_translation_prompt_for_all_target_languages() {
+        let all = [
+            Language::Chinese, Language::English, Language::Japanese,
+            Language::Korean, Language::French, Language::German,
+            Language::Spanish, Language::Vietnamese, Language::Indonesian,
+            Language::Thai, Language::Auto,
+        ];
+        for target in &all {
+            let prompt = for_translation(&Language::Chinese, target);
+            assert!(!prompt.is_empty(), "empty prompt for target {:?}", target);
+        }
+    }
+
+    #[test]
+    fn should_include_target_language_name_in_prompt() {
+        let prompt = for_translation(&Language::Chinese, &Language::English);
+        assert!(prompt.contains("English"), "expected 'English' in prompt: {}", prompt);
+    }
+
+    #[test]
+    fn should_include_different_target_for_japanese() {
+        let prompt = for_translation(&Language::English, &Language::Japanese);
+        assert!(prompt.contains("Japanese") || prompt.contains("日本語"), "prompt: {}", prompt);
+    }
+
+    #[test]
+    fn should_differ_from_cleanup_prompt_for_same_language() {
+        let translation = for_translation(&Language::English, &Language::English);
+        let cleanup = for_language(&Language::English);
+        assert_ne!(translation, cleanup, "translation prompt should differ from cleanup");
     }
 }
