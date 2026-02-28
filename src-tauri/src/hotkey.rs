@@ -138,8 +138,22 @@ impl HotkeyManager {
         self.registered_edit = None;
     }
 
-    /// Stub for voice-edit combo registration. Full implementation in Task 6.
-    fn register_edit_combo(&self, _app: &AppHandle, _shortcut: &str) -> Result<(), String> {
+    fn register_edit_combo(
+        &self,
+        app: &AppHandle,
+        shortcut: &str,
+    ) -> Result<(), String> {
+        let app_handle = app.clone();
+        let processing = self.rdev_state.processing.clone();
+
+        app.global_shortcut()
+            .on_shortcut(shortcut, move |_app, _shortcut, event| {
+                let app = app_handle.clone();
+                let state: tauri::State<'_, AppState> = app.state();
+                handle_edit_hotkey_event(&app, &state, event.state, &processing, true);
+            })
+            .map_err(|e| format!("Failed to register edit shortcut '{}': {}", shortcut, e))?;
+
         Ok(())
     }
 
@@ -726,6 +740,390 @@ fn handle_hotkey_event(
             });
         }
     }
+}
+
+/// Press/release handler for the Voice Edit hotkey.
+///
+/// Press: simulate Ctrl+C / Cmd+C to capture selection → start recording.
+/// Release: stop recording → run STT + LLM edit pipeline → paste result.
+fn handle_edit_hotkey_event(
+    app: &AppHandle,
+    state: &tauri::State<'_, AppState>,
+    shortcut_state: ShortcutState,
+    processing: &Arc<AtomicBool>,
+    is_combo: bool,
+) {
+    let is_recording = state.recording_started.load(Ordering::SeqCst);
+    // Voice edit is always hold-to-record
+    let action = resolve_action(shortcut_state, &RecordingMode::HoldToRecord, is_recording, is_combo);
+
+    match action {
+        HotkeyAction::Ignore => {}
+
+        HotkeyAction::Start => {
+            if processing
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                return;
+            }
+
+            let controller = state.controller.clone();
+            let recorder = state.recorder.clone();
+            let recording_started = state.recording_started.clone();
+            let clipboard = state.clipboard.clone();
+            let keyboard = state.keyboard.clone();
+            let voice_edit_selection = state.voice_edit_selection.clone();
+            let processing_flag = processing.clone();
+            let app_for_err = app.clone();
+
+            // Reset before starting
+            recording_started.store(false, Ordering::SeqCst);
+
+            tauri::async_runtime::spawn(async move {
+                // 1. Simulate Ctrl+C / Cmd+C to copy the selection to clipboard
+                let kb = keyboard.clone();
+                if let Err(e) = tokio::task::spawn_blocking(move || {
+                    use voxpen_core::input::paste::KeySimulator;
+                    kb.copy()
+                })
+                .await
+                .unwrap_or_else(|e| Err(voxpen_core::error::AppError::Paste(e.to_string())))
+                {
+                    let _ = app_for_err.emit(
+                        "pipeline-state",
+                        &PipelineState::Error {
+                            message: format!("Failed to copy selection: {e}"),
+                        },
+                    );
+                    processing_flag.store(false, Ordering::SeqCst);
+                    return;
+                }
+
+                // 2. Wait for OS to update clipboard after Ctrl+C / Cmd+C
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                // 3. Read the selected text from clipboard
+                let cb = clipboard.clone();
+                let selected = match tokio::task::spawn_blocking(move || {
+                    use voxpen_core::input::clipboard::ClipboardManager;
+                    cb.get_text()
+                })
+                .await
+                {
+                    Ok(Ok(Some(text))) if !text.is_empty() => text,
+                    _ => {
+                        let _ = app_for_err.emit(
+                            "pipeline-state",
+                            &PipelineState::Error {
+                                message: "No text selected. Please select text before using Voice Edit.".to_string(),
+                            },
+                        );
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                };
+
+                // 4. Store the selected text for use by the release handler
+                *voice_edit_selection.lock().await = Some(selected);
+
+                // 5. Start the recording pipeline
+                let ctrl = controller.lock().await;
+                if let Err(e) = ctrl.on_start_recording() {
+                    let _ = app_for_err.emit(
+                        "pipeline-state",
+                        &PipelineState::Error {
+                            message: e.to_string(),
+                        },
+                    );
+                    processing_flag.store(false, Ordering::SeqCst);
+                    return;
+                }
+                drop(ctrl);
+
+                match recorder.start() {
+                    Ok(()) => {
+                        recording_started.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        let msg = format_audio_error(&e);
+                        let _ = app_for_err.emit(
+                            "pipeline-state",
+                            &PipelineState::Error { message: msg },
+                        );
+                        processing_flag.store(false, Ordering::SeqCst);
+                    }
+                }
+            });
+        }
+
+        HotkeyAction::Stop => {
+            let controller = state.controller.clone();
+            let recorder = state.recorder.clone();
+            let clipboard = state.clipboard.clone();
+            let keyboard = state.keyboard.clone();
+            let settings = state.settings.clone();
+            let history = state.history.clone();
+            let dictionary = state.dictionary.clone();
+            let license_mgr = state.license_manager.clone();
+            let app_handle = app.clone();
+            let recording_started = state.recording_started.clone();
+            let processing_flag = processing.clone();
+            let voice_edit_selection = state.voice_edit_selection.clone();
+
+            tauri::async_runtime::spawn(async move {
+                use std::sync::atomic::Ordering;
+
+                // Wait for recording to actually start before stopping.
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+                while !recording_started.load(Ordering::SeqCst) {
+                    if tokio::time::Instant::now() >= deadline {
+                        eprintln!("voice edit: recording never started, aborting");
+                        let ctrl = controller.lock().await;
+                        ctrl.reset();
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                recording_started.store(false, Ordering::SeqCst);
+
+                let pcm_data = match recorder.stop() {
+                    Ok(data) => data,
+                    Err(e) => {
+                        eprintln!("voice edit: audio stop error: {e}");
+                        let ctrl = controller.lock().await;
+                        ctrl.reset();
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                };
+
+                // Retrieve selected text captured at press time
+                let selected_text = voice_edit_selection.lock().await.take().unwrap_or_default();
+                if selected_text.is_empty() {
+                    let ctrl = controller.lock().await;
+                    ctrl.reset();
+                    drop(ctrl);
+                    processing_flag.store(false, Ordering::SeqCst);
+                    return;
+                }
+
+                do_voice_edit_stop(
+                    app_handle,
+                    controller,
+                    clipboard,
+                    keyboard,
+                    settings,
+                    history,
+                    dictionary,
+                    license_mgr,
+                    pcm_data,
+                    selected_text,
+                    processing_flag,
+                )
+                .await;
+            });
+        }
+    }
+}
+
+/// Voice edit stop: STT the edit command, run LLM with voice-edit prompt,
+/// paste the result to replace the original selection.
+#[allow(clippy::too_many_arguments)]
+async fn do_voice_edit_stop(
+    app: tauri::AppHandle,
+    controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
+    clipboard: Arc<crate::clipboard::ArboardClipboard>,
+    keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
+    history: Arc<crate::history::HistoryDb>,
+    dictionary: Arc<crate::dictionary::DictionaryDb>,
+    license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
+    pcm_data: Vec<i16>,
+    selected_text: String,
+    processing_flag: Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::sync::atomic::Ordering;
+    use voxpen_core::input::paste::paste_text;
+    use voxpen_core::pipeline::prompts;
+    use voxpen_core::pipeline::state::{Language, TonePreset};
+    use tauri::Emitter;
+
+    let pcm_len = pcm_data.len();
+
+    // Skip very short recordings (<0.5s at 16kHz)
+    if pcm_len < 8000 {
+        let ctrl = controller.lock().await;
+        ctrl.reset();
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    // Build vocabulary hint for STT
+    let vocab_words = dictionary.get_words(500).unwrap_or_default();
+    let stt_lang = {
+        let s = settings.lock().await;
+        s.stt_language.clone()
+    };
+    let vocabulary_hint =
+        voxpen_core::pipeline::vocabulary::build_stt_hint(&vocab_words, &stt_lang);
+
+    // STT-only: transcribe the edit command
+    let ctrl = controller.lock().await;
+    let edit_command = match ctrl.on_stop_recording_stt_only(pcm_data, vocabulary_hint).await {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("voice edit: STT failed: {e}");
+            ctrl.reset();
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+    drop(ctrl);
+
+    // Check VoiceInput usage quota
+    let voice_status =
+        license_mgr.check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
+    if voice_status == voxpen_core::licensing::UsageStatus::Exhausted {
+        let ctrl = controller.lock().await;
+        ctrl.emit_error("Daily voice limit reached. Upgrade to Pro for unlimited access.".to_string());
+        drop(ctrl);
+        let _ = app.emit("usage-exhausted", ());
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    // LLM: apply voice edit (30s timeout)
+    let (refinement_provider, refinement_model, custom_base_url) = {
+        let s = settings.lock().await;
+        (
+            s.refinement_provider.clone(),
+            s.refinement_model.clone(),
+            s.custom_base_url.clone(),
+        )
+    };
+
+    let llm_key = match crate::state::get_api_key_from_handle(&app, &refinement_provider) {
+        Ok(k) => k,
+        Err(e) => {
+            let ctrl = controller.lock().await;
+            ctrl.emit_error(format!("LLM API key not configured: {e}"));
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    let chat_config = voxpen_core::api::groq::ChatConfig {
+        api_key: llm_key,
+        model: refinement_model,
+        temperature: voxpen_core::api::groq::LLM_TEMPERATURE,
+        max_tokens: voxpen_core::api::groq::LLM_MAX_TOKENS,
+    };
+
+    let user_message = prompts::voice_edit_user_message(&selected_text, &edit_command);
+
+    let refine_result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        voxpen_core::pipeline::refine::refine(
+            &user_message,
+            &chat_config,
+            &Language::Auto,
+            &[],
+            prompts::VOICE_EDIT_SYSTEM_PROMPT,
+            &TonePreset::Custom,
+            &refinement_provider,
+            &custom_base_url,
+            None,
+        ),
+    )
+    .await;
+
+    let edited_text = match refine_result {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            eprintln!("voice edit: LLM failed: {e}");
+            let ctrl = controller.lock().await;
+            ctrl.emit_error(format!("Voice edit failed: {e}"));
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+        Err(_) => {
+            eprintln!("voice edit: LLM timed out");
+            let ctrl = controller.lock().await;
+            ctrl.emit_error("Voice edit timed out after 30s".to_string());
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    // Emit Refined state
+    {
+        let ctrl = controller.lock().await;
+        ctrl.emit_refined(selected_text.clone(), edited_text.clone());
+        drop(ctrl);
+    }
+
+    // Save to history
+    let (auto_paste, history_entry) = {
+        let s = settings.lock().await;
+        let entry = voxpen_core::history::TranscriptionEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+            original_text: selected_text.clone(),
+            refined_text: Some(edited_text.clone()),
+            language: s.stt_language.clone(),
+            audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
+            provider: s.stt_provider.clone(),
+        };
+        (s.auto_paste, entry)
+    };
+
+    if let Err(e) = history.insert(&history_entry) {
+        eprintln!("voice edit history insert error: {e}");
+    }
+
+    // Record usage
+    let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::VoiceInput);
+    let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::Refinement);
+    let _ = app.emit("usage-updated", ());
+
+    // Paste to replace selection
+    if auto_paste {
+        let text = edited_text.clone();
+        let cb = clipboard.clone();
+        let kb = keyboard.clone();
+        match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
+            .await
+        {
+            Ok(Err(e)) => eprintln!("voice edit: paste failed: {e}"),
+            Err(e) => eprintln!("voice edit: paste task panicked: {e}"),
+            Ok(Ok(())) => {}
+        }
+    }
+
+    // Allow next hotkey press immediately after paste completes.
+    processing_flag.store(false, Ordering::SeqCst);
+
+    // Reset to idle after delay
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let ctrl = controller.lock().await;
+    match ctrl.current_state() {
+        PipelineState::Refined { .. } | PipelineState::Error { .. } => {
+            ctrl.reset();
+        }
+        _ => {}
+    }
+    drop(ctrl);
 }
 
 /// Produce a user-friendly error message for audio failures.
