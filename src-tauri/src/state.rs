@@ -153,6 +153,11 @@ impl LlmProvider for GroqLlmProvider {
             let tone_preset = s.tone_preset.clone();
             let provider = s.refinement_provider.clone();
             let custom_base_url = s.custom_base_url.clone();
+            let translation_target = if s.translation_enabled {
+                Some(s.translation_target.clone())
+            } else {
+                None
+            };
             drop(s);
             refine::refine(
                 &text,
@@ -163,7 +168,7 @@ impl LlmProvider for GroqLlmProvider {
                 &tone_preset,
                 &provider,
                 &custom_base_url,
-                None, // translation_target — wired in next task (TM-4)
+                translation_target.as_ref(),
             )
             .await
         })
