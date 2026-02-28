@@ -216,6 +216,45 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
     pub fn reset(&self) {
         let _ = self.state_tx.send(PipelineState::Idle);
     }
+
+    /// STT-only stop — used by the voice-edit pipeline to transcribe the edit
+    /// command without applying voice commands or LLM refinement.
+    ///
+    /// Leaves state as `Processing` so the caller can emit the final state
+    /// (e.g. `Refined`) after running the LLM externally via `emit_refined()`
+    /// or `emit_error()`.
+    pub async fn on_stop_recording_stt_only(
+        &self,
+        pcm_data: Vec<i16>,
+        vocabulary_hint: Option<String>,
+    ) -> Result<String, AppError> {
+        if !matches!(self.current_state(), PipelineState::Recording) {
+            return Err(AppError::Audio("not currently recording".to_string()));
+        }
+        let _ = self.state_tx.send(PipelineState::Processing);
+
+        match self.stt.transcribe(pcm_data, vocabulary_hint).await {
+            Ok(text) => Ok(text),
+            Err(e) => {
+                let _ = self.state_tx.send(PipelineState::Error {
+                    message: e.to_string(),
+                });
+                Err(e)
+            }
+        }
+    }
+
+    /// Emit a `Refined` state — called by the voice-edit pipeline after the
+    /// external LLM call completes successfully.
+    pub fn emit_refined(&self, original: String, refined: String) {
+        let _ = self.state_tx.send(PipelineState::Refined { original, refined });
+    }
+
+    /// Emit an `Error` state — called by the voice-edit pipeline when an
+    /// external operation (e.g. LLM call) fails.
+    pub fn emit_error(&self, message: String) {
+        let _ = self.state_tx.send(PipelineState::Error { message });
+    }
 }
 
 #[cfg(test)]
@@ -509,6 +548,71 @@ mod tests {
         let debug = format!("{:?}", config);
         assert!(!debug.contains("llm-key"));
         assert!(debug.contains("****"));
+    }
+
+    // -- voice edit helpers --
+
+    #[tokio::test]
+    async fn should_transcribe_only_without_refinement_or_voice_commands() {
+        let mut config = config_with_refinement(); // refinement_enabled = true
+        config.voice_commands_enabled = true;
+
+        let controller = PipelineController::new(
+            config,
+            mock_stt_success("hello comma world"),
+            mock_llm_unused(), // LLM must NOT be called
+        );
+        controller.on_start_recording().unwrap();
+
+        let result = controller.on_stop_recording_stt_only(vec![100, 200], None).await;
+
+        // Raw STT text, no voice commands applied, no LLM refinement
+        assert_eq!(result.unwrap(), "hello comma world");
+        // State should be Processing after STT-only
+        assert_eq!(controller.current_state(), PipelineState::Processing);
+    }
+
+    #[tokio::test]
+    async fn should_emit_refined_state_via_emit_refined() {
+        let controller = PipelineController::new(
+            config_with_key(),
+            mock_stt_success(""),
+            mock_llm_unused(),
+        );
+        controller.emit_refined("original text".to_string(), "edited text".to_string());
+        assert_eq!(
+            controller.current_state(),
+            PipelineState::Refined {
+                original: "original text".to_string(),
+                refined: "edited text".to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_emit_error_state_via_emit_error() {
+        let controller = PipelineController::new(
+            config_with_key(),
+            mock_stt_success(""),
+            mock_llm_unused(),
+        );
+        controller.emit_error("something went wrong".to_string());
+        assert!(matches!(
+            controller.current_state(),
+            PipelineState::Error { message } if message == "something went wrong"
+        ));
+    }
+
+    #[tokio::test]
+    async fn should_stt_only_reject_if_not_recording() {
+        let controller = PipelineController::new(
+            config_with_key(),
+            mock_stt_success("text"),
+            mock_llm_unused(),
+        );
+        // Do NOT call on_start_recording
+        let result = controller.on_stop_recording_stt_only(vec![100], None).await;
+        assert!(matches!(result, Err(AppError::Audio(_))));
     }
 
     // -- Voice command tests --
