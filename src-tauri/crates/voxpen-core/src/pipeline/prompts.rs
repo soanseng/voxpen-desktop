@@ -884,6 +884,71 @@ mod tests {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Voice Edit prompt
+// ---------------------------------------------------------------------------
+
+/// System prompt for voice-edit mode.
+///
+/// Instructs the LLM to act as a text editor: apply the user's voice command
+/// to the selected text and output ONLY the edited version.
+pub const VOICE_EDIT_SYSTEM_PROMPT: &str = "\
+You are a text editor. The user will provide selected text and a voice command.
+Edit the selected text according to the voice command.
+Rules:
+1. Output ONLY the edited version of the selected text — no explanation, no preamble
+2. Apply only what the command asks — do not add or remove content beyond the instruction
+3. Preserve the original language and style unless the command explicitly asks to change them
+4. If the command asks to translate, translate faithfully";
+
+/// Format the user message for voice-edit mode.
+///
+/// Combines the captured selected text with the transcribed voice command
+/// into the user-turn message sent to the LLM.
+pub fn voice_edit_user_message(selected_text: &str, command: &str) -> String {
+    format!(
+        "Selected text:\n{selected}\n\nVoice command: {command}",
+        selected = selected_text,
+        command = command,
+    )
+}
+
+#[cfg(test)]
+mod voice_edit_tests {
+    use super::*;
+
+    #[test]
+    fn should_have_non_empty_voice_edit_system_prompt() {
+        assert!(!VOICE_EDIT_SYSTEM_PROMPT.is_empty());
+    }
+
+    #[test]
+    fn should_include_selected_text_in_user_message() {
+        let msg = voice_edit_user_message("hello world", "make it formal");
+        assert!(msg.contains("hello world"));
+    }
+
+    #[test]
+    fn should_include_edit_command_in_user_message() {
+        let msg = voice_edit_user_message("hello world", "make it formal");
+        assert!(msg.contains("make it formal"));
+    }
+
+    #[test]
+    fn should_differ_for_different_selected_texts() {
+        let a = voice_edit_user_message("text one", "command");
+        let b = voice_edit_user_message("text two", "command");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn should_differ_for_different_commands() {
+        let a = voice_edit_user_message("same text", "make formal");
+        let b = voice_edit_user_message("same text", "translate to French");
+        assert_ne!(a, b);
+    }
+}
+
 #[cfg(test)]
 mod translation_tests {
     use super::*;
