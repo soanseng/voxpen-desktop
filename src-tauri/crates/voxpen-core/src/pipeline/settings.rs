@@ -67,6 +67,12 @@ pub struct Settings {
     /// Default: false.
     #[serde(default)]
     pub voice_commands_enabled: bool,
+    /// Hotkey for "Voice Edit" mode: user selects text, presses this hotkey,
+    /// speaks an edit command, and the selected text is replaced with the
+    /// LLM-edited result. Only combo shortcuts supported (e.g. "CommandOrControl+Shift+E").
+    /// Default: empty string (feature disabled).
+    #[serde(default)]
+    pub hotkey_edit: String,
 }
 
 fn default_hotkey_toggle() -> String {
@@ -105,6 +111,7 @@ impl Default for Settings {
             translation_enabled: false,
             translation_target: default_translation_target(),
             voice_commands_enabled: false,
+            hotkey_edit: String::new(),
         }
     }
 }
@@ -278,5 +285,30 @@ mod tests {
         let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let s: Settings = serde_json::from_str(json).unwrap();
         assert!(!s.voice_commands_enabled);
+    }
+
+    // -- hotkey_edit tests --
+
+    #[test]
+    fn should_default_hotkey_edit_to_empty() {
+        let s = Settings::default();
+        assert_eq!(s.hotkey_edit, "");
+    }
+
+    #[test]
+    fn should_roundtrip_hotkey_edit() {
+        let mut s = Settings::default();
+        s.hotkey_edit = "CommandOrControl+Shift+E".to_string();
+        let json = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(s2.hotkey_edit, "CommandOrControl+Shift+E");
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_hotkey_edit() {
+        // Old JSON without hotkey_edit should get empty string default
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.hotkey_edit, "");
     }
 }
