@@ -171,8 +171,8 @@ mod tests {
     }
 
     #[test]
-    fn should_replace_new_paragraph_before_new_line() {
-        assert_eq!(apply("intro new paragraph body", &Language::English), "intro\n\nbody");
+    fn should_replace_korean_comma() {
+        assert_eq!(apply("안녕쉼표세계", &Language::Korean), "안녕,세계");
     }
 
     #[test]
