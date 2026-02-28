@@ -182,5 +182,7 @@
   },
   "translationEnabled": "翻譯模式",
   "translationEnabledHint": "將語音翻譯為另一種語言輸出。需啟用文字潤飾功能。",
-  "translationTarget": "輸出語言"
+  "translationTarget": "輸出語言",
+  "voiceCommandsEnabled": "語音指令",
+  "voiceCommandsEnabledHint": "說出「逗號」、「句號」、「新行」、「新段落」等關鍵字來插入標點符號。"
 }

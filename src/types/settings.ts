@@ -19,6 +19,7 @@ export interface Settings {
   max_recording_secs: number;
   translation_enabled: boolean;
   translation_target: "Auto" | "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
+  voice_commands_enabled: boolean;
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -90,4 +91,5 @@ export const defaultSettings: Settings = {
   max_recording_secs: 0,
   translation_enabled: false,
   translation_target: "English",
+  voice_commands_enabled: false,
 };

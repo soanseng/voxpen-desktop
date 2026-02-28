@@ -394,6 +394,23 @@ export default function GeneralSection({
           <span className="text-xs text-gray-400 dark:text-gray-500">秒</span>
         </div>
       </div>
+
+      {/* Voice Commands */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t("voiceCommandsEnabled")}
+          </label>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            {t("voiceCommandsEnabledHint")}
+          </p>
+        </div>
+        <ToggleSwitch
+          id="voice-commands-enabled"
+          checked={settings.voice_commands_enabled}
+          onChange={(v) => onUpdate("voice_commands_enabled", v)}
+        />
+      </div>
     </div>
   );
 }

@@ -182,5 +182,7 @@
   },
   "translationEnabled": "Translation Mode",
   "translationEnabledHint": "Translate your dictation to another language. Requires LLM Refinement to be enabled.",
-  "translationTarget": "Output Language"
+  "translationTarget": "Output Language",
+  "voiceCommandsEnabled": "Voice Commands",
+  "voiceCommandsEnabledHint": "Say 'comma', 'period', 'new line', 'new paragraph' to insert formatting while dictating."
 }
