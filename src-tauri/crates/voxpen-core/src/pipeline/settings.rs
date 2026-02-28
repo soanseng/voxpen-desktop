@@ -53,6 +53,14 @@ pub struct Settings {
     /// Default: 360 (6 minutes). Set to 0 to disable the limit.
     #[serde(default = "default_max_recording_secs")]
     pub max_recording_secs: u32,
+    /// Whether to translate dictation to a different language instead of just cleaning up.
+    /// Requires refinement_enabled = true (uses the same LLM pipeline with a translate prompt).
+    #[serde(default)]
+    pub translation_enabled: bool,
+    /// Target language for translation mode.
+    /// Default: English (most common translation target for CJK users).
+    #[serde(default = "default_translation_target")]
+    pub translation_target: Language,
 }
 
 fn default_hotkey_toggle() -> String {
@@ -61,6 +69,10 @@ fn default_hotkey_toggle() -> String {
 
 fn default_max_recording_secs() -> u32 {
     360
+}
+
+fn default_translation_target() -> Language {
+    Language::English
 }
 
 impl Default for Settings {
@@ -84,6 +96,8 @@ impl Default for Settings {
             ui_language: "en".to_string(),
             microphone_device: None,
             max_recording_secs: default_max_recording_secs(),
+            translation_enabled: false,
+            translation_target: Language::English,
         }
     }
 }
@@ -208,5 +222,38 @@ mod tests {
         let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.max_recording_secs, 360); // gets default
+    }
+
+    // -- translation_enabled / translation_target tests --
+
+    #[test]
+    fn should_default_translation_enabled_to_false() {
+        let s = Settings::default();
+        assert!(!s.translation_enabled);
+    }
+
+    #[test]
+    fn should_default_translation_target_to_english() {
+        let s = Settings::default();
+        assert_eq!(s.translation_target, Language::English);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_translation_fields() {
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert!(!s.translation_enabled);
+        assert_eq!(s.translation_target, Language::English);
+    }
+
+    #[test]
+    fn should_roundtrip_translation_fields() {
+        let mut s = Settings::default();
+        s.translation_enabled = true;
+        s.translation_target = Language::Chinese;
+        let json = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&json).unwrap();
+        assert!(s2.translation_enabled);
+        assert_eq!(s2.translation_target, Language::Chinese);
     }
 }
