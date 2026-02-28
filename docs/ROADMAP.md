@@ -34,6 +34,7 @@
 | ✅ Auto-update | Tauri updater + public releases repo |
 | ✅ Freemium licensing | LemonSqueezy + per-category usage quotas |
 | ✅ Audio file transcription | Drag-and-drop, WAV chunking |
+| ✅ Auto-structured output | List/step detection in Casual prompts → bullet or numbered format |
 
 ---
 
@@ -174,6 +175,7 @@ Examples:
 | Context-aware tone by app | ✅ | 💡 P3 |
 | Personal dictionary | ✅ | ✅ Shipped |
 | Filler word removal | ✅ | ✅ Shipped (via LLM) |
+| Auto-structured output (list/steps) | ✅ | ✅ Shipped |
 | BYOK / no subscription required | ❌ | ✅ Core differentiator |
 | Local/offline STT | ❌ | 🔨 P4 |
 | Custom refinement prompts | ❌ | ✅ Shipped |
