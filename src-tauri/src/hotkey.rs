@@ -111,9 +111,9 @@ impl HotkeyManager {
         if !edit_shortcut.is_empty() {
             if is_combo_shortcut(edit_shortcut) {
                 self.register_edit_combo(app, edit_shortcut)?;
+                self.registered_edit = Some(edit_shortcut.to_string());
             }
             // Note: single-key edit hotkeys not yet supported
-            self.registered_edit = Some(edit_shortcut.to_string());
         }
 
         // Ensure rdev listener thread is running if any single keys are registered
