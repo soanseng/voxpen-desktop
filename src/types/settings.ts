@@ -20,6 +20,7 @@ export interface Settings {
   translation_enabled: boolean;
   translation_target: "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
   voice_commands_enabled: boolean;
+  hotkey_edit: string;
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -92,4 +93,5 @@ export const defaultSettings: Settings = {
   translation_enabled: false,
   translation_target: "English",
   voice_commands_enabled: false,
+  hotkey_edit: "",
 };

@@ -184,5 +184,8 @@
   "translationEnabledHint": "將語音翻譯為另一種語言輸出。需啟用文字潤飾功能。",
   "translationTarget": "輸出語言",
   "voiceCommandsEnabled": "語音指令",
-  "voiceCommandsEnabledHint": "說出「逗號」、「句號」、「新行」、「新段落」等關鍵字來插入標點符號。"
+  "voiceCommandsEnabledHint": "說出「逗號」、「句號」、「新行」、「新段落」等關鍵字來插入標點符號。",
+  "hotkeyEdit": "語音編輯快捷鍵",
+  "hotkeyEditHint": "在任何應用程式中選取文字，按住此快捷鍵，說出編輯指令，選取的文字將被替換為編輯結果。需啟用 LLM 潤色。僅支援組合快捷鍵（例如 Ctrl+Shift+E）。",
+  "hotkeyEditDisabled": "停用（留空）"
 }

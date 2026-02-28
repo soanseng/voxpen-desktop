@@ -184,5 +184,8 @@
   "translationEnabledHint": "Translate your dictation to another language. Requires LLM Refinement to be enabled.",
   "translationTarget": "Output Language",
   "voiceCommandsEnabled": "Voice Commands",
-  "voiceCommandsEnabledHint": "Say 'comma', 'period', 'new line', 'new paragraph' to insert formatting while dictating."
+  "voiceCommandsEnabledHint": "Say 'comma', 'period', 'new line', 'new paragraph' to insert formatting while dictating.",
+  "hotkeyEdit": "Voice Edit Hotkey",
+  "hotkeyEditHint": "Select text in any app, hold this key, speak an edit command, and the selection is replaced with the edited result. Requires LLM Refinement to be enabled. Combo shortcuts only (e.g. Ctrl+Shift+E).",
+  "hotkeyEditDisabled": "Disabled (leave empty)"
 }

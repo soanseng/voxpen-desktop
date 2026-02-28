@@ -118,7 +118,7 @@ function HotkeyPicker({
   label: string;
   hint: string;
   currentValue: string;
-  kind: "ptt" | "toggle";
+  kind: "ptt" | "toggle" | "edit";
   onSaved: (shortcut: string) => void;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
@@ -153,7 +153,9 @@ function HotkeyPicker({
               "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
             }
           >
-            {displayShortcut(currentValue)}
+            {kind === "edit" && currentValue === ""
+              ? t("hotkeyEditDisabled")
+              : displayShortcut(currentValue)}
           </div>
           <button
             type="button"
@@ -188,17 +190,19 @@ function HotkeyPicker({
 
           {/* Presets */}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setPending("RAlt"); void save("RAlt"); }}
-              className={
-                "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
-                "text-gray-600 hover:bg-gray-100 " +
-                "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
-              }
-            >
-              {t("hotkeyPresetAlt")}
-            </button>
+            {kind !== "edit" && (
+              <button
+                type="button"
+                onClick={() => { setPending("RAlt"); void save("RAlt"); }}
+                className={
+                  "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
+                  "text-gray-600 hover:bg-gray-100 " +
+                  "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+                }
+              >
+                {t("hotkeyPresetAlt")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => { setPending("CommandOrControl+Shift+V"); void save("CommandOrControl+Shift+V"); }}
@@ -210,14 +214,27 @@ function HotkeyPicker({
             >
               {t("hotkeyPresetCombo")}
             </button>
+            {kind === "edit" && (
+              <button
+                type="button"
+                onClick={() => { setPending(""); void save(""); }}
+                className={
+                  "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
+                  "text-gray-600 hover:bg-gray-100 " +
+                  "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+                }
+              >
+                {t("hotkeyEditDisabled")}
+              </button>
+            )}
           </div>
 
           {/* Actions */}
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => pending && void save(pending)}
-              disabled={!pending}
+              onClick={() => (pending || kind === "edit") && void save(pending)}
+              disabled={!pending && kind !== "edit"}
               className={
                 "rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium " +
                 "text-white hover:bg-blue-600 disabled:opacity-50"
@@ -411,6 +428,16 @@ export default function GeneralSection({
           onChange={(v) => onUpdate("voice_commands_enabled", v)}
         />
       </div>
+
+      {/* Voice Edit Hotkey */}
+      <HotkeyPicker
+        label={t("hotkeyEdit")}
+        hint={t("hotkeyEditHint")}
+        currentValue={settings.hotkey_edit}
+        kind="edit"
+        onSaved={(s) => onUpdate("hotkey_edit", s)}
+        t={t}
+      />
     </div>
   );
 }
