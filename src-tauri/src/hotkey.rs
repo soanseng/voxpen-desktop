@@ -56,10 +56,11 @@ fn rdev_key_index(name: &str) -> Option<u8> {
         .map(|i| (i + 1) as u8)
 }
 
-/// Tracks active hotkey registrations for both PTT and Toggle modes.
+/// Tracks active hotkey registrations for PTT, Toggle, and Voice Edit modes.
 pub struct HotkeyManager {
     registered_ptt: Option<String>,
     registered_toggle: Option<String>,
+    registered_edit: Option<String>,
     rdev_state: Arc<RdevState>,
 }
 
@@ -68,6 +69,7 @@ impl HotkeyManager {
         Self {
             registered_ptt: None,
             registered_toggle: None,
+            registered_edit: None,
             rdev_state: Arc::new(RdevState {
                 ptt_key_index: AtomicU8::new(0),
                 toggle_key_index: AtomicU8::new(0),
@@ -77,12 +79,13 @@ impl HotkeyManager {
         }
     }
 
-    /// Register both PTT and Toggle hotkeys. Either can be empty to skip.
-    pub fn register_dual(
+    /// Register PTT, Toggle, and Voice Edit hotkeys. Any can be empty to skip.
+    pub fn register_all(
         &mut self,
         app: &AppHandle,
         ptt_shortcut: &str,
         toggle_shortcut: &str,
+        edit_shortcut: &str,
     ) -> Result<(), String> {
         self.unregister_all(app);
 
@@ -104,6 +107,15 @@ impl HotkeyManager {
             self.registered_toggle = Some(toggle_shortcut.to_string());
         }
 
+        // Register Voice Edit hotkey (combo only for now)
+        if !edit_shortcut.is_empty() {
+            if is_combo_shortcut(edit_shortcut) {
+                self.register_edit_combo(app, edit_shortcut)?;
+            }
+            // Note: single-key edit hotkeys not yet supported
+            self.registered_edit = Some(edit_shortcut.to_string());
+        }
+
         // Ensure rdev listener thread is running if any single keys are registered
         self.ensure_rdev_thread(app);
 
@@ -111,7 +123,10 @@ impl HotkeyManager {
     }
 
     fn unregister_all(&mut self, app: &AppHandle) {
-        if self.registered_ptt.is_some() || self.registered_toggle.is_some() {
+        if self.registered_ptt.is_some()
+            || self.registered_toggle.is_some()
+            || self.registered_edit.is_some()
+        {
             let _ = app.global_shortcut().unregister_all();
         }
         self.rdev_state.ptt_key_index.store(0, Ordering::SeqCst);
@@ -120,6 +135,12 @@ impl HotkeyManager {
             .store(0, Ordering::SeqCst);
         self.registered_ptt = None;
         self.registered_toggle = None;
+        self.registered_edit = None;
+    }
+
+    /// Stub for voice-edit combo registration. Full implementation in Task 6.
+    fn register_edit_combo(&self, _app: &AppHandle, _shortcut: &str) -> Result<(), String> {
+        Ok(())
     }
 
     fn register_combo(

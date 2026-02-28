@@ -54,17 +54,19 @@ pub async fn set_hotkey(
     match kind.as_str() {
         "ptt" => s.hotkey_ptt = shortcut.clone(),
         "toggle" => s.hotkey_toggle = shortcut.clone(),
+        "edit" => s.hotkey_edit = shortcut.clone(),
         _ => return Err(format!("Unknown hotkey kind: {kind}")),
     }
     let settings_clone = s.clone();
     drop(s);
 
-    // Re-register both hotkeys
+    // Re-register all hotkeys
     let mut mgr = state.hotkey_manager.lock().await;
-    mgr.register_dual(
+    mgr.register_all(
         &app,
         &settings_clone.hotkey_ptt,
         &settings_clone.hotkey_toggle,
+        &settings_clone.hotkey_edit,
     )?;
     drop(mgr);
 

@@ -241,6 +241,7 @@ pub fn run() {
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
                 recording_started: Arc::new(AtomicBool::new(false)),
                 recording_timeout_handle: Arc::new(tokio::sync::Mutex::new(None)),
+                voice_edit_selection: Arc::new(tokio::sync::Mutex::new(None)),
                 license_manager: Arc::new(license_mgr),
                 models_dir,
                 #[cfg(feature = "local-whisper")]
@@ -474,10 +475,11 @@ pub fn run() {
 
                 let state: tauri::State<'_, AppState> = app.state();
                 let mut mgr = state.hotkey_manager.blocking_lock();
-                if let Err(e) = mgr.register_dual(
+                if let Err(e) = mgr.register_all(
                     app.handle(),
                     &saved_settings.hotkey_ptt,
                     &saved_settings.hotkey_toggle,
+                    &saved_settings.hotkey_edit,
                 ) {
                     eprintln!("failed to register hotkeys: {e}");
                 }

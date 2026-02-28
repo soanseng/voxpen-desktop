@@ -242,6 +242,10 @@ pub struct AppState {
     /// Handle for the auto-stop timeout task. Aborted on manual stop.
     /// `None` when not recording.
     pub recording_timeout_handle: Arc<tokio::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+    /// Captured selected text for voice-edit mode.
+    /// Set at edit hotkey press time (after Ctrl+C), consumed at release.
+    /// `None` when not in voice-edit mode.
+    pub voice_edit_selection: Arc<tokio::sync::Mutex<Option<String>>>,
     pub license_manager: Arc<
         voxpen_core::licensing::LicenseManager<
             voxpen_core::licensing::DirectLemonSqueezy,
