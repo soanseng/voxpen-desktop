@@ -210,7 +210,7 @@ export default function RefinementSection({
               id="translation-target"
               value={settings.translation_target}
               onChange={(e) =>
-                onUpdate("translation_target", e.target.value as Settings["stt_language"])
+                onUpdate("translation_target", e.target.value as Settings["translation_target"])
               }
               disabled={disabled}
               className={

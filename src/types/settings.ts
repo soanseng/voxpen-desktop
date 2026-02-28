@@ -18,7 +18,7 @@ export interface Settings {
   microphone_device: string | null;
   max_recording_secs: number;
   translation_enabled: boolean;
-  translation_target: "Auto" | "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
+  translation_target: "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
   voice_commands_enabled: boolean;
 }
 
@@ -88,7 +88,7 @@ export const defaultSettings: Settings = {
   theme: "system",
   ui_language: "en",
   microphone_device: null,
-  max_recording_secs: 0,
+  max_recording_secs: 360,
   translation_enabled: false,
   translation_target: "English",
   voice_commands_enabled: false,

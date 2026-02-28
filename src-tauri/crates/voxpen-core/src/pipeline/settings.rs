@@ -53,8 +53,9 @@ pub struct Settings {
     /// Default: 360 (6 minutes). Set to 0 to disable the limit.
     #[serde(default = "default_max_recording_secs")]
     pub max_recording_secs: u32,
-    /// Whether to translate dictation to a different language instead of just cleaning up.
-    /// Requires refinement_enabled = true (uses the same LLM pipeline with a translate prompt).
+    /// Whether to translate speech to `translation_target` language instead of
+    /// cleaning it up. Has no effect when `refinement_enabled` is false
+    /// (requires LLM pipeline to be active).
     #[serde(default)]
     pub translation_enabled: bool,
     /// Target language for translation mode.
