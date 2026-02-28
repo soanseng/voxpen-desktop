@@ -240,6 +240,7 @@ pub fn run() {
                 dictionary: Arc::new(dictionary_db),
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
                 recording_started: Arc::new(AtomicBool::new(false)),
+                recording_timeout_handle: Arc::new(tokio::sync::Mutex::new(None)),
                 license_manager: Arc::new(license_mgr),
                 models_dir,
                 #[cfg(feature = "local-whisper")]

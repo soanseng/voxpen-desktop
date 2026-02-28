@@ -233,6 +233,9 @@ pub struct AppState {
     /// Signal set after recorder.start() succeeds so the release handler can
     /// wait for recording to actually begin before calling recorder.stop().
     pub recording_started: Arc<AtomicBool>,
+    /// Handle for the auto-stop timeout task. Aborted on manual stop.
+    /// `None` when not recording.
+    pub recording_timeout_handle: Arc<tokio::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     pub license_manager: Arc<
         voxpen_core::licensing::LicenseManager<
             voxpen_core::licensing::DirectLemonSqueezy,
