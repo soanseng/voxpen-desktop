@@ -46,4 +46,25 @@ impl KeySimulator for EnigoKeyboard {
 
         Ok(())
     }
+
+    fn copy(&self) -> Result<(), AppError> {
+        let mut enigo = self.enigo.lock().unwrap_or_else(|e| e.into_inner());
+
+        #[cfg(target_os = "macos")]
+        let modifier = Key::Meta;
+        #[cfg(not(target_os = "macos"))]
+        let modifier = Key::Control;
+
+        enigo
+            .key(modifier, Direction::Press)
+            .map_err(|e| AppError::Paste(format!("key press failed: {e}")))?;
+        enigo
+            .key(Key::Unicode('c'), Direction::Click)
+            .map_err(|e| AppError::Paste(format!("key click failed: {e}")))?;
+        enigo
+            .key(modifier, Direction::Release)
+            .map_err(|e| AppError::Paste(format!("key release failed: {e}")))?;
+
+        Ok(())
+    }
 }

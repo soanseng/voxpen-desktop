@@ -11,6 +11,8 @@ use crate::input::clipboard::ClipboardManager;
 pub trait KeySimulator: Send + Sync {
     /// Simulate Cmd+V (macOS) or Ctrl+V (Windows/Linux).
     fn paste(&self) -> Result<(), AppError>;
+    /// Simulate Cmd+C (macOS) or Ctrl+C (Windows/Linux) to copy selection.
+    fn copy(&self) -> Result<(), AppError>;
 }
 
 /// Small delay after writing to the clipboard to let the OS finish processing
@@ -169,6 +171,14 @@ mod tests {
 
         // Overall result should still be Ok (paste itself succeeded)
         let result = paste_text(&clipboard, &keys, "transcribed");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn should_call_copy_on_keyboard() {
+        let mut keys = MockKeySimulator::new();
+        keys.expect_copy().times(1).returning(|| Ok(()));
+        let result = keys.copy();
         assert!(result.is_ok());
     }
 
