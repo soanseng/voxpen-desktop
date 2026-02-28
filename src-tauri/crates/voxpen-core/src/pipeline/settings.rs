@@ -49,10 +49,18 @@ pub struct Settings {
     /// Preferred microphone device name. None = system default.
     #[serde(default)]
     pub microphone_device: Option<String>,
+    /// Maximum recording duration in seconds. Recording auto-stops when exceeded.
+    /// Default: 360 (6 minutes). Set to 0 to disable the limit.
+    #[serde(default = "default_max_recording_secs")]
+    pub max_recording_secs: u32,
 }
 
 fn default_hotkey_toggle() -> String {
     "CommandOrControl+Shift+V".to_string()
+}
+
+fn default_max_recording_secs() -> u32 {
+    360
 }
 
 impl Default for Settings {
@@ -75,6 +83,7 @@ impl Default for Settings {
             theme: "system".to_string(),
             ui_language: "en".to_string(),
             microphone_device: None,
+            max_recording_secs: default_max_recording_secs(),
         }
     }
 }
@@ -175,5 +184,29 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.custom_base_url, "http://localhost:11434/");
+    }
+
+    // -- max_recording_secs tests --
+
+    #[test]
+    fn should_default_max_recording_secs_to_360() {
+        let settings = Settings::default();
+        assert_eq!(settings.max_recording_secs, 360);
+    }
+
+    #[test]
+    fn should_roundtrip_max_recording_secs() {
+        let mut settings = Settings::default();
+        settings.max_recording_secs = 120;
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.max_recording_secs, 120);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_max_recording_secs() {
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.max_recording_secs, 360); // gets default
     }
 }
