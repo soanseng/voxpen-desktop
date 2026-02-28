@@ -97,7 +97,7 @@ impl Default for Settings {
             microphone_device: None,
             max_recording_secs: default_max_recording_secs(),
             translation_enabled: false,
-            translation_target: Language::English,
+            translation_target: default_translation_target(),
         }
     }
 }
