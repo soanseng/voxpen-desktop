@@ -163,6 +163,7 @@ impl LlmProvider for GroqLlmProvider {
                 &tone_preset,
                 &provider,
                 &custom_base_url,
+                None, // translation_target — wired in next task (TM-4)
             )
             .await
         })

@@ -28,15 +28,20 @@ pub async fn refine(
     tone_preset: &TonePreset,
     provider: &str,
     custom_base_url: &str,
+    translation_target: Option<&Language>,
 ) -> Result<String, AppError> {
     if text.is_empty() {
         return Err(AppError::Refinement("no text to refine".to_string()));
     }
 
-    let mut system_prompt = match tone_preset {
-        TonePreset::Custom if !custom_prompt.is_empty() => custom_prompt.to_string(),
-        TonePreset::Custom => prompts::for_language(language).to_string(),
-        _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
+    let mut system_prompt: String = if let Some(target) = translation_target {
+        prompts::for_translation(language, target)
+    } else {
+        match tone_preset {
+            TonePreset::Custom if !custom_prompt.is_empty() => custom_prompt.to_string(),
+            TonePreset::Custom => prompts::for_language(language).to_string(),
+            _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
+        }
     };
     if let Some(suffix) = vocabulary::build_llm_suffix(vocab_words, language) {
         system_prompt.push_str(&suffix);
@@ -60,15 +65,20 @@ async fn refine_with_base_url(
     base_url: &str,
     custom_prompt: &str,
     tone_preset: &TonePreset,
+    translation_target: Option<&Language>,
 ) -> Result<String, AppError> {
     if text.is_empty() {
         return Err(AppError::Refinement("no text to refine".to_string()));
     }
 
-    let system_prompt = match tone_preset {
-        TonePreset::Custom if !custom_prompt.is_empty() => custom_prompt.to_string(),
-        TonePreset::Custom => prompts::for_language(language).to_string(),
-        _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
+    let system_prompt: String = if let Some(target) = translation_target {
+        prompts::for_translation(language, target)
+    } else {
+        match tone_preset {
+            TonePreset::Custom if !custom_prompt.is_empty() => custom_prompt.to_string(),
+            TonePreset::Custom => prompts::for_language(language).to_string(),
+            _ => prompts::for_language_and_tone(language, tone_preset).to_string(),
+        }
     };
     groq::chat_completion_with_provider(config, &system_prompt, text, provider, base_url).await
 }
@@ -116,6 +126,7 @@ mod tests {
             &format!("{}/", server.uri()),
             "",
             &TonePreset::Casual,
+            None,
         )
         .await;
 
@@ -126,7 +137,8 @@ mod tests {
     async fn should_reject_empty_text() {
         let config = test_config("key");
         let result =
-            refine("", &config, &Language::Auto, &[], "", &TonePreset::Casual, "groq", "").await;
+            refine("", &config, &Language::Auto, &[], "", &TonePreset::Casual, "groq", "", None)
+                .await;
 
         match result {
             Err(AppError::Refinement(msg)) => assert_eq!(msg, "no text to refine"),
@@ -139,7 +151,7 @@ mod tests {
         let config = test_config("key");
         let vocab = vec!["語墨".to_string()];
         let result =
-            refine("", &config, &Language::Auto, &vocab, "", &TonePreset::Casual, "groq", "")
+            refine("", &config, &Language::Auto, &vocab, "", &TonePreset::Casual, "groq", "", None)
                 .await;
         assert!(matches!(result, Err(AppError::Refinement(_))));
     }
@@ -163,6 +175,7 @@ mod tests {
             &format!("{}/", server.uri()),
             "",
             &TonePreset::Casual,
+            None,
         )
         .await;
 
@@ -188,6 +201,7 @@ mod tests {
             &format!("{}/", server.uri()),
             "my custom prompt",
             &TonePreset::Custom,
+            None,
         )
         .await;
         assert_eq!(result.unwrap(), "refined");
@@ -212,8 +226,65 @@ mod tests {
             &format!("{}/", server.uri()),
             "", // empty custom prompt
             &TonePreset::Custom,
+            None,
         )
         .await;
         assert_eq!(result.unwrap(), "refined");
+    }
+
+    #[tokio::test]
+    async fn should_use_translation_prompt_when_target_is_some() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response("Hello world")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("test-key");
+        let result = refine_with_base_url(
+            "你好世界",
+            &config,
+            &Language::Chinese,
+            "groq",
+            &format!("{}/", server.uri()),
+            "",
+            &TonePreset::Casual,
+            Some(&Language::English),
+        )
+        .await;
+
+        assert_eq!(result.unwrap(), "Hello world");
+    }
+
+    #[tokio::test]
+    async fn should_use_cleanup_prompt_when_translation_target_is_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response("cleaned text")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("test-key");
+        let result = refine_with_base_url(
+            "some text",
+            &config,
+            &Language::English,
+            "groq",
+            &format!("{}/", server.uri()),
+            "",
+            &TonePreset::Casual,
+            None, // no translation
+        )
+        .await;
+
+        assert_eq!(result.unwrap(), "cleaned text");
     }
 }

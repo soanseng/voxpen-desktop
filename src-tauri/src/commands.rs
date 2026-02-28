@@ -552,6 +552,7 @@ pub async fn transcribe_file(
         match refine::refine(
             &text, &chat_config, &language, &[], &custom_prompt,
             &tone_preset, &refinement_provider, &custom_base_url,
+            None, // translation_target — wired in next task (TM-4)
         ).await {
             Ok(r) => Some(r),
             Err(e) => {
