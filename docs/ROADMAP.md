@@ -36,6 +36,7 @@
 | ✅ Audio file transcription | Drag-and-drop, WAV chunking |
 | ✅ Auto-structured output | List/step detection in Casual prompts → bullet or numbered format |
 | ✅ Translation Mode | Speak in one language, output in another. Toggle + target language in Settings |
+| ✅ Voice Commands for Formatting | "comma" → `,` · "new line" → `\n` · "new paragraph" → `\n\n` · supports EN/ZH/JA/KO |
 
 ---
 
@@ -53,19 +54,17 @@
 ## P1 — Core UX Improvements
 
 ### Voice Commands for Formatting
-**Status:** 📋
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-voice-commands.md`
 
 **What:** While dictating, spoken keywords insert formatting instead of text:
-- "新行" / "new line" → `\n`
-- "新段落" / "new paragraph" → `\n\n`
-- "逗號" / "comma" → `,`
-- "句號" / "period" → `.`
-- "問號" / "question mark" → `?`
-- "刪除" / "delete" → deletes last word
+- "新行" / "new line" / "새 줄" / "改行" → `\n`
+- "新段落" / "new paragraph" / "새 단락" / "新しい段落" → `\n\n`
+- "逗號" / "comma" / "쉼표" → `,`
+- "句號" / "period" / "full stop" / "마침표" → `.`
+- "問號" / "question mark" / "물음표" / "疑問符" → `?`
+- "驚嘆號" / "exclamation mark" / "느낌표" → `!`
 
-**Approach:** Post-processing step after STT, before paste. Pattern matching on transcription output. Can be implemented without LLM (regex-based) or with LLM (let refinement model handle it).
-
-**Typeless comparison:** Core differentiator — Typeless handles this natively.
+**Approach:** Post-STT, regex-free string replacement in `pipeline/voice_commands.rs`. Configurable toggle in Settings → General. Zero new API calls. Works with or without LLM refinement.
 
 ---
 
@@ -167,7 +166,7 @@ Examples:
 
 | Feature | Typeless | VoxPen |
 |---------|---------|--------|
-| Voice commands (punctuation, formatting) | ✅ | 📋 P1 |
+| Voice commands (punctuation, formatting) | ✅ | ✅ Shipped |
 | 100+ languages | ✅ | 📋 P1 (expand from 4) |
 | Select text + voice edit | ✅ | 📋 P2 |
 | Translation | ✅ | ✅ Shipped |
