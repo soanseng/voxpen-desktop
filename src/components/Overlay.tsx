@@ -75,6 +75,7 @@ export default function Overlay() {
   const [state, setState] = useState<PipelineEvent>({ type: "Idle" });
   const [usageRemaining, setUsageRemaining] = useState<number | null>(null);
   const [usageExhausted, setUsageExhausted] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exhaustedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -86,6 +87,11 @@ export default function Overlay() {
       }
 
       setState(event.payload);
+
+      // Reset timed-out flag and usage warning when a new recording starts
+      if (event.payload.type === "Recording") {
+        setTimedOut(false);
+      }
 
       // Clear usage warning when not recording
       if (event.payload.type !== "Recording") {
@@ -110,6 +116,10 @@ export default function Overlay() {
       setUsageRemaining(event.payload);
     });
 
+    const unlistenTimeout = listen<number>("recording-timed-out", () => {
+      setTimedOut(true);
+    });
+
     const unlistenExhausted = listen("usage-exhausted", () => {
       setUsageExhausted(true);
       // Make overlay clickable for the upgrade button
@@ -128,6 +138,7 @@ export default function Overlay() {
     return () => {
       unlisten.then((fn) => fn());
       unlistenWarning.then((fn) => fn());
+      unlistenTimeout.then((fn) => fn());
       unlistenExhausted.then((fn) => fn());
       if (hideTimer.current !== null) {
         clearTimeout(hideTimer.current);
@@ -281,6 +292,10 @@ export default function Overlay() {
         <span className="text-[10px] font-medium text-amber-400/80">
           {t("license.warningRemaining", { count: usageRemaining })}
         </span>
+      )}
+      {/* Time limit reached indicator */}
+      {timedOut && (
+        <p className="text-xs text-yellow-400 mt-1 text-center">錄音時間上限已達</p>
       )}
       </div>
     </div>
