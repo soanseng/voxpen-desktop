@@ -45,7 +45,8 @@ pub async fn set_hotkey(
     shortcut: String,
     kind: String,
 ) -> Result<(), String> {
-    if shortcut.trim().is_empty() {
+    // Empty shortcut is only invalid for ptt and toggle; "edit" can be empty (= disabled)
+    if shortcut.trim().is_empty() && kind != "edit" {
         return Err("Hotkey cannot be empty".to_string());
     }
 
