@@ -82,6 +82,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          configPath: src-tauri/tauri.release.conf.json
           args: ${{ matrix.args }}
 
       - name: Upload artifacts
