@@ -99,6 +99,6 @@ export const defaultSettings: Settings = {
   translation_enabled: false,
   translation_target: "English",
   voice_commands_enabled: false,
-  hotkey_edit: "",
+  hotkey_edit: "CommandOrControl+Shift+E",
   app_tone_rules: [],
 };

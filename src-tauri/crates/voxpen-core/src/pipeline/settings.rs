@@ -135,7 +135,7 @@ impl Default for Settings {
             translation_enabled: false,
             translation_target: default_translation_target(),
             voice_commands_enabled: false,
-            hotkey_edit: String::new(),
+            hotkey_edit: "CommandOrControl+Shift+E".to_string(),
             app_tone_rules: Vec::new(),
         }
     }
@@ -315,9 +315,9 @@ mod tests {
     // -- hotkey_edit tests --
 
     #[test]
-    fn should_default_hotkey_edit_to_empty() {
+    fn should_default_hotkey_edit_to_combo() {
         let s = Settings::default();
-        assert_eq!(s.hotkey_edit, "");
+        assert_eq!(s.hotkey_edit, "CommandOrControl+Shift+E");
     }
 
     #[test]
@@ -334,6 +334,8 @@ mod tests {
         // Old JSON without hotkey_edit should get empty string default
         let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let s: Settings = serde_json::from_str(json).unwrap();
+        // Old settings without hotkey_edit get the serde default (empty string),
+        // not the struct Default. This is expected for backwards compat.
         assert_eq!(s.hotkey_edit, "");
     }
 
