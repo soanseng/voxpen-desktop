@@ -38,8 +38,10 @@ pub trait LlmProvider: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>>;
 }
 
-/// Timeout for LLM refinement — if exceeded, fall back to raw text.
-const REFINEMENT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Timeout for LLM refinement / translation — if exceeded, fall back to raw text.
+/// 15s gives translation tasks enough headroom while still catching hung requests
+/// well before the HTTP read timeout (60s).
+const REFINEMENT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Configuration for the pipeline controller.
 #[derive(Clone)]
@@ -141,7 +143,7 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
     /// - Processing → STT → Refining → Refined (if refinement enabled and succeeds)
     /// - Processing → STT → Result (if refinement enabled but fails — graceful fallback)
     ///
-    /// LLM refinement has a 5s timeout. If exceeded, falls back to raw text.
+    /// LLM refinement has a 15s timeout. If exceeded, falls back to raw text.
     pub async fn on_stop_recording(
         &self,
         pcm_data: Vec<i16>,
@@ -316,7 +318,7 @@ mod tests {
         let mut mock = MockLlmProvider::new();
         mock.expect_refine().returning(|_, _, _| {
             Box::pin(async {
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                tokio::time::sleep(Duration::from_secs(20)).await;
                 Ok("should not reach".to_string())
             })
         });

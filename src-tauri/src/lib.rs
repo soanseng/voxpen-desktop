@@ -53,6 +53,15 @@ const ALL_TONES: &[(&str, TonePreset)] = &[
     ("Custom", TonePreset::Custom),
 ];
 
+/// Get display label for a Language variant from the ALL_LANGUAGES table.
+fn language_label(lang: &Language) -> &'static str {
+    ALL_LANGUAGES
+        .iter()
+        .find(|(_, l)| l == lang)
+        .map(|(label, _)| *label)
+        .unwrap_or("Unknown")
+}
+
 /// Format the tray usage text based on license tier and categorized usage status.
 fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen_core::licensing::CategorizedUsageStatus) -> String {
     use voxpen_core::licensing::{LicenseTier, UsageStatus, free_daily_limit, UsageCategory};
@@ -72,24 +81,27 @@ fn format_usage_text(tier: &voxpen_core::licensing::LicenseTier, status: &voxpen
     }
 }
 
+/// Bundled configuration for building the tray menu, avoiding excessive parameters.
+struct TrayMenuConfig<'a> {
+    settings: &'a Settings,
+    mic_devices: &'a [String],
+    usage_text: &'a str,
+    is_pro: bool,
+}
+
 /// Build the tray menu with language submenu, tone submenu, and microphone submenu.
 ///
 /// Returns the menu, the usage `MenuItem`, and the upgrade `MenuItem` so the
 /// caller can update them dynamically after license changes.
 fn build_tray_menu(
     app: &tauri::App,
-    current_lang: &Language,
-    current_tone: &TonePreset,
-    mic_devices: &[String],
-    current_mic: &Option<String>,
-    usage_text: &str,
-    is_pro: bool,
+    cfg: &TrayMenuConfig<'_>,
 ) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> {
     // Language submenu
     let mut lang_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
     for (label, lang) in ALL_LANGUAGES {
         let id = format!("lang_{}", serde_json::to_string(lang).unwrap_or_default().trim_matches('"'));
-        let checked = lang == current_lang;
+        let checked = *lang == cfg.settings.stt_language;
         let item = CheckMenuItem::with_id(app, &id, *label, true, checked, None::<&str>)?;
         lang_items.push(item);
     }
@@ -101,7 +113,7 @@ fn build_tray_menu(
     let mut tone_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
     for (label, tone) in ALL_TONES {
         let id = format!("tone_{}", serde_json::to_string(tone).unwrap_or_default().trim_matches('"'));
-        let checked = tone == current_tone;
+        let checked = *tone == cfg.settings.tone_preset;
         let item = CheckMenuItem::with_id(app, &id, *label, true, checked, None::<&str>)?;
         tone_items.push(item);
     }
@@ -109,19 +121,34 @@ fn build_tray_menu(
         tone_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let tone_submenu = Submenu::with_items(app, "Tone", true, &tone_refs)?;
 
+    // Translation toggle
+    let translation_label = if cfg.settings.translation_enabled {
+        format!("Translate → {}", language_label(&cfg.settings.translation_target))
+    } else {
+        "Translation Off".to_string()
+    };
+    let translation_item = CheckMenuItem::with_id(
+        app,
+        "translation_toggle",
+        &translation_label,
+        true,
+        cfg.settings.translation_enabled,
+        None::<&str>,
+    )?;
+
     // Microphone submenu
     let default_mic = CheckMenuItem::with_id(
         app,
         "mic_default",
         "System Default",
         true,
-        current_mic.is_none(),
+        cfg.settings.microphone_device.is_none(),
         None::<&str>,
     )?;
     let mut mic_items: Vec<CheckMenuItem<tauri::Wry>> = vec![default_mic];
-    for name in mic_devices {
+    for name in cfg.mic_devices {
         let id = format!("mic_{name}");
-        let checked = current_mic.as_deref() == Some(name);
+        let checked = cfg.settings.microphone_device.as_deref() == Some(name);
         let item = CheckMenuItem::with_id(app, &id, name, true, checked, None::<&str>)?;
         mic_items.push(item);
     }
@@ -129,8 +156,8 @@ fn build_tray_menu(
         mic_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
 
-    let usage_item = MenuItem::with_id(app, "usage_info", usage_text, false, None::<&str>)?;
-    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", !is_pro, None::<&str>)?;
+    let usage_item = MenuItem::with_id(app, "usage_info", cfg.usage_text, false, None::<&str>)?;
+    let upgrade_item = MenuItem::with_id(app, "upgrade_pro", "Upgrade to Pro...", !cfg.is_pro, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let update_item = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
@@ -144,6 +171,7 @@ fn build_tray_menu(
             &upgrade_item,
             &lang_submenu,
             &tone_submenu,
+            &translation_item,
             &mic_submenu,
             &sep1,
             &update_item,
@@ -270,9 +298,23 @@ pub fn run() {
                 let usage_text = format_usage_text(&tier, &initial_usage);
                 let is_pro = tier == voxpen_core::licensing::LicenseTier::Pro;
 
+                // Load saved settings for initial tray state
+                let tray_settings: Settings = app
+                    .store("settings.json")
+                    .ok()
+                    .and_then(|s| s.get("settings"))
+                    .and_then(|v: serde_json::Value| serde_json::from_value(v).ok())
+                    .unwrap_or_default();
+
                 // Build system tray menu
                 let mic_devices = audio::list_input_devices();
-                let (menu, usage_item, upgrade_item) = build_tray_menu(app, &Language::Auto, &TonePreset::Casual, &mic_devices, &None, &usage_text, is_pro)?;
+                let tray_cfg = TrayMenuConfig {
+                    settings: &tray_settings,
+                    mic_devices: &mic_devices,
+                    usage_text: &usage_text,
+                    is_pro,
+                };
+                let (menu, usage_item, upgrade_item) = build_tray_menu(app, &tray_cfg)?;
 
                 let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("failed to load tray icon");
@@ -370,6 +412,27 @@ pub fn run() {
                                         }
                                     });
                                 }
+                            }
+                            "translation_toggle" => {
+                                let app = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state: tauri::State<'_, AppState> = app.state();
+                                    let mut s = state.settings.lock().await;
+                                    s.translation_enabled = !s.translation_enabled;
+                                    let settings_clone = s.clone();
+                                    drop(s);
+
+                                    // Persist
+                                    if let Ok(store) = app.store("settings.json") {
+                                        if let Ok(value) = serde_json::to_value(&settings_clone) {
+                                            store.set("settings", value);
+                                            let _ = store.save();
+                                        }
+                                    }
+
+                                    // Emit settings-changed so frontend stays in sync
+                                    let _ = app.emit("settings-changed", &settings_clone);
+                                });
                             }
                             _ if id.starts_with("mic_") => {
                                 let mic_name = if id == "mic_default" {
