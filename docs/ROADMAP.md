@@ -37,6 +37,7 @@
 | ✅ Auto-structured output | List/step detection in Casual prompts → bullet or numbered format |
 | ✅ Translation Mode | Speak in one language, output in another. Toggle + target language in Settings |
 | ✅ Voice Commands for Formatting | "comma" → `,` · "new line" → `\n` · "new paragraph" → `\n\n` · supports EN/ZH/JA/KO |
+| ✅ Select Text → Voice Edit | Select text in any app → hold hotkey → speak edit command → replaced |
 
 ---
 
@@ -89,7 +90,7 @@
 ## P2 — Power Features
 
 ### Select Text → Voice Edit
-**Status:** 📋
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-03-01-voice-edit.md`
 
 **What:** User selects text in any app → presses hotkey → speaks edit command → VoxPen replaces selection with edited version.
 
@@ -168,7 +169,7 @@ Examples:
 |---------|---------|--------|
 | Voice commands (punctuation, formatting) | ✅ | ✅ Shipped |
 | 100+ languages | ✅ | 📋 P1 (expand from 4) |
-| Select text + voice edit | ✅ | 📋 P2 |
+| Select text + voice edit | ✅ | ✅ Shipped |
 | Translation | ✅ | ✅ Shipped |
 | Context-aware tone by app | ✅ | 💡 P3 |
 | Personal dictionary | ✅ | ✅ Shipped |
