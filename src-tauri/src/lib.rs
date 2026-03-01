@@ -172,6 +172,10 @@ pub fn run() {
             // Initialize shared settings
             let settings = Arc::new(Mutex::new(Settings::default()));
 
+            // Shared auto-tone override for the active app rule engine.
+            let auto_tone_override: Arc<tokio::sync::Mutex<Option<TonePreset>>> =
+                Arc::new(tokio::sync::Mutex::new(None));
+
             // Initialize SQLite history database (needs app_data_dir early for models_dir)
             let app_data_dir = app
                 .path()
@@ -208,7 +212,7 @@ pub fn run() {
                 app.handle().clone(),
                 &models_dir,
             );
-            let llm = GroqLlmProvider::new(settings.clone(), app.handle().clone());
+            let llm = GroqLlmProvider::new(settings.clone(), app.handle().clone(), auto_tone_override.clone());
             let controller = PipelineController::new(config, stt, llm);
 
             // Initialize hardware implementations
@@ -245,6 +249,7 @@ pub fn run() {
                 recording_started: Arc::new(AtomicBool::new(false)),
                 recording_timeout_handle: Arc::new(tokio::sync::Mutex::new(None)),
                 voice_edit_selection: Arc::new(tokio::sync::Mutex::new(None)),
+                auto_tone_override,
                 license_manager: Arc::new(license_mgr),
                 models_dir,
                 #[cfg(feature = "local-whisper")]

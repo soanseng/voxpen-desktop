@@ -13,7 +13,7 @@ use voxpen_core::error::AppError;
 use voxpen_core::pipeline::controller::{LlmProvider, PipelineController, SttProvider};
 use voxpen_core::pipeline::refine;
 use voxpen_core::pipeline::settings::Settings;
-use voxpen_core::pipeline::state::Language;
+use voxpen_core::pipeline::state::{Language, TonePreset};
 use voxpen_core::pipeline::transcribe;
 
 /// Concrete SttProvider backed by Groq Whisper API (and optionally local whisper).
@@ -120,13 +120,20 @@ impl SttProvider for GroqSttProvider {
 pub struct GroqLlmProvider {
     settings: Arc<Mutex<Settings>>,
     app_handle: AppHandle,
+    /// Shared per-session tone override. None = use settings.tone_preset.
+    auto_tone_override: Arc<tokio::sync::Mutex<Option<TonePreset>>>,
 }
 
 impl GroqLlmProvider {
-    pub fn new(settings: Arc<Mutex<Settings>>, app_handle: AppHandle) -> Self {
+    pub fn new(
+        settings: Arc<Mutex<Settings>>,
+        app_handle: AppHandle,
+        auto_tone_override: Arc<tokio::sync::Mutex<Option<TonePreset>>>,
+    ) -> Self {
         Self {
             settings,
             app_handle,
+            auto_tone_override,
         }
     }
 }
@@ -140,6 +147,7 @@ impl LlmProvider for GroqLlmProvider {
     ) -> Pin<Box<dyn Future<Output = Result<String, AppError>> + Send>> {
         let settings = self.settings.clone();
         let app_handle = self.app_handle.clone();
+        let auto_tone_override = self.auto_tone_override.clone();
         Box::pin(async move {
             let s = settings.lock().await;
             let api_key = get_api_key(&app_handle, &s.refinement_provider)?;
@@ -150,7 +158,7 @@ impl LlmProvider for GroqLlmProvider {
                 max_tokens: groq::LLM_MAX_TOKENS,
             };
             let custom_prompt = s.refinement_prompt.clone();
-            let tone_preset = s.tone_preset.clone();
+            let base_tone = s.tone_preset.clone();
             let provider = s.refinement_provider.clone();
             let custom_base_url = s.custom_base_url.clone();
             let translation_target = if s.translation_enabled {
@@ -159,6 +167,11 @@ impl LlmProvider for GroqLlmProvider {
                 None
             };
             drop(s);
+            // Use per-session auto-tone override if set, otherwise use settings tone.
+            let tone_preset = {
+                let guard = auto_tone_override.lock().await;
+                guard.clone().unwrap_or(base_tone)
+            };
             refine::refine(
                 &text,
                 &config,
@@ -246,6 +259,12 @@ pub struct AppState {
     /// Set at edit hotkey press time (after Ctrl+C), consumed at release.
     /// `None` when not in voice-edit mode.
     pub voice_edit_selection: Arc<tokio::sync::Mutex<Option<String>>>,
+    /// Per-session tone preset override set by the auto-tone rule engine.
+    /// Set at hotkey-press time when an AppToneRule matches the active app.
+    /// Cleared after the pipeline completes. None = use settings.tone_preset.
+    // TODO(task-4): remove allow(dead_code) once hotkey integration reads this field
+    #[allow(dead_code)]
+    pub auto_tone_override: Arc<tokio::sync::Mutex<Option<TonePreset>>>,
     pub license_manager: Arc<
         voxpen_core::licensing::LicenseManager<
             voxpen_core::licensing::DirectLemonSqueezy,
