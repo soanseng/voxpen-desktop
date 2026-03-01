@@ -262,8 +262,6 @@ pub struct AppState {
     /// Per-session tone preset override set by the auto-tone rule engine.
     /// Set at hotkey-press time when an AppToneRule matches the active app.
     /// Cleared after the pipeline completes. None = use settings.tone_preset.
-    // TODO(task-4): remove allow(dead_code) once hotkey integration reads this field
-    #[allow(dead_code)]
     pub auto_tone_override: Arc<tokio::sync::Mutex<Option<TonePreset>>>,
     pub license_manager: Arc<
         voxpen_core::licensing::LicenseManager<

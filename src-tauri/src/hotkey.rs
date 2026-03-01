@@ -8,6 +8,7 @@ use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use voxpen_core::audio::recorder::AudioRecorder;
+use voxpen_core::pipeline::settings::find_matching_tone;
 use voxpen_core::pipeline::state::{PipelineState, RecordingMode};
 
 use crate::state::AppState;
@@ -536,6 +537,9 @@ fn handle_hotkey_event(
                 return;
             }
 
+            // Capture active app BEFORE spawning (sync context = most accurate timing).
+            let active_app = crate::active_window::get_active_app_name();
+
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
             let recording_started = state.recording_started.clone();
@@ -548,6 +552,7 @@ fn handle_hotkey_event(
             let history = state.history.clone();
             let dictionary = state.dictionary.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
+            let auto_tone_override = state.auto_tone_override.clone();
 
             // Reset the signal before starting
             recording_started.store(false, Ordering::SeqCst);
@@ -574,6 +579,15 @@ fn handle_hotkey_event(
                     s.microphone_device.clone()
                 };
                 recorder.set_preferred_device(mic_device);
+
+                // Apply auto-tone rule for this session if a rule matches.
+                if let Some(ref app_name) = active_app {
+                    let s = settings.lock().await;
+                    if let Some(tone) = find_matching_tone(&s.app_tone_rules, app_name) {
+                        *auto_tone_override.lock().await = Some(tone);
+                    }
+                    drop(s);
+                }
 
                 let ctrl = controller.lock().await;
                 if let Err(e) = ctrl.on_start_recording() {
@@ -610,6 +624,7 @@ fn handle_hotkey_event(
                             let timeout_app = app_for_err.clone();
                             let timeout_recording_started = recording_started.clone();
                             let timeout_processing = processing_flag.clone();
+                            let timeout_auto_tone_override = auto_tone_override.clone();
 
                             let handle = tauri::async_runtime::spawn(async move {
                                 use std::sync::atomic::Ordering;
@@ -653,6 +668,9 @@ fn handle_hotkey_event(
                                     timeout_processing,
                                 )
                                 .await;
+
+                                // Clear auto-tone override after timeout stop.
+                                *timeout_auto_tone_override.lock().await = None;
                             });
 
                             *timeout_handle.lock().await = Some(handle);
@@ -683,6 +701,7 @@ fn handle_hotkey_event(
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
+            let auto_tone_override = state.auto_tone_override.clone();
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -734,6 +753,9 @@ fn handle_hotkey_event(
                     processing_flag,
                 )
                 .await;
+
+                // Clear auto-tone override after session completes.
+                *auto_tone_override.lock().await = None;
             });
         }
     }
