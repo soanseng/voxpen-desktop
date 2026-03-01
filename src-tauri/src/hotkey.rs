@@ -107,13 +107,10 @@ impl HotkeyManager {
             self.registered_toggle = Some(toggle_shortcut.to_string());
         }
 
-        // Register Voice Edit hotkey (combo only for now)
-        if !edit_shortcut.is_empty() {
-            if is_combo_shortcut(edit_shortcut) {
-                self.register_edit_combo(app, edit_shortcut)?;
-                self.registered_edit = Some(edit_shortcut.to_string());
-            }
-            // Note: single-key edit hotkeys not yet supported
+        // Register Voice Edit hotkey (combo only; single-key support deferred)
+        if !edit_shortcut.is_empty() && is_combo_shortcut(edit_shortcut) {
+            self.register_edit_combo(app, edit_shortcut)?;
+            self.registered_edit = Some(edit_shortcut.to_string());
         }
 
         // Ensure rdev listener thread is running if any single keys are registered
@@ -870,6 +867,7 @@ fn handle_edit_hotkey_event(
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
             let voice_edit_selection = state.voice_edit_selection.clone();
+            let timeout_handle = state.recording_timeout_handle.clone();
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -888,6 +886,11 @@ fn handle_edit_hotkey_event(
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
                 recording_started.store(false, Ordering::SeqCst);
+
+                // Abort any active auto-stop timeout for this recording
+                if let Some(h) = timeout_handle.lock().await.take() {
+                    h.abort();
+                }
 
                 let pcm_data = match recorder.stop() {
                     Ok(data) => data,
