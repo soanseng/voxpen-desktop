@@ -1,6 +1,6 @@
 # VoxPen Desktop — Feature Roadmap
 
-> Last updated: 2026-02-28
+> Last updated: 2026-03-01
 > Competitive reference: Typeless (primary benchmark), Wispr Flow
 
 ---
@@ -38,6 +38,7 @@
 | ✅ Translation Mode | Speak in one language, output in another. Toggle + target language in Settings |
 | ✅ Voice Commands for Formatting | "comma" → `,` · "new line" → `\n` · "new paragraph" → `\n\n` · supports EN/ZH/JA/KO |
 | ✅ Select Text → Voice Edit | Select text in any app → hold hotkey → speak edit command → replaced |
+| ✅ Context-Aware Auto Tone | Active app detected at hotkey press → first matching AppToneRule applied for that session |
 
 ---
 
@@ -138,13 +139,11 @@ Examples:
 ---
 
 ### Context-Aware Tone by Application
-**Status:** 💡
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-03-01-auto-tone.md`
 
 **What:** Automatically apply different tone presets based on the active application. E.g., "Professional" in Outlook, "Casual" in WhatsApp.
 
-**Approach:** Detect active window title/app name via OS APIs. Map app → tone preset in settings.
-
-**Complexity:** High — cross-platform active window detection, complex UX for mapping rules.
+**Approach:** Detect active window title/app name via OS APIs (`x11rb` on Linux X11, `osascript` on macOS, `windows-sys` on Windows). Map app → tone preset in settings via `AppToneRule`. Override applied per-session, cleared after pipeline completes.
 
 **Typeless comparison:** Part of Typeless's adaptive intelligence pitch.
 
@@ -171,7 +170,7 @@ Examples:
 | 100+ languages | ✅ | 📋 P1 (expand from 4) |
 | Select text + voice edit | ✅ | ✅ Shipped |
 | Translation | ✅ | ✅ Shipped |
-| Context-aware tone by app | ✅ | 💡 P3 |
+| Context-aware tone by app | ✅ | ✅ Shipped |
 | Personal dictionary | ✅ | ✅ Shipped |
 | Filler word removal | ✅ | ✅ Shipped (via LLM) |
 | Auto-structured output (list/steps) | ✅ | ✅ Shipped |
