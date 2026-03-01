@@ -2,6 +2,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::pipeline::state::{Language, RecordingMode, TonePreset};
 
+/// A rule that maps an app name pattern to a tone preset.
+/// The pattern is matched case-insensitively as a substring of the active app name.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AppToneRule {
+    /// Case-insensitive substring pattern matched against the active app name.
+    pub app_pattern: String,
+    /// Tone preset to apply when this rule matches.
+    pub tone: TonePreset,
+}
+
+/// Find the first matching tone preset for the given app name.
+/// Matching is case-insensitive substring: rule fires if `app_name` contains `app_pattern`.
+pub fn find_matching_tone(rules: &[AppToneRule], app_name: &str) -> Option<TonePreset> {
+    let lower = app_name.to_lowercase();
+    rules
+        .iter()
+        .find(|r| lower.contains(&r.app_pattern.to_lowercase()))
+        .map(|r| r.tone.clone())
+}
+
 /// Application settings, serialized for Tauri IPC and persistent storage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -73,6 +93,10 @@ pub struct Settings {
     /// Default: empty string (feature disabled).
     #[serde(default)]
     pub hotkey_edit: String,
+    /// Rules for auto-selecting a tone preset based on the active application.
+    /// First matching rule wins. Empty = feature disabled.
+    #[serde(default)]
+    pub app_tone_rules: Vec<AppToneRule>,
 }
 
 fn default_hotkey_toggle() -> String {
@@ -112,6 +136,7 @@ impl Default for Settings {
             translation_target: default_translation_target(),
             voice_commands_enabled: false,
             hotkey_edit: String::new(),
+            app_tone_rules: Vec::new(),
         }
     }
 }
@@ -310,5 +335,67 @@ mod tests {
         let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let s: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(s.hotkey_edit, "");
+    }
+
+    // -- AppToneRule tests --
+
+    #[test]
+    fn should_serialize_app_tone_rule() {
+        let rule = AppToneRule {
+            app_pattern: "slack".to_string(),
+            tone: TonePreset::Professional,
+        };
+        let json = serde_json::to_string(&rule).unwrap();
+        assert!(json.contains("slack"));
+        assert!(json.contains("Professional"));
+    }
+
+    #[test]
+    fn should_find_matching_tone_case_insensitive() {
+        let rules = vec![
+            AppToneRule { app_pattern: "slack".to_string(), tone: TonePreset::Casual },
+            AppToneRule { app_pattern: "outlook".to_string(), tone: TonePreset::Email },
+        ];
+        assert_eq!(find_matching_tone(&rules, "SLACK"), Some(TonePreset::Casual));
+        assert_eq!(find_matching_tone(&rules, "Microsoft Outlook"), Some(TonePreset::Email));
+    }
+
+    #[test]
+    fn should_return_none_when_no_rule_matches() {
+        let rules = vec![
+            AppToneRule { app_pattern: "slack".to_string(), tone: TonePreset::Casual },
+        ];
+        assert_eq!(find_matching_tone(&rules, "firefox"), None);
+    }
+
+    #[test]
+    fn should_return_none_for_empty_rules() {
+        assert_eq!(find_matching_tone(&[], "any_app"), None);
+    }
+
+    #[test]
+    fn should_default_app_tone_rules_to_empty() {
+        let s = Settings::default();
+        assert!(s.app_tone_rules.is_empty());
+    }
+
+    #[test]
+    fn should_roundtrip_app_tone_rules() {
+        let mut s = Settings::default();
+        s.app_tone_rules = vec![
+            AppToneRule { app_pattern: "code".to_string(), tone: TonePreset::Note },
+        ];
+        let json = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(s2.app_tone_rules.len(), 1);
+        assert_eq!(s2.app_tone_rules[0].app_pattern, "code");
+        assert_eq!(s2.app_tone_rules[0].tone, TonePreset::Note);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_app_tone_rules() {
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert!(s.app_tone_rules.is_empty());
     }
 }
