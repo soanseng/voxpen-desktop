@@ -127,7 +127,7 @@ mod platform {
 
         unsafe {
             let hwnd = GetForegroundWindow();
-            if hwnd == 0 {
+            if hwnd.is_null() {
                 return None;
             }
 
@@ -138,12 +138,12 @@ mod platform {
             }
 
             let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
-            if handle == 0 {
+            if handle.is_null() {
                 return None;
             }
 
             let mut buf = vec![0u16; 512];
-            let len = GetModuleFileNameExW(handle, 0, buf.as_mut_ptr(), buf.len() as u32);
+            let len = GetModuleFileNameExW(handle, std::ptr::null_mut(), buf.as_mut_ptr(), buf.len() as u32);
             CloseHandle(handle);
 
             if len == 0 {
