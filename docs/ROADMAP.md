@@ -39,17 +39,18 @@
 | ✅ Voice Commands for Formatting | "comma" → `,` · "new line" → `\n` · "new paragraph" → `\n\n` · supports EN/ZH/JA/KO |
 | ✅ Select Text → Voice Edit | Select text in any app → hold hotkey → speak edit command → replaced |
 | ✅ Context-Aware Auto Tone | Active app detected at hotkey press → first matching AppToneRule applied for that session |
+| ✅ Recording Time Limit | Configurable max duration (default 6 min). Auto-stop + timeout indicator in overlay |
 
 ---
 
 ## P0 — Safety / Reliability
 
 ### Recording Time Limit
-**Status:** 🔨 Plan: `docs/plans/2026-02-28-recording-time-limit.md`
+**Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-recording-time-limit.md`
 
 **Problem:** No upper bound on recording duration. Buffer grows unbounded in memory. If user forgets to release PTT or toggle key, recording runs forever.
 
-**Solution:** Configurable max recording duration (default: 5 minutes). Auto-stop with normal pipeline when limit is reached. Show timeout indicator in overlay.
+**Solution:** Configurable max recording duration (default: 6 minutes). Auto-stop with normal pipeline when limit is reached. Show timeout indicator in overlay.
 
 ---
 
