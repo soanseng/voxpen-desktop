@@ -1,3 +1,8 @@
+export interface AppToneRule {
+  app_pattern: string;
+  tone: "Casual" | "Professional" | "Email" | "Note" | "Social" | "Custom";
+}
+
 export interface Settings {
   hotkey_ptt: string;
   hotkey_toggle: string;
@@ -21,6 +26,7 @@ export interface Settings {
   translation_target: "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
   voice_commands_enabled: boolean;
   hotkey_edit: string;
+  app_tone_rules: AppToneRule[];
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -94,4 +100,5 @@ export const defaultSettings: Settings = {
   translation_target: "English",
   voice_commands_enabled: false,
   hotkey_edit: "",
+  app_tone_rules: [],
 };

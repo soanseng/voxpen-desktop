@@ -143,3 +143,7 @@ export async function deleteWhisperModel(modelId: string): Promise<void> {
 export async function transcribeFile(filePath: string): Promise<FileTranscriptionResult> {
   return invoke<FileTranscriptionResult>("transcribe_file", { filePath });
 }
+
+export async function getActiveAppName(): Promise<string | null> {
+  return invoke<string | null>("get_active_app_name");
+}

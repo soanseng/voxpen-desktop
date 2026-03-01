@@ -187,5 +187,10 @@
   "voiceCommandsEnabledHint": "說出「逗號」、「句號」、「新行」、「新段落」等關鍵字來插入標點符號。",
   "hotkeyEdit": "語音編輯快捷鍵",
   "hotkeyEditHint": "在任何應用程式中選取文字，按住此快捷鍵，說出編輯指令，選取的文字將被替換為編輯結果。需啟用 LLM 潤色。僅支援組合快捷鍵（例如 Ctrl+Shift+E）。",
-  "hotkeyEditDisabled": "停用（留空）"
+  "hotkeyEditDisabled": "停用（留空）",
+  "autoToneTitle": "依應用程式自動語氣",
+  "autoToneHint": "根據目前使用中的應用程式自動套用語氣預設。第一條符合的規則優先。",
+  "autoToneCurrentApp": "目前應用程式",
+  "autoTonePatternPlaceholder": "例：slack、outlook、code",
+  "autoToneAdd": "新增規則"
 }

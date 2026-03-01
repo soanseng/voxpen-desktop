@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Settings } from "../../types/settings";
-import { getApiKeyStatus, getDefaultRefinementPrompt, saveApiKey } from "../../lib/tauri";
+import type { AppToneRule, Settings } from "../../types/settings";
+import { getActiveAppName, getApiKeyStatus, getDefaultRefinementPrompt, saveApiKey } from "../../lib/tauri";
 
 interface RefinementSectionProps {
   settings: Settings;
@@ -96,6 +96,121 @@ function ToggleSwitch({
         }
       />
     </label>
+  );
+}
+
+function AppToneRulesEditor({
+  rules,
+  onChange,
+  t,
+}: {
+  rules: AppToneRule[];
+  onChange: (rules: AppToneRule[]) => void;
+  t: (key: string) => string;
+}) {
+  const [detectedApp, setDetectedApp] = useState<string | null>(null);
+  const [newPattern, setNewPattern] = useState("");
+  const [newTone, setNewTone] = useState<AppToneRule["tone"]>("Casual");
+
+  useEffect(() => {
+    getActiveAppName()
+      .then(setDetectedApp)
+      .catch(() => setDetectedApp(null));
+  }, []);
+
+  function addRule() {
+    const pattern = newPattern.trim().toLowerCase();
+    if (!pattern) return;
+    onChange([...rules, { app_pattern: pattern, tone: newTone }]);
+    setNewPattern("");
+    setNewTone("Casual");
+  }
+
+  function removeRule(index: number) {
+    onChange(rules.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          {t("autoToneTitle")}
+        </label>
+        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+          {t("autoToneHint")}
+        </p>
+      </div>
+
+      {detectedApp && (
+        <p className="text-xs text-blue-500 dark:text-blue-400">
+          {t("autoToneCurrentApp")}: <span className="font-mono">{detectedApp}</span>
+        </p>
+      )}
+
+      {rules.length > 0 && (
+        <div className="space-y-2">
+          {rules.map((rule, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+            >
+              <span className="flex-1 font-mono text-sm text-gray-700 dark:text-gray-300">
+                {rule.app_pattern}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{"\u2192"}</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                {t(`tone${rule.tone}`)}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeRule(i)}
+                className="ml-2 text-xs text-red-400 hover:text-red-600"
+              >
+                {"\u2715"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={newPattern}
+          onChange={(e) => setNewPattern(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addRule()}
+          placeholder={t("autoTonePatternPlaceholder")}
+          className={
+            "flex-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm " +
+            "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+            "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          }
+        />
+        <select
+          value={newTone}
+          onChange={(e) => setNewTone(e.target.value as AppToneRule["tone"])}
+          className={
+            "rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm " +
+            "focus:border-blue-500 focus:outline-none " +
+            "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          }
+        >
+          {TONE_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {t(p.labelKey)}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={addRule}
+          disabled={!newPattern.trim()}
+          className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+        >
+          {t("autoToneAdd")}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -265,6 +380,15 @@ export default function RefinementSection({
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Auto Tone Rules */}
+      <div className={disabled ? "opacity-40" : ""}>
+        <AppToneRulesEditor
+          rules={settings.app_tone_rules}
+          onChange={(rules) => onUpdate("app_tone_rules", rules)}
+          t={t}
+        />
       </div>
 
       {/* Provider */}
