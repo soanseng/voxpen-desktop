@@ -694,6 +694,14 @@ fn version_newer(latest: &str, current: &str) -> bool {
     l > c
 }
 
+/// Returns the lowercase name of the currently active application.
+/// Used by the Settings UI to help users discover what pattern to type.
+/// Returns null if detection is unavailable (Wayland, macOS permissions, etc.).
+#[tauri::command]
+pub fn get_active_app_name() -> Option<String> {
+    crate::active_window::get_active_app_name()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
