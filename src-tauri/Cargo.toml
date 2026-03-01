@@ -45,3 +45,14 @@ tempfile = "3"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 local-whisper = ["voxpen-core/local-whisper"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+] }

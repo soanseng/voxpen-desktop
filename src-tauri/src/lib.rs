@@ -1,3 +1,6 @@
+// TODO(task-4): remove allow(dead_code) once hotkey integration consumes this module
+#[allow(dead_code)]
+mod active_window;
 mod audio;
 mod clipboard;
 mod commands;
