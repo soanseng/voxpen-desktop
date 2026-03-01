@@ -151,7 +151,8 @@ mod platform {
             }
 
             let os_str = OsString::from_wide(&buf[..len as usize]);
-            let path = std::path::Path::new(&os_str.to_string_lossy().to_string());
+            let path_str = os_str.to_string_lossy().to_string();
+            let path = std::path::Path::new(&path_str);
             Some(path.file_stem()?.to_string_lossy().to_lowercase())
         }
     }
