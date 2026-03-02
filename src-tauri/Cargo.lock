@@ -5523,6 +5523,7 @@ name = "voxpen-desktop"
 version = "0.9.0"
 dependencies = [
  "arboard",
+ "chrono",
  "cpal",
  "enigo",
  "hound",

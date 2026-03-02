@@ -573,6 +573,19 @@ fn handle_hotkey_event(
                     _ => {}
                 }
 
+                // Promo expiration notification — one-time per app session
+                if let Some(info) = license_mgr.license_info() {
+                    if let Some(exp) = info.expires_at {
+                        if chrono::Utc::now().timestamp() >= exp {
+                            use std::sync::atomic::AtomicBool;
+                            static PROMO_EXPIRED_EMITTED: AtomicBool = AtomicBool::new(false);
+                            if !PROMO_EXPIRED_EMITTED.swap(true, Ordering::SeqCst) {
+                                let _ = app_for_err.emit("promo-expired", ());
+                            }
+                        }
+                    }
+                }
+
                 // Set preferred microphone device before starting
                 let mic_device = {
                     let s = settings.lock().await;

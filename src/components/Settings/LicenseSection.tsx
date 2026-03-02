@@ -223,6 +223,13 @@ export default function LicenseSection() {
               date: new Date(license.last_verified_at * 1000).toLocaleDateString(),
             })}
           </div>
+          {license.expires_at && (
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {t("license.expiresAt", {
+                date: new Date(license.expires_at * 1000).toLocaleDateString(),
+              })}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => void handleDeactivate()}
