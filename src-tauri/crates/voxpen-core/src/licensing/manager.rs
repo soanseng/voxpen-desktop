@@ -144,6 +144,7 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
             activated_at: now,
             last_verified_at: now,
             verification_grace_until: None,
+            expires_at: None,
         };
 
         self.store.save(&info)?;
@@ -475,6 +476,7 @@ mod tests {
             activated_at: 1700000000,
             last_verified_at,
             verification_grace_until: None,
+            expires_at: None,
         }
     }
 

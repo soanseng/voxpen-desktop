@@ -42,6 +42,11 @@ pub struct LicenseInfo {
     /// If set, the grace period deadline (Unix seconds) after a failed verification.
     /// License stays Pro until this deadline passes.
     pub verification_grace_until: Option<i64>,
+    /// Unix timestamp (seconds) when the license expires. `None` means perpetual.
+    /// Marked `#[serde(default)]` for backward compatibility with stored data
+    /// that predates this field.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
 }
 
 /// Status of the user's daily usage quota.
@@ -129,6 +134,7 @@ mod tests {
             activated_at: 1700000000,
             last_verified_at: 1700100000,
             verification_grace_until: None,
+            expires_at: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: LicenseInfo = serde_json::from_str(&json).unwrap();
@@ -151,6 +157,7 @@ mod tests {
             activated_at: 1700000000,
             last_verified_at: 1700100000,
             verification_grace_until: Some(1700700000),
+            expires_at: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: LicenseInfo = serde_json::from_str(&json).unwrap();
@@ -256,5 +263,46 @@ mod tests {
             UsageCategory::FileTranscription.to_string(),
             "file transcription"
         );
+    }
+
+    #[test]
+    fn should_roundtrip_license_info_with_expires_at() {
+        let info = LicenseInfo {
+            tier: LicenseTier::Pro,
+            license_key: "key".to_string(),
+            instance_id: "inst".to_string(),
+            licensed_version: 1,
+            activated_at: 1700000000,
+            last_verified_at: 1700100000,
+            verification_grace_until: None,
+            expires_at: Some(1712016000),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: LicenseInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.expires_at, Some(1712016000));
+    }
+
+    #[test]
+    fn should_roundtrip_license_info_without_expires_at() {
+        let info = LicenseInfo {
+            tier: LicenseTier::Pro,
+            license_key: "key".to_string(),
+            instance_id: "inst".to_string(),
+            licensed_version: 1,
+            activated_at: 1700000000,
+            last_verified_at: 1700100000,
+            verification_grace_until: None,
+            expires_at: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: LicenseInfo = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.expires_at.is_none());
+    }
+
+    #[test]
+    fn should_deserialize_old_license_info_without_expires_at_field() {
+        let json = r#"{"tier":"Pro","license_key":"k","instance_id":"i","licensed_version":1,"activated_at":1700000000,"last_verified_at":1700100000,"verification_grace_until":null}"#;
+        let info: LicenseInfo = serde_json::from_str(json).unwrap();
+        assert!(info.expires_at.is_none());
     }
 }
