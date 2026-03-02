@@ -57,7 +57,14 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
     /// does not match the current app version.
     pub fn current_tier(&self) -> LicenseTier {
         match self.store.load() {
-            Some(info) if info.licensed_version == CURRENT_MAJOR_VERSION => info.tier,
+            Some(info) if info.licensed_version == CURRENT_MAJOR_VERSION => {
+                if let Some(exp) = info.expires_at {
+                    if chrono::Utc::now().timestamp() >= exp {
+                        return LicenseTier::Free;
+                    }
+                }
+                info.tier
+            }
             _ => LicenseTier::Free,
         }
     }
@@ -527,6 +534,45 @@ mod tests {
             MockUsageDb::uniform(0),
         );
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
+    }
+
+    #[test]
+    fn current_tier_should_be_free_when_license_expired() {
+        let now = chrono::Utc::now().timestamp();
+        let mut license = pro_license(now);
+        license.expires_at = Some(now - 3600); // expired 1 hour ago
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(Some(license)),
+            MockUsageDb::uniform(0),
+        );
+        assert_eq!(mgr.current_tier(), LicenseTier::Free);
+    }
+
+    #[test]
+    fn current_tier_should_be_pro_when_license_not_expired() {
+        let now = chrono::Utc::now().timestamp();
+        let mut license = pro_license(now);
+        license.expires_at = Some(now + 86400 * 30); // expires in 30 days
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(Some(license)),
+            MockUsageDb::uniform(0),
+        );
+        assert_eq!(mgr.current_tier(), LicenseTier::Pro);
+    }
+
+    #[test]
+    fn current_tier_should_be_pro_when_perpetual_license() {
+        let now = chrono::Utc::now().timestamp();
+        let mut license = pro_license(now);
+        license.expires_at = None; // perpetual
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![]),
+            MockStore::new(Some(license)),
+            MockUsageDb::uniform(0),
+        );
+        assert_eq!(mgr.current_tier(), LicenseTier::Pro);
     }
 
     // =======================================================================
