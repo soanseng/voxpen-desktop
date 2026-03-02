@@ -394,6 +394,7 @@ mod tests {
                 key: Some("KEY".to_string()),
                 activation_limit: Some(3),
                 activation_usage: Some(1),
+                expires_at: None,
             }),
             instance: Some(LsInstance {
                 id: Some(instance_id.to_string()),

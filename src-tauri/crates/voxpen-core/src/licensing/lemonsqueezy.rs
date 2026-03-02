@@ -165,6 +165,8 @@ pub struct LsLicenseKey {
     pub key: Option<String>,
     pub activation_limit: Option<u32>,
     pub activation_usage: Option<u32>,
+    /// ISO 8601 expiration timestamp from LemonSqueezy. `None` means perpetual.
+    pub expires_at: Option<String>,
 }
 
 /// Activation instance from LemonSqueezy.
@@ -378,6 +380,22 @@ mod tests {
         let json = r#"{"valid":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1},"instance":{"id":"i","name":"n"},"meta":{"store_id":1,"product_id":2,"variant_id":3}}"#;
         let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
         assert!(resp.valid);
+    }
+
+    #[test]
+    fn should_deserialize_expires_at_from_license_key() {
+        let json = r#"{"activated":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1,"expires_at":"2026-04-02T00:00:00.000000Z"},"instance":{"id":"i","name":"n"},"meta":{"store_id":1,"product_id":2,"variant_id":3}}"#;
+        let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
+        let key = resp.license_key.unwrap();
+        assert_eq!(key.expires_at.as_deref(), Some("2026-04-02T00:00:00.000000Z"));
+    }
+
+    #[test]
+    fn should_deserialize_null_expires_at_as_none() {
+        let json = r#"{"activated":true,"error":null,"license_key":{"id":1,"status":"active","key":"K","activation_limit":3,"activation_usage":1,"expires_at":null},"instance":{"id":"i","name":"n"},"meta":{"store_id":1,"product_id":2,"variant_id":3}}"#;
+        let resp: LsLicenseResponse = serde_json::from_str(json).unwrap();
+        let key = resp.license_key.unwrap();
+        assert!(key.expires_at.is_none());
     }
 
     #[test]
