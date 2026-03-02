@@ -39,6 +39,7 @@ export interface LicenseInfo {
   activated_at: number;
   last_verified_at: number;
   verification_grace_until: number | null;
+  expires_at: number | null;
 }
 
 export type UsageStatus =

@@ -147,7 +147,12 @@
     "voiceInput": "Voice Input",
     "refinementLabel": "AI Refinement",
     "fileTranscriptionLabel": "File Transcription",
-    "freeFooter": "Free plan — 30 voice inputs/day, with AI refinement. Upgrade to Pro for unlimited access."
+    "freeFooter": "Free plan — 30 voice inputs/day, with AI refinement. Upgrade to Pro for unlimited access.",
+    "promoExpiredTitle": "Trial ended",
+    "promoExpiredMessage": "Upgrade to Pro for unlimited voice input",
+    "promoExpiredUpgrade": "Upgrade to Pro",
+    "promoExpiredDismiss": "Later",
+    "expiresAt": "Expires: {{date}}"
   },
   "localWhisper": "Local (Whisper)",
   "localWhisperHint": "Offline speech-to-text. Audio never leaves your computer.",

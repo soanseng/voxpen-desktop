@@ -147,7 +147,12 @@
     "voiceInput": "語音輸入",
     "refinementLabel": "AI 潤飾",
     "fileTranscriptionLabel": "檔案轉錄",
-    "freeFooter": "免費版 — 每日 30 次語音輸入，體驗 AI 潤稿。升級 Pro 解鎖無限使用。"
+    "freeFooter": "免費版 — 每日 30 次語音輸入，體驗 AI 潤稿。升級 Pro 解鎖無限使用。",
+    "promoExpiredTitle": "試用期已結束",
+    "promoExpiredMessage": "升級 Pro 享受無限語音輸入",
+    "promoExpiredUpgrade": "升級 Pro",
+    "promoExpiredDismiss": "稍後",
+    "expiresAt": "到期日：{{date}}"
   },
   "localWhisper": "本機 (Whisper)",
   "localWhisperHint": "離線語音轉文字。音訊不會離開您的電腦。",
