@@ -142,6 +142,12 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
             .and_then(|i| i.id.clone())
             .ok_or_else(|| AppError::License("no instance ID in response".to_string()))?;
 
+        let expires_at = response
+            .license_key
+            .as_ref()
+            .and_then(|lk| lk.expires_at.as_deref())
+            .and_then(parse_iso8601_to_unix);
+
         let now = chrono::Utc::now().timestamp();
         let info = LicenseInfo {
             tier: LicenseTier::Pro,
@@ -151,7 +157,7 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
             activated_at: now,
             last_verified_at: now,
             verification_grace_until: None,
-            expires_at: None,
+            expires_at,
         };
 
         self.store.save(&info)?;
@@ -274,6 +280,13 @@ impl<V: LicenseVerifier, S: LicenseStore, D: UsageDb> LicenseManager<V, S, D> {
     }
 }
 
+/// Parse an ISO 8601 timestamp string to a Unix timestamp (seconds).
+fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.timestamp())
+}
+
 /// Best-effort hostname for the instance name during activation.
 fn hostname_or_default() -> String {
     std::env::var("COMPUTERNAME")
@@ -363,6 +376,7 @@ mod tests {
     #[derive(Clone, Debug)]
     enum VerifyBehavior {
         ActivateOk,
+        ActivateOkWithExpiry(String),
         ActivateErr(String),
         ValidateOk,
         ValidateInvalid,
@@ -412,6 +426,30 @@ mod tests {
         }
     }
 
+    fn ok_license_response_with_expiry(
+        instance_id: &str,
+        expires_at: Option<&str>,
+    ) -> LsLicenseResponse {
+        use crate::licensing::lemonsqueezy::{LsInstance, LsLicenseKey};
+        LsLicenseResponse {
+            valid: true,
+            error: None,
+            license_key: Some(LsLicenseKey {
+                id: Some(1),
+                status: Some("active".to_string()),
+                key: Some("KEY".to_string()),
+                activation_limit: Some(3),
+                activation_usage: Some(1),
+                expires_at: expires_at.map(|s| s.to_string()),
+            }),
+            instance: Some(LsInstance {
+                id: Some(instance_id.to_string()),
+                name: Some("Test".to_string()),
+            }),
+            meta: None,
+        }
+    }
+
     fn invalid_license_response() -> LsLicenseResponse {
         LsLicenseResponse {
             valid: false,
@@ -432,6 +470,9 @@ mod tests {
             Box::pin(async move {
                 match behavior {
                     VerifyBehavior::ActivateOk => Ok(ok_license_response("inst-new")),
+                    VerifyBehavior::ActivateOkWithExpiry(exp) => {
+                        Ok(ok_license_response_with_expiry("inst-new", Some(&exp)))
+                    }
                     VerifyBehavior::ActivateErr(msg) => Err(AppError::License(msg)),
                     other => panic!("unexpected behavior for activate: {other:?}"),
                 }
@@ -791,6 +832,34 @@ mod tests {
         let result = mgr.activate("BAD-KEY").await;
         assert!(matches!(result, Err(AppError::License(_))));
         assert_eq!(mgr.current_tier(), LicenseTier::Free);
+    }
+
+    #[tokio::test]
+    async fn activate_should_parse_and_store_expires_at() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![VerifyBehavior::ActivateOkWithExpiry(
+                "2026-04-02T00:00:00.000000Z".to_string(),
+            )]),
+            MockStore::new(None),
+            MockUsageDb::uniform(0),
+        );
+
+        let info = mgr.activate("KEY-PROMO").await.unwrap();
+        assert!(info.expires_at.is_some());
+        let exp = info.expires_at.unwrap();
+        assert!(exp > 1700000000, "expires_at should be a valid timestamp");
+    }
+
+    #[tokio::test]
+    async fn activate_should_store_none_for_perpetual_license() {
+        let mgr = LicenseManager::new(
+            MockVerifier::new(vec![VerifyBehavior::ActivateOk]),
+            MockStore::new(None),
+            MockUsageDb::uniform(0),
+        );
+
+        let info = mgr.activate("KEY-PERP").await.unwrap();
+        assert!(info.expires_at.is_none());
     }
 
     // =======================================================================
