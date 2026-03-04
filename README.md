@@ -6,6 +6,21 @@ System-tray voice-to-text app for Windows and Linux. Press a global hotkey to di
 
 Built with **Tauri v2** (Rust backend + React frontend), BYOK (Bring Your Own Key).
 
+## Screenshots
+
+| General Settings | Speech Settings |
+|:---:|:---:|
+| ![General](docs/screenshots/settings-general-en.png) | ![Speech](docs/screenshots/settings-speech-en.png) |
+
+| Refinement Settings | License & Usage |
+|:---:|:---:|
+| ![Refinement](docs/screenshots/settings-refinement-en.png) | ![License](docs/screenshots/settings-license-en.png) |
+
+<p align="center">
+  <img src="docs/screenshots/recording-overlay.png" alt="Recording Overlay" width="200">
+  <br><em>Floating recording indicator</em>
+</p>
+
 ## Features
 
 - **Global hotkey** — works system-wide in any app, no input method switching

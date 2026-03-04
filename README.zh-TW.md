@@ -6,6 +6,21 @@
 
 使用 **Tauri v2**（Rust 後端 + React 前端）開發，BYOK（自備 API Key）。
 
+## 截圖
+
+| 一般設定 | 語音設定 |
+|:---:|:---:|
+| ![一般](docs/screenshots/settings-general-tw.png) | ![語音](docs/screenshots/settings-speech-tw.png) |
+
+| 文字潤飾設定 | 授權與用量 |
+|:---:|:---:|
+| ![文字潤飾](docs/screenshots/settings-refinement-tw.png) | ![授權](docs/screenshots/settings-license-tw.png) |
+
+<p align="center">
+  <img src="docs/screenshots/recording-overlay.png" alt="錄音浮動指示器" width="200">
+  <br><em>錄音浮動指示器</em>
+</p>
+
 ## 功能特色
 
 - **全域快捷鍵** — 在任何應用程式中皆可使用，無需切換輸入法
