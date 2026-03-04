@@ -181,6 +181,8 @@ transcription into {target}:
 3. If the speaker corrected themselves mid-sentence, translate only the final version
 4. Add proper punctuation in the target language
 5. Do not add content that was not in the original speech
+6. The input may contain multiple languages mixed together — translate ALL parts \
+into {target}, producing a single cohesive output entirely in {target}
 Output only the translated text, no explanations.",
         target = target_name
     )

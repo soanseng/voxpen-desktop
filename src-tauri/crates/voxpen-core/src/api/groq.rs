@@ -293,6 +293,10 @@ struct ChatRequest {
     messages: Vec<ChatMessage>,
     temperature: f32,
     max_tokens: u32,
+    /// Groq-specific: suppress `<think>` output from reasoning models
+    /// (e.g. Qwen3-32B). `"hidden"` returns only the final answer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_format: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -343,6 +347,14 @@ pub(crate) async fn chat_completion_with_provider(
         .build()
         .map_err(AppError::Network)?;
 
+    // Groq supports `reasoning_format: "hidden"` to suppress `<think>`
+    // output from reasoning models (e.g. Qwen3-32B, DeepSeek-R1).
+    let reasoning_format = if provider == "groq" {
+        Some("hidden".to_string())
+    } else {
+        None
+    };
+
     let body = ChatRequest {
         model: config.model.clone(),
         messages: vec![
@@ -357,6 +369,7 @@ pub(crate) async fn chat_completion_with_provider(
         ],
         temperature: config.temperature,
         max_tokens: config.max_tokens,
+        reasoning_format,
     };
 
     // Groq's OpenAI-compatible endpoint has an extra "openai/" prefix
@@ -408,7 +421,34 @@ pub(crate) async fn chat_completion_with_provider(
         .map(|c| c.message.content)
         .ok_or_else(|| AppError::Refinement("no response from LLM".to_string()))?;
 
+    // Strip <think>…</think> blocks that reasoning models (Qwen3, DeepSeek-R1,
+    // etc.) may emit even when reasoning_format is set. This is a universal
+    // safety net for all providers including custom endpoints.
+    let text = strip_thinking_tags(&text);
+
     Ok(text)
+}
+
+/// Strip `<think>…</think>` blocks from LLM output.
+///
+/// Reasoning models (Qwen3, DeepSeek-R1, QwQ, etc.) may wrap their chain-of-
+/// thought in `<think>` tags. This function removes those blocks and trims the
+/// remaining text. Works across all providers as a universal safety net.
+fn strip_thinking_tags(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(start) = rest.find("<think>") {
+        result.push_str(&rest[..start]);
+        if let Some(end) = rest[start..].find("</think>") {
+            rest = &rest[start + end + "</think>".len()..];
+        } else {
+            // Unclosed <think> — discard everything after it
+            return result.trim().to_string();
+        }
+    }
+    result.push_str(rest);
+    result.trim().to_string()
 }
 
 #[cfg(test)]
@@ -893,5 +933,42 @@ mod tests {
             base_url_for_provider("https://my-server.example.com/"),
             "https://my-server.example.com/"
         );
+    }
+
+    // ── strip_thinking_tags tests ─────────────────────────────────────
+
+    #[test]
+    fn should_pass_through_text_without_think_tags() {
+        assert_eq!(strip_thinking_tags("Hello world"), "Hello world");
+    }
+
+    #[test]
+    fn should_strip_think_block_at_start() {
+        let input = "<think>reasoning here</think>Final answer";
+        assert_eq!(strip_thinking_tags(input), "Final answer");
+    }
+
+    #[test]
+    fn should_strip_multiline_think_block() {
+        let input = "<think>\nStep 1: ...\nStep 2: ...\n</think>\nThe answer is 42.";
+        assert_eq!(strip_thinking_tags(input), "The answer is 42.");
+    }
+
+    #[test]
+    fn should_strip_multiple_think_blocks() {
+        let input = "<think>first</think>Hello <think>second</think>world";
+        assert_eq!(strip_thinking_tags(input), "Hello world");
+    }
+
+    #[test]
+    fn should_handle_unclosed_think_tag() {
+        let input = "Good start<think>reasoning without end";
+        assert_eq!(strip_thinking_tags(input), "Good start");
+    }
+
+    #[test]
+    fn should_handle_empty_think_block() {
+        let input = "<think></think>Just the answer";
+        assert_eq!(strip_thinking_tags(input), "Just the answer");
     }
 }
