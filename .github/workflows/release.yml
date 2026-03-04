@@ -23,10 +23,6 @@ jobs:
             args: '--target x86_64-pc-windows-msvc --bundles nsis'
             rust_target: x86_64-pc-windows-msvc
             label: Windows-x64
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin --bundles dmg'
-            rust_target: aarch64-apple-darwin
-            label: macOS-arm64
           - platform: ubuntu-22.04
             args: '--bundles appimage deb'
             rust_target: ''
@@ -90,7 +86,6 @@ jobs:
         with:
           name: release-${{ matrix.label }}
           path: |
-            src-tauri/target/**/release/bundle/**/*.dmg
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.deb
@@ -99,9 +94,11 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish to voxpen-releases
+    name: Publish release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -113,7 +110,6 @@ jobs:
         run: |
           mkdir -p release-files
           find artifacts -type f \( \
-            -name '*.dmg' -o \
             -name '*.exe' -o \
             -name '*.AppImage' -o \
             -name '*.deb' -o \
@@ -123,9 +119,6 @@ jobs:
 
       - name: Create fixed-name copies for website downloads
         run: |
-          # macOS
-          DMG=$(ls release-files/*.dmg 2>/dev/null | head -1)
-          [ -n "$DMG" ] && cp "$DMG" release-files/VoxPen.Desktop_aarch64.dmg
           # Windows
           EXE=$(ls release-files/*.exe 2>/dev/null | head -1)
           [ -n "$EXE" ] && cp "$EXE" release-files/VoxPen.Desktop_x64-setup.exe
@@ -133,24 +126,20 @@ jobs:
           APPIMAGE=$(ls release-files/*.AppImage 2>/dev/null | head -1)
           [ -n "$APPIMAGE" ] && cp "$APPIMAGE" release-files/VoxPen.Desktop_amd64.AppImage
           echo "Fixed-name copies:"
-          ls -la release-files/VoxPen.Desktop_* 2>/dev/null || echo "(none created yet - will be populated at build time)"
+          ls -la release-files/VoxPen.Desktop_* 2>/dev/null || echo "(none created yet)"
 
       - name: Generate latest.json for Tauri updater
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           TAG="${GITHUB_REF_NAME}"
-          BASE_URL="https://github.com/soanseng/voxpen-releases/releases/download/${TAG}"
+          BASE_URL="https://github.com/soanseng/voxpen-desktop/releases/download/${TAG}"
 
           # Find signature files
           WINDOWS_SIG=""
-          MACOS_SIG=""
           LINUX_SIG=""
 
           for f in release-files/*.exe.sig; do
             [ -f "$f" ] && WINDOWS_SIG=$(cat "$f")
-          done
-          for f in release-files/*.dmg.sig; do
-            [ -f "$f" ] && MACOS_SIG=$(cat "$f")
           done
           for f in release-files/*.AppImage.sig; do
             [ -f "$f" ] && LINUX_SIG=$(cat "$f")
@@ -158,7 +147,6 @@ jobs:
 
           # Find artifact filenames
           WINDOWS_FILE=$(ls release-files/*.exe 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-          MACOS_FILE=$(ls release-files/*.dmg 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
           LINUX_FILE=$(ls release-files/*.AppImage 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
 
           # Build latest.json
@@ -172,10 +160,6 @@ jobs:
                 "signature": "${WINDOWS_SIG}",
                 "url": "${BASE_URL}/${WINDOWS_FILE}"
               },
-              "darwin-aarch64": {
-                "signature": "${MACOS_SIG}",
-                "url": "${BASE_URL}/${MACOS_FILE}"
-              },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
                 "url": "${BASE_URL}/${LINUX_FILE}"
@@ -186,11 +170,9 @@ jobs:
 
           cat release-files/latest.json
 
-      - name: Create release on voxpen-releases
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          repository: soanseng/voxpen-releases
-          token: ${{ secrets.RELEASE_PAT }}
           tag_name: ${{ github.ref_name }}
           name: 'VoxPen Desktop ${{ github.ref_name }}'
           body: |
@@ -199,16 +181,14 @@ jobs:
             | Platform / 平台 | File / 檔案 | Notes / 說明 |
             |----------|------|-------|
             | **Windows x64** | `.exe` (NSIS installer) | 不需管理員權限 / No admin required |
-            | **macOS arm64** | `.dmg` (Apple Silicon) | M1 / M2 / M3+ |
             | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 |
 
             ### ⚠️ Windows Security / Windows 安全提示
             This app is **not code-signed**. Windows SmartScreen may show a warning.
             Click **"More info"** → **"Run anyway"** to proceed.
 
-            ### ⚠️ macOS Security / macOS 安全提示
-            This app is **not notarized**. Right-click → **Open** → **Open** to bypass.
-            If "damaged": `xattr -cr /Applications/VoxPen\ Desktop.app`
+            ### 🍎 macOS
+            macOS builds are not yet available. Contributions welcome — see [README](https://github.com/soanseng/voxpen-desktop#contributing).
           draft: false
           prerelease: false
           files: release-files/*
