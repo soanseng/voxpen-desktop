@@ -3,7 +3,7 @@ members = [".", "crates/voxpen-core"]
 
 [package]
 name = "voxpen-desktop"
-version = "0.9.0"
+version = "0.9.1"
 description = "System-tray voice dictation for every desktop app"
 authors = ["VoxPen"]
 edition = "2021"
