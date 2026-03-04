@@ -355,7 +355,7 @@ export default function Overlay() {
       )}
       {/* Time limit reached indicator */}
       {timedOut && (
-        <p className="text-xs text-yellow-400 mt-1 text-center">錄音時間上限已達</p>
+        <p className="text-xs text-yellow-400 mt-1 text-center">{t("recordingTimedOut")}</p>
       )}
       </div>
     </div>

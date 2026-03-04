@@ -386,10 +386,10 @@ export default function GeneralSection({
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            最長錄音時間
+            {t("maxRecordingDuration")}
           </label>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Max Recording Duration (0 = unlimited)
+            {t("maxRecordingDurationHint")}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -408,7 +408,7 @@ export default function GeneralSection({
               "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             }
           />
-          <span className="text-xs text-gray-400 dark:text-gray-500">秒</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{t("seconds")}</span>
         </div>
       </div>
 

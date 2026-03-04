@@ -1,6 +1,6 @@
 # VoxPen Desktop (語墨桌面版)
 
-[繁體中文](./README.zh-TW.md)
+[繁體中文](./README.zh-TW.md) | [Website](https://voxpen.app/)
 
 System-tray voice-to-text app for Windows and Linux. Press a global hotkey to dictate, and the transcribed + refined text is automatically pasted at the cursor position in any app.
 

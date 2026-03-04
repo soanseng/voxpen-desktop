@@ -1,6 +1,6 @@
 # VoxPen Desktop (語墨桌面版)
 
-[English](./README.md)
+[English](./README.md) | [官方網站](https://voxpen.app/)
 
 系統列語音轉文字應用程式，支援 Windows 和 Linux。按下全域快捷鍵即可口述，轉錄並潤飾後的文字會自動貼上到游標位置。
 

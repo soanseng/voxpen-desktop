@@ -197,5 +197,9 @@
   "autoToneHint": "根據目前使用中的應用程式自動套用語氣預設。第一條符合的規則優先。",
   "autoToneCurrentApp": "目前應用程式",
   "autoTonePatternPlaceholder": "例：slack、outlook、code",
-  "autoToneAdd": "新增規則"
+  "autoToneAdd": "新增規則",
+  "maxRecordingDuration": "最長錄音時間",
+  "maxRecordingDurationHint": "0 = 無限制",
+  "seconds": "秒",
+  "recordingTimedOut": "錄音時間上限已達"
 }

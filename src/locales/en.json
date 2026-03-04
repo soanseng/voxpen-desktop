@@ -197,5 +197,9 @@
   "autoToneHint": "Automatically apply a tone preset based on the active application. First matching rule wins.",
   "autoToneCurrentApp": "Current app",
   "autoTonePatternPlaceholder": "e.g. slack, outlook, code",
-  "autoToneAdd": "Add Rule"
+  "autoToneAdd": "Add Rule",
+  "maxRecordingDuration": "Max Recording Duration",
+  "maxRecordingDurationHint": "0 = unlimited",
+  "seconds": "sec",
+  "recordingTimedOut": "Recording time limit reached"
 }
