@@ -30,6 +30,15 @@ Download the latest release from [Releases](https://github.com/soanseng/voxpen-d
 
 > **Windows**: Not code-signed. Click "More info" → "Run anyway" if SmartScreen blocks it.
 
+## Licensing
+
+VoxPen Desktop uses a freemium model with [LemonSqueezy](https://www.lemonsqueezy.com/) license keys.
+
+- **Free tier** — limited daily usage
+- **Pro tier** — unlimited usage with a license key
+
+You can purchase a license key from the app's settings page. Enter the key in **Settings → License** to activate Pro features. The source code is fully open — you are free to build and modify the app yourself.
+
 ## Build from Source
 
 ### Prerequisites

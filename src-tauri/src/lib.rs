@@ -337,7 +337,7 @@ pub fn run() {
                                 app.exit(0);
                             }
                             "upgrade_pro" => {
-                                let _ = open::that("https://anatomind.lemonsqueezy.com/checkout/buy/299dd747-4424-4b1b-8aa8-2c47a94f7dd1");
+                                let _ = open::that("https://anatomind.lemonsqueezy.com/checkout/buy/7e9cc7dc-289b-45f3-a56e-b8f59d3fb592");
                             }
                             "check_update" => {
                                 tauri::async_runtime::spawn(async move {
