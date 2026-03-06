@@ -455,6 +455,7 @@ pub async fn get_license_tier(
 pub struct FileTranscriptionResult {
     pub text: String,
     pub refined: Option<String>,
+    pub srt: String,
 }
 
 /// Supported audio MIME types for file transcription.
@@ -512,11 +513,6 @@ pub async fn transcribe_file(
     let file_data = std::fs::read(&file_path)
         .map_err(|e| format!("Failed to read file: {e}"))?;
 
-    // Size check (25MB API limit)
-    if file_data.len() > 25 * 1024 * 1024 {
-        return Err("File too large (max 25 MB). Please use a shorter audio clip.".to_string());
-    }
-
     // Build STT config from settings
     let s = state.settings.lock().await;
     let stt_provider = s.stt_provider.clone();
@@ -538,10 +534,39 @@ pub async fn transcribe_file(
     let language = s.stt_language.clone();
     drop(s);
 
-    // Transcribe
-    let text = groq::transcribe_file(&config, &file_data, &filename, mime, &stt_provider)
-        .await
-        .map_err(|e| e.to_string())?;
+    // Transcribe: for WAV > 25MB use chunking, otherwise single-call
+    let (text, srt_content) = if ext == "wav" && file_data.len() > 25 * 1024 * 1024 {
+        use voxpen_core::audio::chunker::{chunk_wav, wav_duration_seconds};
+        use voxpen_core::api::groq::transcribe_file_with_segments;
+        use voxpen_core::pipeline::chunked_transcribe::merge_segments;
+        use voxpen_core::srt::format_srt;
+
+        let chunks = chunk_wav(&file_data).map_err(|e| e.to_string())?;
+        let mut chunk_results = Vec::new();
+
+        for chunk in &chunks {
+            let duration = wav_duration_seconds(chunk).map_err(|e| e.to_string())?;
+            let verbose = transcribe_file_with_segments(
+                &config, chunk, "chunk.wav", "audio/wav", &stt_provider,
+            ).await.map_err(|e| e.to_string())?;
+            chunk_results.push((verbose, duration));
+        }
+
+        let merged = merge_segments(&chunk_results);
+        let srt = format_srt(&merged.segments);
+        (merged.text, srt)
+    } else if file_data.len() > 25 * 1024 * 1024 {
+        return Err("File too large (max 25 MB for non-WAV formats). WAV files can be larger.".to_string());
+    } else {
+        use voxpen_core::api::groq::transcribe_file_with_segments;
+        use voxpen_core::srt::format_srt;
+
+        let verbose = transcribe_file_with_segments(
+            &config, &file_data, &filename, mime, &stt_provider,
+        ).await.map_err(|e| e.to_string())?;
+        let srt = format_srt(&verbose.segments);
+        (verbose.text, srt)
+    };
 
     // Optional LLM refinement
     let refined = if refinement_enabled {
@@ -599,7 +624,18 @@ pub async fn transcribe_file(
     Ok(FileTranscriptionResult {
         text,
         refined,
+        srt: srt_content,
     })
+}
+
+// ---------------------------------------------------------------------------
+// File export helper
+// ---------------------------------------------------------------------------
+
+/// Write text content to a file path (for SRT/TXT export from the frontend).
+#[tauri::command]
+pub async fn write_text_file(file_path: String, content: String) -> Result<(), String> {
+    std::fs::write(&file_path, content).map_err(|e| format!("Failed to write file: {e}"))
 }
 
 // ---------------------------------------------------------------------------

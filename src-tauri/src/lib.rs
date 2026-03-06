@@ -600,6 +600,7 @@ pub fn run() {
             commands::get_usage_status,
             commands::get_license_tier,
             commands::transcribe_file,
+            commands::write_text_file,
             commands::get_active_app_name,
         ])
         .run(tauri::generate_context!())

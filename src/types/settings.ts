@@ -76,6 +76,7 @@ export type ModelStatus =
 export interface FileTranscriptionResult {
   text: string;
   refined: string | null;
+  srt: string;
 }
 
 export const defaultSettings: Settings = {

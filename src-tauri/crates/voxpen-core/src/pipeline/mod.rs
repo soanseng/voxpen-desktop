@@ -1,3 +1,4 @@
+pub mod chunked_transcribe;
 pub mod controller;
 pub mod prompts;
 pub mod refine;

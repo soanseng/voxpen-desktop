@@ -57,6 +57,24 @@ pub fn chunk_wav(wav_data: &[u8]) -> Result<Vec<Vec<u8>>, AppError> {
     Ok(chunks)
 }
 
+/// Calculate the duration of a WAV file in seconds from its header.
+pub fn wav_duration_seconds(wav_data: &[u8]) -> Result<f64, AppError> {
+    if wav_data.len() < WAV_HEADER_SIZE {
+        return Err(AppError::Audio("WAV too short for duration calc".to_string()));
+    }
+    let sample_rate = u32::from_le_bytes([wav_data[24], wav_data[25], wav_data[26], wav_data[27]]);
+    let bits_per_sample = u16::from_le_bytes([wav_data[34], wav_data[35]]);
+    let num_channels = u16::from_le_bytes([wav_data[22], wav_data[23]]);
+    let data_size = u32::from_le_bytes([wav_data[40], wav_data[41], wav_data[42], wav_data[43]]);
+
+    let bytes_per_sample = (bits_per_sample as u32 / 8) * num_channels as u32;
+    if sample_rate == 0 || bytes_per_sample == 0 {
+        return Err(AppError::Audio("invalid WAV header values".to_string()));
+    }
+    let total_samples = data_size / bytes_per_sample;
+    Ok(total_samples as f64 / sample_rate as f64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,5 +152,14 @@ mod tests {
         let result = chunk_wav(&[0u8; 44]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not RIFF/WAVE"));
+    }
+
+    #[test]
+    fn should_calculate_wav_duration_correctly() {
+        // 16000 Hz, mono, 16-bit = 32000 bytes/sec
+        // 32000 samples * 2 bytes = 64000 bytes PCM = 2.0 seconds
+        let wav = make_wav(32000);
+        let duration = wav_duration_seconds(&wav).unwrap();
+        assert!((duration - 2.0).abs() < 0.001);
     }
 }

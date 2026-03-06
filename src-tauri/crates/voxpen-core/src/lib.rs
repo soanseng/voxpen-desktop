@@ -6,4 +6,5 @@ pub mod history;
 pub mod input;
 pub mod licensing;
 pub mod pipeline;
+pub mod srt;
 pub mod whisper;

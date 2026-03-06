@@ -70,6 +70,22 @@ impl SttConfig {
     }
 }
 
+/// A single segment from Whisper's verbose_json response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhisperSegment {
+    pub start: f64,
+    pub end: f64,
+    pub text: String,
+}
+
+/// Full Whisper verbose_json response with segments.
+#[derive(Debug, Deserialize)]
+pub struct WhisperVerboseResponse {
+    pub text: String,
+    #[serde(default)]
+    pub segments: Vec<WhisperSegment>,
+}
+
 /// Groq Whisper API response (subset of verbose_json format).
 #[derive(Debug, Deserialize)]
 pub struct WhisperResponse {
@@ -173,6 +189,79 @@ pub(crate) async fn transcribe_file_with_base_url(
         .map_err(|e| AppError::Transcription(format!("failed to parse response: {e}")))?;
 
     Ok(whisper.text)
+}
+
+/// Transcribe a file and return full verbose_json response with segments.
+pub async fn transcribe_file_with_segments(
+    config: &SttConfig,
+    file_data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    provider: &str,
+) -> Result<WhisperVerboseResponse, AppError> {
+    let base_url = base_url_for_provider(provider);
+    transcribe_file_with_segments_internal(config, file_data, filename, mime_type, provider, base_url).await
+}
+
+/// Internal: with configurable base URL for testing.
+pub(crate) async fn transcribe_file_with_segments_internal(
+    config: &SttConfig,
+    file_data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    provider: &str,
+    base_url: &str,
+) -> Result<WhisperVerboseResponse, AppError> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(AppError::Network)?;
+
+    let file_part = multipart::Part::bytes(file_data.to_vec())
+        .file_name(filename.to_string())
+        .mime_str(mime_type)
+        .map_err(|e| AppError::Transcription(e.to_string()))?;
+
+    let mut form = multipart::Form::new()
+        .part("file", file_part)
+        .text("model", config.model.clone())
+        .text("response_format", "verbose_json".to_string());
+
+    if let Some(code) = config.language.code() {
+        form = form.text("language", code.to_string());
+    }
+
+    let prompt = config.prompt_override.as_deref().unwrap_or(config.language.prompt());
+    form = form.text("prompt", prompt.to_string());
+
+    let path = if provider == "groq" {
+        "openai/v1/audio/transcriptions"
+    } else {
+        "v1/audio/transcriptions"
+    };
+    let url = format!("{base_url}{path}");
+
+    let response = client.post(&url).bearer_auth(&config.api_key).multipart(form).send().await?;
+    let status = response.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(AppError::ApiKeyMissing(provider.to_string()));
+    }
+    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+        return Err(AppError::Transcription("file too large (max 25MB)".to_string()));
+    }
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::Transcription(format!("HTTP {}: {}", status.as_u16(), body)));
+    }
+
+    let verbose: WhisperVerboseResponse = response
+        .json()
+        .await
+        .map_err(|e| AppError::Transcription(format!("failed to parse response: {e}")))?;
+
+    Ok(verbose)
 }
 
 /// Internal: transcribe with configurable base URL (for testing with wiremock).
@@ -970,5 +1059,70 @@ mod tests {
     fn should_handle_empty_think_block() {
         let input = "<think></think>Just the answer";
         assert_eq!(strip_thinking_tags(input), "Just the answer");
+    }
+
+    // -----------------------------------------------------------------------
+    // WhisperVerboseResponse / segment tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn should_deserialize_verbose_json_segments() {
+        let json = serde_json::json!({
+            "text": "Hello world. How are you?",
+            "segments": [
+                {
+                    "id": 0,
+                    "start": 0.0,
+                    "end": 1.5,
+                    "text": "Hello world."
+                },
+                {
+                    "id": 1,
+                    "start": 1.5,
+                    "end": 3.0,
+                    "text": " How are you?"
+                }
+            ]
+        });
+        let resp: WhisperVerboseResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(resp.text, "Hello world. How are you?");
+        assert_eq!(resp.segments.len(), 2);
+        assert_eq!(resp.segments[0].start, 0.0);
+        assert_eq!(resp.segments[0].end, 1.5);
+        assert_eq!(resp.segments[0].text, "Hello world.");
+        assert_eq!(resp.segments[1].start, 1.5);
+        assert_eq!(resp.segments[1].text, " How are you?");
+    }
+
+    #[tokio::test]
+    async fn should_return_segments_from_transcribe_file_with_segments() {
+        let server = MockServer::start().await;
+
+        let verbose_response = serde_json::json!({
+            "text": "Hello world.",
+            "segments": [
+                {"id": 0, "start": 0.0, "end": 1.5, "text": "Hello world."}
+            ]
+        });
+
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(verbose_response))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("key", Language::Auto);
+        let fake_data = vec![0u8; 100];
+
+        let result = transcribe_file_with_segments_internal(
+            &config, &fake_data, "test.wav", "audio/wav", "groq",
+            &format!("{}/", server.uri()),
+        ).await.unwrap();
+
+        assert_eq!(result.text, "Hello world.");
+        assert_eq!(result.segments.len(), 1);
+        assert_eq!(result.segments[0].start, 0.0);
+        assert_eq!(result.segments[0].end, 1.5);
     }
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { transcribeFile } from "../../lib/tauri";
 import type { FileTranscriptionResult } from "../../types/settings";
 
@@ -10,6 +11,7 @@ export default function FileTranscriptionSection() {
   const [result, setResult] = useState<FileTranscriptionResult | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<"original" | "refined" | null>(null);
+  const [exported, setExported] = useState<"srt" | "txt" | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
 
   async function handleSelectFile() {
@@ -43,6 +45,25 @@ export default function FileTranscriptionSection() {
     navigator.clipboard.writeText(text);
     setCopied(which);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleExport(format: "srt" | "txt") {
+    if (!result) return;
+    const content = format === "srt" ? result.srt : (result.refined ?? result.text);
+    const ext = format;
+    const defaultName = selectedFile
+      ? selectedFile.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, `.${ext}`) ?? `transcription.${ext}`
+      : `transcription.${ext}`;
+
+    const filePath = await save({
+      defaultPath: defaultName,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    });
+    if (!filePath) return;
+
+    await invoke("write_text_file", { filePath, content });
+    setExported(format);
+    setTimeout(() => setExported(null), 2000);
   }
 
   function handleReset() {
@@ -106,6 +127,26 @@ export default function FileTranscriptionSection() {
               </div>
             </div>
           )}
+
+          {/* Export buttons */}
+          <div className="flex gap-2">
+            {result.srt && (
+              <button
+                type="button"
+                onClick={() => handleExport("srt")}
+                className="flex-1 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+              >
+                {exported === "srt" ? t("fileTranscribe.exported") : t("fileTranscribe.exportSrt")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleExport("txt")}
+              className="flex-1 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+            >
+              {exported === "txt" ? t("fileTranscribe.exported") : t("fileTranscribe.exportTxt")}
+            </button>
+          </div>
 
           <button
             type="button"
