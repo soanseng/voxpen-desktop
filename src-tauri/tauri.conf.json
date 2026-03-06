@@ -62,7 +62,12 @@
         "silent": true
       },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "languages": ["English", "TradChinese", "Japanese"],
+        "displayLanguageSelector": true
       }
     },
     "linux": {
