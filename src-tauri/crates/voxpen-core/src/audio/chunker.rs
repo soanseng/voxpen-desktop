@@ -125,32 +125,31 @@ pub fn chunk_wav(wav_data: &[u8]) -> Result<Vec<Vec<u8>>, AppError> {
 }
 
 /// Calculate the duration of a WAV file in seconds from its header.
+///
+/// Uses `byte_rate` from the fmt chunk (bytes per second), which is reliable
+/// for all WAV formats including compressed ones (ADPCM, etc.).
 pub fn wav_duration_seconds(wav_data: &[u8]) -> Result<f64, AppError> {
     let layout = parse_wav_layout(wav_data)?;
 
     // fmt chunk layout: offset 0=audio_format(2), 2=num_channels(2), 4=sample_rate(4),
     //                   8=byte_rate(4), 12=block_align(2), 14=bits_per_sample(2)
     let fmt = layout.fmt_data_offset;
-    if fmt + 16 > wav_data.len() {
+    if fmt + 12 > wav_data.len() {
         return Err(AppError::Audio("fmt chunk too short".to_string()));
     }
-    let num_channels = u16::from_le_bytes([wav_data[fmt + 2], wav_data[fmt + 3]]);
-    let sample_rate = u32::from_le_bytes([
-        wav_data[fmt + 4],
-        wav_data[fmt + 5],
-        wav_data[fmt + 6],
-        wav_data[fmt + 7],
+    let byte_rate = u32::from_le_bytes([
+        wav_data[fmt + 8],
+        wav_data[fmt + 9],
+        wav_data[fmt + 10],
+        wav_data[fmt + 11],
     ]);
-    let bits_per_sample = u16::from_le_bytes([wav_data[fmt + 14], wav_data[fmt + 15]]);
 
-    let bytes_per_sample = (bits_per_sample as u32 / 8) * num_channels as u32;
-    if sample_rate == 0 || bytes_per_sample == 0 {
+    if byte_rate == 0 {
         return Err(AppError::Audio(format!(
-            "invalid WAV header values: sample_rate={sample_rate}, bits_per_sample={bits_per_sample}, channels={num_channels}, fmt_offset={fmt}"
+            "invalid WAV: byte_rate=0, fmt_offset={fmt}, data_size={}", layout.data_size
         )));
     }
-    let total_samples = layout.data_size / bytes_per_sample;
-    Ok(total_samples as f64 / sample_rate as f64)
+    Ok(layout.data_size as f64 / byte_rate as f64)
 }
 
 #[cfg(test)]
