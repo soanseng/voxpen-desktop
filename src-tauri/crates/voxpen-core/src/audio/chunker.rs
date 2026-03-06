@@ -56,8 +56,9 @@ fn parse_wav_layout(wav_data: &[u8]) -> Result<WavLayout, AppError> {
             break; // data is always the last chunk we care about
         }
 
-        // Advance to next sub-chunk (sizes are word-aligned in some files)
-        pos += 8 + chunk_size;
+        // Advance to next sub-chunk; RIFF spec requires word-aligned (even) boundaries
+        let padded = (chunk_size + 1) & !1; // round up to even
+        pos += 8 + padded;
     }
 
     let fmt_data_offset =
@@ -144,7 +145,9 @@ pub fn wav_duration_seconds(wav_data: &[u8]) -> Result<f64, AppError> {
 
     let bytes_per_sample = (bits_per_sample as u32 / 8) * num_channels as u32;
     if sample_rate == 0 || bytes_per_sample == 0 {
-        return Err(AppError::Audio("invalid WAV header values".to_string()));
+        return Err(AppError::Audio(format!(
+            "invalid WAV header values: sample_rate={sample_rate}, bits_per_sample={bits_per_sample}, channels={num_channels}, fmt_offset={fmt}"
+        )));
     }
     let total_samples = layout.data_size / bytes_per_sample;
     Ok(total_samples as f64 / sample_rate as f64)
@@ -285,5 +288,39 @@ mod tests {
         // Verify the chunk is valid
         let dur2 = wav_duration_seconds(&chunks[0]).unwrap();
         assert!((dur2 - 2.0).abs() < 0.001);
+    }
+
+    /// Build a WAV with an odd-sized sub-chunk that requires word-alignment padding.
+    fn make_wav_with_odd_chunk(num_samples: usize) -> Vec<u8> {
+        let samples: Vec<i16> = (0..num_samples).map(|i| (i % 1000) as i16).collect();
+        let standard = encoder::pcm_to_wav(&samples);
+
+        let riff_wave_fmt = &standard[..36];
+        let data_header = &standard[36..44];
+        let pcm = &standard[44..];
+
+        // Insert a sub-chunk with odd size (3 bytes data + 1 byte padding)
+        let odd_data = [0u8; 3];
+        let odd_size = (odd_data.len() as u32).to_le_bytes();
+
+        let mut wav = Vec::new();
+        wav.extend_from_slice(riff_wave_fmt);
+        wav.extend_from_slice(b"JUNK");
+        wav.extend_from_slice(&odd_size);
+        wav.extend_from_slice(&odd_data);
+        wav.push(0); // word-alignment padding byte
+        wav.extend_from_slice(data_header);
+        wav.extend_from_slice(pcm);
+
+        let file_size = (wav.len() - 8) as u32;
+        wav[4..8].copy_from_slice(&file_size.to_le_bytes());
+        wav
+    }
+
+    #[test]
+    fn should_handle_wav_with_odd_sized_subchunk() {
+        let wav = make_wav_with_odd_chunk(32000);
+        let duration = wav_duration_seconds(&wav).unwrap();
+        assert!((duration - 2.0).abs() < 0.001);
     }
 }
