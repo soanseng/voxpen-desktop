@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { transcribeFile } from "../../lib/tauri";
 import type { FileTranscriptionResult } from "../../types/settings";
+
+const AUDIO_EXTENSIONS = ["wav", "mp3", "flac", "m4a", "ogg", "webm"];
 
 export default function FileTranscriptionSection() {
   const { t } = useTranslation();
@@ -13,6 +16,48 @@ export default function FileTranscriptionSection() {
   const [copied, setCopied] = useState<"original" | "refined" | null>(null);
   const [exported, setExported] = useState<"srt" | "txt" | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+
+  async function startTranscription(filePath: string) {
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    if (!AUDIO_EXTENSIONS.includes(ext)) {
+      setError(t("fileTranscribe.supported"));
+      return;
+    }
+
+    setSelectedFile(filePath);
+    setError("");
+    setResult(null);
+    setTranscribing(true);
+
+    try {
+      const r = await transcribeFile(filePath);
+      setResult(r);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  useEffect(() => {
+    const webview = getCurrentWebview();
+    const unlisten = webview.onDragDropEvent((event) => {
+      if (transcribing || result) return;
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        setDragOver(true);
+      } else if (event.payload.type === "drop") {
+        setDragOver(false);
+        const paths = event.payload.paths;
+        if (paths.length > 0) {
+          startTranscription(paths[0]);
+        }
+      } else {
+        setDragOver(false);
+      }
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, [transcribing, result]);
 
   async function handleSelectFile() {
     const file = await open({
@@ -20,25 +65,12 @@ export default function FileTranscriptionSection() {
       filters: [
         {
           name: "Audio",
-          extensions: ["wav", "mp3", "flac", "m4a", "ogg", "webm"],
+          extensions: AUDIO_EXTENSIONS,
         },
       ],
     });
     if (!file) return;
-
-    setSelectedFile(file);
-    setError("");
-    setResult(null);
-    setTranscribing(true);
-
-    try {
-      const r = await transcribeFile(file);
-      setResult(r);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setTranscribing(false);
-    }
+    startTranscription(file);
   }
 
   function handleCopy(text: string, which: "original" | "refined") {
@@ -163,7 +195,11 @@ export default function FileTranscriptionSection() {
             type="button"
             onClick={handleSelectFile}
             disabled={transcribing}
-            className="flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-6 py-8 text-center transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
+            className={`flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              dragOver
+                ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20"
+                : "border-gray-300 hover:border-blue-400 hover:bg-blue-50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
+            }`}
           >
             {transcribing ? (
               <>
@@ -195,6 +231,25 @@ export default function FileTranscriptionSection() {
                   </span>
                 )}
               </>
+            ) : dragOver ? (
+              <>
+                <svg
+                  className="mb-2 h-8 w-8 text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                  />
+                </svg>
+                <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  {t("fileTranscribe.dragHint")}
+                </span>
+              </>
             ) : (
               <>
                 <svg
@@ -212,6 +267,9 @@ export default function FileTranscriptionSection() {
                 </svg>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {t("fileTranscribe.selectFile")}
+                </span>
+                <span className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  {t("fileTranscribe.dragHint")}
                 </span>
               </>
             )}
