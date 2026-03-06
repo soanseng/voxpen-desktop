@@ -556,7 +556,13 @@ pub async fn transcribe_file(
         let srt = format_srt(&merged.segments);
         (merged.text, srt)
     } else if file_data.len() > 25 * 1024 * 1024 {
-        return Err("File too large (max 25 MB for non-WAV formats). WAV files can be larger.".to_string());
+        return Err(format!(
+            "File too large ({:.0} MB). Only PCM WAV files over 25 MB can be auto-chunked.\n\n\
+             Convert with ffmpeg:\n\
+             ffmpeg -i \"{}\" -ac 1 -ar 16000 -sample_fmt s16 output.wav",
+            file_data.len() as f64 / (1024.0 * 1024.0),
+            filename,
+        ));
     } else {
         use voxpen_core::api::groq::transcribe_file_with_segments;
         use voxpen_core::srt::format_srt;

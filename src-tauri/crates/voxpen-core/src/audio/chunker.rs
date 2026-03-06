@@ -6,8 +6,17 @@ pub const MAX_CHUNK_SIZE: usize = 25 * 1024 * 1024;
 /// Minimum WAV header size (RIFF + WAVE + at least one sub-chunk header).
 const MIN_WAV_SIZE: usize = 12;
 
+/// PCM format tag (uncompressed).
+const WAVE_FORMAT_PCM: u16 = 0x0001;
+/// IEEE float format tag.
+const WAVE_FORMAT_IEEE_FLOAT: u16 = 0x0003;
+/// Extensible format tag (wraps PCM or float with channel mask).
+const WAVE_FORMAT_EXTENSIBLE: u16 = 0xFFFE;
+
 /// Parsed WAV layout: positions of fmt and data chunks needed for chunking/duration.
 struct WavLayout {
+    /// Audio format tag from the fmt chunk (1=PCM, 3=IEEE float, 0xFFFE=extensible, etc.).
+    audio_format: u16,
     /// Offset of the `fmt ` sub-chunk data (after the 8-byte sub-chunk header).
     fmt_data_offset: usize,
     /// Offset of the `data` sub-chunk's size field (the 4 bytes right after "data").
@@ -16,6 +25,19 @@ struct WavLayout {
     pcm_start: usize,
     /// Size of PCM data as declared in the data sub-chunk header.
     data_size: u32,
+    /// Total sample count from the `fact` chunk (present in compressed WAVs).
+    fact_sample_count: Option<u32>,
+}
+
+impl WavLayout {
+    /// Returns true if the WAV contains uncompressed sample data that can be split
+    /// at arbitrary byte boundaries (PCM, IEEE float, or extensible wrapping those).
+    fn is_pcm_compatible(&self) -> bool {
+        matches!(
+            self.audio_format,
+            WAVE_FORMAT_PCM | WAVE_FORMAT_IEEE_FLOAT | WAVE_FORMAT_EXTENSIBLE
+        )
+    }
 }
 
 /// Scan WAV sub-chunks to locate `fmt ` and `data` positions.
@@ -33,10 +55,12 @@ fn parse_wav_layout(wav_data: &[u8]) -> Result<WavLayout, AppError> {
     }
 
     let mut pos = 12; // skip RIFF header + "WAVE"
+    let mut audio_format: Option<u16> = None;
     let mut fmt_data_offset: Option<usize> = None;
     let mut data_size_offset: Option<usize> = None;
     let mut pcm_start: Option<usize> = None;
     let mut data_size: Option<u32> = None;
+    let mut fact_sample_count: Option<u32> = None;
 
     while pos + 8 <= wav_data.len() {
         let chunk_id = &wav_data[pos..pos + 4];
@@ -49,6 +73,16 @@ fn parse_wav_layout(wav_data: &[u8]) -> Result<WavLayout, AppError> {
 
         if chunk_id == b"fmt " {
             fmt_data_offset = Some(pos + 8);
+            if chunk_size >= 2 && pos + 10 <= wav_data.len() {
+                audio_format = Some(u16::from_le_bytes([wav_data[pos + 8], wav_data[pos + 9]]));
+            }
+        } else if chunk_id == b"fact" && chunk_size >= 4 && pos + 12 <= wav_data.len() {
+            fact_sample_count = Some(u32::from_le_bytes([
+                wav_data[pos + 8],
+                wav_data[pos + 9],
+                wav_data[pos + 10],
+                wav_data[pos + 11],
+            ]));
         } else if chunk_id == b"data" {
             data_size_offset = Some(pos + 4);
             pcm_start = Some(pos + 8);
@@ -61,6 +95,8 @@ fn parse_wav_layout(wav_data: &[u8]) -> Result<WavLayout, AppError> {
         pos += 8 + padded;
     }
 
+    let audio_format =
+        audio_format.ok_or_else(|| AppError::Audio("WAV missing fmt chunk".to_string()))?;
     let fmt_data_offset =
         fmt_data_offset.ok_or_else(|| AppError::Audio("WAV missing fmt chunk".to_string()))?;
     let data_size_offset =
@@ -71,10 +107,12 @@ fn parse_wav_layout(wav_data: &[u8]) -> Result<WavLayout, AppError> {
         data_size.ok_or_else(|| AppError::Audio("WAV missing data chunk".to_string()))?;
 
     Ok(WavLayout {
+        audio_format,
         fmt_data_offset,
         data_size_offset,
         pcm_start,
         data_size,
+        fact_sample_count,
     })
 }
 
@@ -89,6 +127,15 @@ pub fn chunk_wav(wav_data: &[u8]) -> Result<Vec<Vec<u8>>, AppError> {
 
     if wav_data.len() <= MAX_CHUNK_SIZE {
         return Ok(vec![wav_data.to_vec()]);
+    }
+
+    if !layout.is_pcm_compatible() {
+        return Err(AppError::Audio(format!(
+            "Cannot chunk compressed WAV (format=0x{:04X}).\n\n\
+             Convert to PCM WAV with ffmpeg:\n\
+             ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav",
+            layout.audio_format
+        )));
     }
 
     let header = &wav_data[..layout.pcm_start];
@@ -126,17 +173,25 @@ pub fn chunk_wav(wav_data: &[u8]) -> Result<Vec<Vec<u8>>, AppError> {
 
 /// Calculate the duration of a WAV file in seconds from its header.
 ///
-/// Uses `byte_rate` from the fmt chunk (bytes per second), which is reliable
-/// for all WAV formats including compressed ones (ADPCM, etc.).
+/// Tries multiple strategies in order:
+/// 1. `byte_rate` from fmt chunk (works for most formats)
+/// 2. `fact` chunk sample count / sample_rate (compressed WAVs like MP3-in-WAV)
+/// 3. PCM calculation from bits_per_sample * channels * sample_rate
 pub fn wav_duration_seconds(wav_data: &[u8]) -> Result<f64, AppError> {
     let layout = parse_wav_layout(wav_data)?;
 
     // fmt chunk layout: offset 0=audio_format(2), 2=num_channels(2), 4=sample_rate(4),
     //                   8=byte_rate(4), 12=block_align(2), 14=bits_per_sample(2)
     let fmt = layout.fmt_data_offset;
-    if fmt + 12 > wav_data.len() {
+    if fmt + 16 > wav_data.len() {
         return Err(AppError::Audio("fmt chunk too short".to_string()));
     }
+    let sample_rate = u32::from_le_bytes([
+        wav_data[fmt + 4],
+        wav_data[fmt + 5],
+        wav_data[fmt + 6],
+        wav_data[fmt + 7],
+    ]);
     let byte_rate = u32::from_le_bytes([
         wav_data[fmt + 8],
         wav_data[fmt + 9],
@@ -144,12 +199,33 @@ pub fn wav_duration_seconds(wav_data: &[u8]) -> Result<f64, AppError> {
         wav_data[fmt + 11],
     ]);
 
-    if byte_rate == 0 {
-        return Err(AppError::Audio(format!(
-            "invalid WAV: byte_rate=0, fmt_offset={fmt}, data_size={}", layout.data_size
-        )));
+    // Strategy 1: byte_rate (most common)
+    if byte_rate > 0 {
+        return Ok(layout.data_size as f64 / byte_rate as f64);
     }
-    Ok(layout.data_size as f64 / byte_rate as f64)
+
+    // Strategy 2: fact chunk (compressed WAVs like MP3-in-WAV)
+    if let Some(total_samples) = layout.fact_sample_count {
+        if sample_rate > 0 && total_samples > 0 {
+            return Ok(total_samples as f64 / sample_rate as f64);
+        }
+    }
+
+    // Strategy 3: PCM calculation
+    let num_channels = u16::from_le_bytes([wav_data[fmt + 2], wav_data[fmt + 3]]);
+    let bits_per_sample = u16::from_le_bytes([wav_data[fmt + 14], wav_data[fmt + 15]]);
+    let bytes_per_sample = (bits_per_sample as u32 / 8) * num_channels as u32;
+    if sample_rate > 0 && bytes_per_sample > 0 {
+        let total_samples = layout.data_size / bytes_per_sample;
+        return Ok(total_samples as f64 / sample_rate as f64);
+    }
+
+    Err(AppError::Audio(format!(
+        "cannot determine WAV duration: byte_rate={byte_rate}, sample_rate={sample_rate}, \
+         bits_per_sample={bits_per_sample}, channels={num_channels}, \
+         fact={:?}, data_size={}",
+        layout.fact_sample_count, layout.data_size
+    )))
 }
 
 #[cfg(test)]
