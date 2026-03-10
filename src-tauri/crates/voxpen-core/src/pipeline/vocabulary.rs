@@ -99,7 +99,7 @@ mod tests {
     fn should_append_words_to_base_prompt() {
         let words = vec!["語墨".to_string(), "Anthropic".to_string()];
         let hint = build_stt_hint(&words, &Language::Chinese).unwrap();
-        assert!(hint.starts_with("繁體中文轉錄。"));
+        assert!(hint.starts_with("以繁體中文轉錄，請勿使用簡體中文。"));
         assert!(hint.contains("語墨"));
         assert!(hint.contains("Anthropic"));
     }

@@ -69,8 +69,8 @@ impl Language {
     /// Whisper `prompt` parameter — biases the model toward expected language/script.
     pub fn prompt(&self) -> &'static str {
         match self {
-            Language::Auto => "繁體中文，可能夾雜英文。",
-            Language::Chinese => "繁體中文轉錄。",
+            Language::Auto => "以繁體中文輸出，可能夾雜英文。請勿使用簡體中文。",
+            Language::Chinese => "以繁體中文轉錄，請勿使用簡體中文。",
             Language::English => "Transcribe the following English speech.",
             Language::Japanese => "以下の日本語音声を文字起こししてください。",
             Language::Korean => "한국어 음성을 전사합니다.",
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn should_return_chinese_prompt_for_chinese() {
-        assert_eq!(Language::Chinese.prompt(), "繁體中文轉錄。");
+        assert_eq!(Language::Chinese.prompt(), "以繁體中文轉錄，請勿使用簡體中文。");
     }
 
     #[test]
