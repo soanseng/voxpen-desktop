@@ -41,9 +41,25 @@
 | 平台 | 檔案 | 說明 |
 |------|------|------|
 | **Windows x64** | `.exe`（NSIS 安裝程式） | 不需管理員權限 |
-| **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 |
+| **Linux x64** | `.AppImage` / `.deb` | AppImage 適用大多數發行版 |
+| **Linux x64（Arch）** | `voxpen-desktop`（原生執行檔） | 適用 Arch Linux / 滾動更新發行版 |
 
 > **Windows**：未經程式碼簽署。若 SmartScreen 攔截，請點「其他資訊」→「仍要執行」。
+
+### Arch Linux / 滾動更新發行版
+
+AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式庫不相容（如 Arch、Fedora Rawhide）。請改用原生執行檔：
+
+1. 安裝系統相依套件：
+   ```bash
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator
+   ```
+2. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `voxpen-desktop`
+3. 設定執行權限並放到 PATH 中：
+   ```bash
+   chmod +x voxpen-desktop
+   cp voxpen-desktop ~/.local/bin/voxpen
+   ```
 
 ## 授權方案
 
@@ -61,7 +77,8 @@ VoxPen Desktop 採用免費增值模式，透過 [LemonSqueezy](https://www.lemo
 - [Node.js](https://nodejs.org/)（LTS）
 - [pnpm](https://pnpm.io/)
 - [Rust](https://rustup.rs/)（stable）
-- 僅 Linux：`libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libasound2-dev libxdo-dev patchelf`
+- Linux（Debian/Ubuntu）：`libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libasound2-dev libxdo-dev patchelf`
+- Linux（Arch）：`webkit2gtk-4.1 libayatana-appindicator`
 
 ### 步驟
 

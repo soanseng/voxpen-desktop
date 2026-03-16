@@ -81,6 +81,12 @@ jobs:
           configPath: src-tauri/tauri.release.conf.json
           args: ${{ matrix.args }}
 
+      - name: Copy native binary (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          cp src-tauri/target/release/voxpen-desktop src-tauri/target/release/bundle/voxpen-desktop
+          chmod +x src-tauri/target/release/bundle/voxpen-desktop
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -91,6 +97,7 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.sig
             src-tauri/target/**/release/bundle/**/*.json
+            src-tauri/target/**/release/bundle/voxpen-desktop
           if-no-files-found: error
 
   publish:
@@ -113,7 +120,8 @@ jobs:
             -name '*.exe' -o \
             -name '*.AppImage' -o \
             -name '*.deb' -o \
-            -name '*.sig' \
+            -name '*.sig' -o \
+            -name 'voxpen-desktop' \
           \) -exec cp {} release-files/ \;
           ls -la release-files/
 
@@ -181,7 +189,8 @@ jobs:
             | Platform / 平台 | File / 檔案 | Notes / 說明 |
             |----------|------|-------|
             | **Windows x64** | `.exe` (NSIS installer) | 不需管理員權限 / No admin required |
-            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用所有發行版 |
+            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用大多數發行版 |
+            | **Linux x64 (Arch)** | `voxpen-desktop` (native binary) | 適用 Arch / 滾動更新發行版 |
 
             ### ⚠️ Windows Security / Windows 安全提示
             This app is **not code-signed**. Windows SmartScreen may show a warning.

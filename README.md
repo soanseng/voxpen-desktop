@@ -41,9 +41,25 @@ Download the latest release from [Releases](https://github.com/soanseng/voxpen-d
 | Platform | File | Notes |
 |----------|------|-------|
 | **Windows x64** | `.exe` (NSIS installer) | No admin required |
-| **Linux x64** | `.AppImage` / `.deb` | AppImage works on all distros |
+| **Linux x64** | `.AppImage` / `.deb` | AppImage works on most distros |
+| **Linux x64 (Arch)** | `voxpen-desktop` (native binary) | For Arch Linux / rolling-release distros |
 
 > **Windows**: Not code-signed. Click "More info" → "Run anyway" if SmartScreen blocks it.
+
+### Arch Linux / Rolling-Release Distros
+
+The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible with newer system libraries (e.g. on Arch, Fedora Rawhide). Use the native binary instead:
+
+1. Install system dependencies:
+   ```bash
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator
+   ```
+2. Download `voxpen-desktop` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
+3. Make it executable and place it in your PATH:
+   ```bash
+   chmod +x voxpen-desktop
+   cp voxpen-desktop ~/.local/bin/voxpen
+   ```
 
 ## Licensing
 
@@ -61,7 +77,8 @@ You can purchase a license key from the app's settings page. Enter the key in **
 - [Node.js](https://nodejs.org/) (LTS)
 - [pnpm](https://pnpm.io/)
 - [Rust](https://rustup.rs/) (stable)
-- Linux only: `libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libasound2-dev libxdo-dev patchelf`
+- Linux (Debian/Ubuntu): `libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libasound2-dev libxdo-dev patchelf`
+- Linux (Arch): `webkit2gtk-4.1 libayatana-appindicator`
 
 ### Steps
 
