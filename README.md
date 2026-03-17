@@ -46,13 +46,25 @@ Download the latest release from [Releases](https://github.com/soanseng/voxpen-d
 
 > **Windows**: Not code-signed. Click "More info" → "Run anyway" if SmartScreen blocks it.
 
+### Wayland Auto-Paste
+
+On Wayland sessions, VoxPen uses [`wtype`](https://github.com/atx/wtype) to simulate Ctrl+V for auto-paste. Install it for your distro:
+
+| Distro | Command |
+|--------|---------|
+| **Arch / Manjaro** | `sudo pacman -S wtype` |
+| **Debian / Ubuntu 24.04+** | `sudo apt install wtype` |
+| **Fedora** | `sudo dnf install wtype` |
+
+> On X11, `wtype` is not needed — VoxPen uses `enigo` (libxdo) directly.
+
 ### Arch Linux / Rolling-Release Distros
 
 The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible with newer system libraries (e.g. on Arch, Fedora Rawhide). Use the native binary instead:
 
 1. Install system dependencies:
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator wtype
    ```
 2. Download `voxpen-desktop` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
 3. Make it executable and place it in your PATH:
@@ -60,6 +72,15 @@ The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible wit
    chmod +x voxpen-desktop
    cp voxpen-desktop ~/.local/bin/voxpen
    ```
+
+### Debian / Ubuntu
+
+1. Download the `.deb` or `.AppImage` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
+2. For Wayland auto-paste support (Ubuntu 24.04+):
+   ```bash
+   sudo apt install wtype
+   ```
+   > On older Debian/Ubuntu versions, `wtype` may not be in the official repos. Build from [source](https://github.com/atx/wtype) or use X11 where `enigo` works natively.
 
 ## Licensing
 

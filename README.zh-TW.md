@@ -46,13 +46,25 @@
 
 > **Windows**：未經程式碼簽署。若 SmartScreen 攔截，請點「其他資訊」→「仍要執行」。
 
+### Wayland 自動貼上
+
+在 Wayland 環境下，VoxPen 使用 [`wtype`](https://github.com/atx/wtype) 模擬 Ctrl+V 實現自動貼上。請依你的發行版安裝：
+
+| 發行版 | 安裝指令 |
+|--------|---------|
+| **Arch / Manjaro** | `sudo pacman -S wtype` |
+| **Debian / Ubuntu 24.04+** | `sudo apt install wtype` |
+| **Fedora** | `sudo dnf install wtype` |
+
+> X11 環境不需要 `wtype`，VoxPen 會直接使用 `enigo`（libxdo）。
+
 ### Arch Linux / 滾動更新發行版
 
 AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式庫不相容（如 Arch、Fedora Rawhide）。請改用原生執行檔：
 
 1. 安裝系統相依套件：
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator wtype
    ```
 2. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `voxpen-desktop`
 3. 設定執行權限並放到 PATH 中：
@@ -60,6 +72,15 @@ AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式�
    chmod +x voxpen-desktop
    cp voxpen-desktop ~/.local/bin/voxpen
    ```
+
+### Debian / Ubuntu
+
+1. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `.deb` 或 `.AppImage`
+2. Wayland 自動貼上支援（Ubuntu 24.04+）：
+   ```bash
+   sudo apt install wtype
+   ```
+   > 較舊的 Debian/Ubuntu 版本可能無法從官方套件庫安裝 `wtype`，請從[原始碼](https://github.com/atx/wtype)編譯，或改用 X11（`enigo` 可直接運作）。
 
 ## 授權方案
 

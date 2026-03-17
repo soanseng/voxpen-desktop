@@ -245,7 +245,7 @@ pub struct AppState {
     pub settings: Arc<Mutex<Settings>>,
     pub recorder: Arc<crate::audio::CpalRecorder>,
     pub clipboard: Arc<crate::clipboard::ArboardClipboard>,
-    pub keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    pub keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     pub history: Arc<crate::history::HistoryDb>,
     pub dictionary: Arc<crate::dictionary::DictionaryDb>,
     pub hotkey_manager: Arc<Mutex<crate::hotkey::HotkeyManager>>,

@@ -406,7 +406,7 @@ async fn do_stop_recording(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
     clipboard: Arc<crate::clipboard::ArboardClipboard>,
-    keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,
     dictionary: Arc<crate::dictionary::DictionaryDb>,
@@ -816,7 +816,6 @@ fn handle_edit_hotkey_event(
                 // 1. Simulate Ctrl+C / Cmd+C to copy the selection to clipboard
                 let kb = keyboard.clone();
                 if let Err(e) = tokio::task::spawn_blocking(move || {
-                    use voxpen_core::input::paste::KeySimulator;
                     kb.copy()
                 })
                 .await
@@ -975,7 +974,7 @@ async fn do_voice_edit_stop(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
     clipboard: Arc<crate::clipboard::ArboardClipboard>,
-    keyboard: Arc<crate::keyboard::EnigoKeyboard>,
+    keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,
     dictionary: Arc<crate::dictionary::DictionaryDb>,

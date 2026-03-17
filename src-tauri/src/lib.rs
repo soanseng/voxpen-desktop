@@ -246,7 +246,7 @@ pub fn run() {
             let clipboard_mgr =
                 clipboard::ArboardClipboard::new().expect("failed to init clipboard");
             let keyboard_mgr =
-                keyboard::EnigoKeyboard::new().expect("failed to init keyboard simulator");
+                keyboard::create_keyboard().expect("failed to init keyboard simulator");
             let db_path = app_data_dir.join("voxpen.db");
             let history_db =
                 history::HistoryDb::open(db_path.clone()).expect("failed to open history DB");
@@ -268,7 +268,7 @@ pub fn run() {
                 settings,
                 recorder: Arc::new(recorder),
                 clipboard: Arc::new(clipboard_mgr),
-                keyboard: Arc::new(keyboard_mgr),
+                keyboard: Arc::from(keyboard_mgr),
                 history: Arc::new(history_db),
                 dictionary: Arc::new(dictionary_db),
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
