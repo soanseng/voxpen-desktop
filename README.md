@@ -48,15 +48,15 @@ Download the latest release from [Releases](https://github.com/soanseng/voxpen-d
 
 ### Wayland Auto-Paste
 
-On Wayland sessions, VoxPen uses [`wtype`](https://github.com/atx/wtype) to simulate Ctrl+V for auto-paste. Install it for your distro:
+On Wayland sessions, VoxPen uses [`ydotool`](https://github.com/ReimuNotMoe/ydotool) (kernel-level `/dev/uinput`) to simulate Ctrl+V for auto-paste. This works on **all** Wayland compositors (KDE Plasma, GNOME, sway, Hyprland, etc.). Falls back to [`wtype`](https://github.com/atx/wtype) on wlroots-based compositors if `ydotool` is unavailable.
 
-| Distro | Command |
-|--------|---------|
-| **Arch / Manjaro** | `sudo pacman -S wtype` |
-| **Debian / Ubuntu 24.04+** | `sudo apt install wtype` |
-| **Fedora** | `sudo dnf install wtype` |
+| Distro | Install | Setup |
+|--------|---------|-------|
+| **Arch / Manjaro** | `sudo pacman -S ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER` (re-login) |
+| **Debian / Ubuntu 24.04+** | `sudo apt install ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER` (re-login) |
+| **Fedora** | `sudo dnf install ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER` (re-login) |
 
-> On X11, `wtype` is not needed — VoxPen uses `enigo` (libxdo) directly.
+> On X11, neither `ydotool` nor `wtype` is needed — VoxPen uses `enigo` (libxdo) directly.
 
 ### Arch Linux / Rolling-Release Distros
 
@@ -64,7 +64,7 @@ The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible wit
 
 1. Install system dependencies:
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator wtype
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool
    ```
 2. Download `voxpen-desktop` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
 3. Make it executable and place it in your PATH:
@@ -78,9 +78,11 @@ The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible wit
 1. Download the `.deb` or `.AppImage` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
 2. For Wayland auto-paste support (Ubuntu 24.04+):
    ```bash
-   sudo apt install wtype
+   sudo apt install ydotool
+   systemctl --user enable --now ydotool
+   sudo usermod -aG input $USER   # re-login required
    ```
-   > On older Debian/Ubuntu versions, `wtype` may not be in the official repos. Build from [source](https://github.com/atx/wtype) or use X11 where `enigo` works natively.
+   > On older Debian/Ubuntu versions, `ydotool` may not be in the official repos. Build from [source](https://github.com/ReimuNotMoe/ydotool) or use X11 where `enigo` works natively.
 
 ## Licensing
 

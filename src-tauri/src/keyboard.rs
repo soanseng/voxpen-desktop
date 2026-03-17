@@ -12,12 +12,24 @@ pub fn is_wayland() -> bool {
 
 /// Create the appropriate keyboard simulator for the current platform.
 ///
-/// On Linux Wayland sessions, uses `wtype` for reliable key simulation.
+/// On Linux Wayland sessions, tries in order:
+/// 1. `ydotool` — kernel-level `/dev/uinput`, works on all compositors (KDE, GNOME, sway, …)
+/// 2. `wtype` — Wayland virtual-keyboard protocol, works on wlroots-based compositors only
+/// 3. `enigo` — X11 fallback
+///
 /// On all other platforms (macOS, Windows, Linux X11), uses `enigo`.
 pub fn create_keyboard() -> Result<Box<dyn KeySimulator>, AppError> {
     #[cfg(target_os = "linux")]
     if is_wayland() {
-        return WtypeKeyboard::new().map(|kb| Box::new(kb) as Box<dyn KeySimulator>);
+        if let Ok(kb) = YdotoolKeyboard::new() {
+            eprintln!("keyboard: using ydotool (Wayland)");
+            return Ok(Box::new(kb));
+        }
+        if let Ok(kb) = WtypeKeyboard::new() {
+            eprintln!("keyboard: using wtype (Wayland/wlroots)");
+            return Ok(Box::new(kb));
+        }
+        eprintln!("keyboard: falling back to enigo (Wayland — paste may not work)");
     }
     EnigoKeyboard::new().map(|kb| Box::new(kb) as Box<dyn KeySimulator>)
 }
@@ -93,6 +105,62 @@ impl KeySimulator for EnigoKeyboard {
         click_result?;
         release_result?;
         Ok(())
+    }
+}
+
+/// Keyboard simulator using `ydotool` — works on all Wayland compositors.
+///
+/// `ydotool` injects input events via the kernel `/dev/uinput` interface,
+/// bypassing compositor-specific protocols. Requires:
+/// - `ydotoold` daemon running (`systemctl --user enable --now ydotool`)
+/// - User in the `input` group (`sudo usermod -aG input $USER`, then re-login)
+///
+/// Key codes: ydotool uses Linux input event codes (not keysyms).
+/// Ctrl = 29, V = 47, C = 46.
+pub struct YdotoolKeyboard;
+
+impl YdotoolKeyboard {
+    pub fn new() -> Result<Self, AppError> {
+        // Verify ydotool + ydotoold are available and connected.
+        let check = std::process::Command::new("ydotool")
+            .args(["key", "--help"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match check {
+            Ok(s) if s.success() => Ok(Self),
+            Ok(_) => Err(AppError::Paste(
+                "ydotool check failed — is ydotoold running?".to_string(),
+            )),
+            Err(_) => Err(AppError::Paste(
+                "ydotool not found — install with: pacman -S ydotool".to_string(),
+            )),
+        }
+    }
+
+    fn run_ydotool(args: &[&str]) -> Result<(), AppError> {
+        let output = std::process::Command::new("ydotool")
+            .args(args)
+            .output()
+            .map_err(|e| AppError::Paste(format!("ydotool execution failed: {e}")))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::Paste(format!("ydotool failed: {stderr}")));
+        }
+        Ok(())
+    }
+}
+
+impl KeySimulator for YdotoolKeyboard {
+    fn paste(&self) -> Result<(), AppError> {
+        // ydotool key uses Linux input event codes: Ctrl=29, V=47
+        // Format: <keycode>:<press=1/release=0>
+        Self::run_ydotool(&["key", "29:1", "47:1", "47:0", "29:0"])
+    }
+
+    fn copy(&self) -> Result<(), AppError> {
+        // Ctrl=29, C=46
+        Self::run_ydotool(&["key", "29:1", "46:1", "46:0", "29:0"])
     }
 }
 

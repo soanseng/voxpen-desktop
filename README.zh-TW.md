@@ -48,15 +48,15 @@
 
 ### Wayland 自動貼上
 
-在 Wayland 環境下，VoxPen 使用 [`wtype`](https://github.com/atx/wtype) 模擬 Ctrl+V 實現自動貼上。請依你的發行版安裝：
+在 Wayland 環境下，VoxPen 使用 [`ydotool`](https://github.com/ReimuNotMoe/ydotool)（kernel 層級 `/dev/uinput`）模擬 Ctrl+V 實現自動貼上，支援**所有** Wayland compositor（KDE Plasma、GNOME、sway、Hyprland 等）。若 `ydotool` 不可用，會退而使用 [`wtype`](https://github.com/atx/wtype)（僅限 wlroots-based compositor）。
 
-| 發行版 | 安裝指令 |
-|--------|---------|
-| **Arch / Manjaro** | `sudo pacman -S wtype` |
-| **Debian / Ubuntu 24.04+** | `sudo apt install wtype` |
-| **Fedora** | `sudo dnf install wtype` |
+| 發行版 | 安裝指令 | 設定 |
+|--------|---------|------|
+| **Arch / Manjaro** | `sudo pacman -S ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER`（需重新登入） |
+| **Debian / Ubuntu 24.04+** | `sudo apt install ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER`（需重新登入） |
+| **Fedora** | `sudo dnf install ydotool` | `systemctl --user enable --now ydotool` + `sudo usermod -aG input $USER`（需重新登入） |
 
-> X11 環境不需要 `wtype`，VoxPen 會直接使用 `enigo`（libxdo）。
+> X11 環境不需要 `ydotool` 或 `wtype`，VoxPen 會直接使用 `enigo`（libxdo）。
 
 ### Arch Linux / 滾動更新發行版
 
@@ -64,7 +64,7 @@ AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式�
 
 1. 安裝系統相依套件：
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator wtype
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool
    ```
 2. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `voxpen-desktop`
 3. 設定執行權限並放到 PATH 中：
@@ -78,9 +78,11 @@ AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式�
 1. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `.deb` 或 `.AppImage`
 2. Wayland 自動貼上支援（Ubuntu 24.04+）：
    ```bash
-   sudo apt install wtype
+   sudo apt install ydotool
+   systemctl --user enable --now ydotool
+   sudo usermod -aG input $USER   # 需重新登入
    ```
-   > 較舊的 Debian/Ubuntu 版本可能無法從官方套件庫安裝 `wtype`，請從[原始碼](https://github.com/atx/wtype)編譯，或改用 X11（`enigo` 可直接運作）。
+   > 較舊的 Debian/Ubuntu 版本可能無法從官方套件庫安裝 `ydotool`，請從[原始碼](https://github.com/ReimuNotMoe/ydotool)編譯，或改用 X11（`enigo` 可直接運作）。
 
 ## 授權方案
 
