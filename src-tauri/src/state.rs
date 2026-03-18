@@ -244,7 +244,7 @@ pub struct AppState {
     pub controller: Arc<Mutex<PipelineController<GroqSttProvider, GroqLlmProvider>>>,
     pub settings: Arc<Mutex<Settings>>,
     pub recorder: Arc<crate::audio::CpalRecorder>,
-    pub clipboard: Arc<crate::clipboard::ArboardClipboard>,
+    pub clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
     pub keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     pub history: Arc<crate::history::HistoryDb>,
     pub dictionary: Arc<crate::dictionary::DictionaryDb>,

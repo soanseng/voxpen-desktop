@@ -9,6 +9,26 @@ pub fn get_active_app_name() -> Option<String> {
     platform::get_active_app_name()
 }
 
+/// Returns the X11 window ID of the currently focused window via `xdotool`.
+///
+/// Used on Linux to restore focus before auto-paste, because KDE Wayland
+/// does not return keyboard focus to the previous window after a global
+/// shortcut is handled by a tray app.
+#[cfg(target_os = "linux")]
+pub fn get_focused_window_id() -> Option<String> {
+    let output = std::process::Command::new("xdotool")
+        .arg("getactivewindow")
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    None
+}
+
 #[cfg(target_os = "linux")]
 mod platform {
     pub fn get_active_app_name() -> Option<String> {

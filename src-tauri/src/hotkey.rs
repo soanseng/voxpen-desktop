@@ -405,7 +405,7 @@ fn resolve_action(
 async fn do_stop_recording(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
-    clipboard: Arc<crate::clipboard::ArboardClipboard>,
+    clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
     keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,
@@ -413,8 +413,10 @@ async fn do_stop_recording(
     license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
     pcm_data: Vec<i16>,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
+    focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
+    #[cfg(not(target_os = "linux"))]
     use voxpen_core::input::paste::paste_text;
     use voxpen_core::pipeline::state::PipelineState;
     use tauri::Emitter;
@@ -484,17 +486,55 @@ async fn do_stop_recording(
         let _ = app.emit("usage-updated", ());
 
         if auto_paste {
-            let text = final_text.clone();
-            let cb = clipboard.clone();
-            let kb = keyboard.clone();
-            match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
-                .await
+            // Hide the overlay BEFORE pasting. On KDE Wayland, a visible
+            // overlay window (even with focusable=false) blocks uinput key
+            // events from reaching the user's focused app.
             {
-                Ok(Err(e)) => eprintln!("paste failed: {e}"),
-                Err(e) => eprintln!("paste task panicked: {e}"),
-                Ok(Ok(())) => {}
+                let ctrl = controller.lock().await;
+                ctrl.reset();
+                drop(ctrl);
+            }
+            // Give the compositor time to process the overlay hide.
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            #[cfg(target_os = "linux")]
+            {
+                let original = clipboard.get_text().unwrap_or(None);
+                let mut cmd = std::process::Command::new("setsid");
+                cmd.arg("voxpen-paste.sh")
+                    .arg(&final_text);
+                if let Some(ref orig) = original {
+                    cmd.arg(orig);
+                }
+                if let Some(ref wid) = focused_window_id {
+                    cmd.env("VOXPEN_WINDOW_ID", wid);
+                }
+                match cmd
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("paste script spawn failed: {e}"),
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let text = final_text.clone();
+                let cb = clipboard.clone();
+                let kb = keyboard.clone();
+                match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
+                    .await
+                {
+                    Ok(Err(e)) => eprintln!("paste failed: {e}"),
+                    Err(e) => eprintln!("paste panicked: {e}"),
+                    Ok(Ok(())) => {}
+                }
             }
         }
+    } else if let Err(ref e) = result {
+        eprintln!("pipeline error: {e}");
     }
 
     // Allow next hotkey press immediately after paste completes.
@@ -537,9 +577,14 @@ fn handle_hotkey_event(
                 return;
             }
 
-            // Capture active app BEFORE spawning (sync context = most accurate timing).
+            // Capture active app and window ID BEFORE spawning (sync context = most accurate timing).
+            // The window ID is needed on Linux to restore focus before auto-paste,
+            // since KDE Wayland does not return keyboard focus after a global shortcut.
             let active_app = crate::active_window::get_active_app_name();
-
+            #[cfg(target_os = "linux")]
+            let focused_window_id = crate::active_window::get_focused_window_id();
+            #[cfg(not(target_os = "linux"))]
+            let focused_window_id: Option<String> = None;
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
             let recording_started = state.recording_started.clone();
@@ -638,6 +683,7 @@ fn handle_hotkey_event(
                             let timeout_recording_started = recording_started.clone();
                             let timeout_processing = processing_flag.clone();
                             let timeout_auto_tone_override = auto_tone_override.clone();
+                            let timeout_focused_window_id = focused_window_id.clone();
 
                             let handle = tauri::async_runtime::spawn(async move {
                                 use std::sync::atomic::Ordering;
@@ -679,6 +725,7 @@ fn handle_hotkey_event(
                                     timeout_license_mgr,
                                     pcm_data,
                                     timeout_processing,
+                                    timeout_focused_window_id,
                                 )
                                 .await;
 
@@ -715,6 +762,11 @@ fn handle_hotkey_event(
             let processing_flag = processing.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
             let auto_tone_override = state.auto_tone_override.clone();
+            // Capture focused window for paste focus restore.
+            #[cfg(target_os = "linux")]
+            let focused_window_id = crate::active_window::get_focused_window_id();
+            #[cfg(not(target_os = "linux"))]
+            let focused_window_id: Option<String> = None;
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -764,6 +816,7 @@ fn handle_hotkey_event(
                     license_mgr,
                     pcm_data,
                     processing_flag,
+                    focused_window_id,
                 )
                 .await;
 
@@ -837,7 +890,6 @@ fn handle_edit_hotkey_event(
                 // 3. Read the selected text from clipboard
                 let cb = clipboard.clone();
                 let selected = match tokio::task::spawn_blocking(move || {
-                    use voxpen_core::input::clipboard::ClipboardManager;
                     cb.get_text()
                 })
                 .await
@@ -973,7 +1025,7 @@ fn handle_edit_hotkey_event(
 async fn do_voice_edit_stop(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
-    clipboard: Arc<crate::clipboard::ArboardClipboard>,
+    clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
     keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,

@@ -244,7 +244,7 @@ pub fn run() {
             // Initialize hardware implementations
             let recorder = audio::CpalRecorder::new();
             let clipboard_mgr =
-                clipboard::ArboardClipboard::new().expect("failed to init clipboard");
+                clipboard::create_clipboard().expect("failed to init clipboard");
             let keyboard_mgr =
                 keyboard::create_keyboard().expect("failed to init keyboard simulator");
             let db_path = app_data_dir.join("voxpen.db");
@@ -267,7 +267,7 @@ pub fn run() {
                 controller: Arc::new(Mutex::new(controller)),
                 settings,
                 recorder: Arc::new(recorder),
-                clipboard: Arc::new(clipboard_mgr),
+                clipboard: Arc::from(clipboard_mgr),
                 keyboard: Arc::from(keyboard_mgr),
                 history: Arc::new(history_db),
                 dictionary: Arc::new(dictionary_db),
@@ -516,12 +516,14 @@ pub fn run() {
                     s.license_manager.clone()
                 };
                 app.listen("usage-updated", move |_event| {
-                    let tier = license_mgr_for_tray.current_tier();
-                    let status = tauri::async_runtime::block_on(
-                        license_mgr_for_tray.check_access(),
-                    );
-                    let text = format_usage_text(&tier, &status);
-                    let _ = usage_item.set_text(&text);
+                    let mgr = license_mgr_for_tray.clone();
+                    let item = usage_item.clone();
+                    tokio::task::spawn(async move {
+                        let tier = mgr.current_tier();
+                        let status = mgr.check_access().await;
+                        let text = format_usage_text(&tier, &status);
+                        let _ = item.set_text(&text);
+                    });
                 });
 
                 // Listen for license-tier-changed to update the "Upgrade to Pro" item

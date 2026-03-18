@@ -20,8 +20,14 @@ pub trait KeySimulator: Send + Sync {
 #[cfg(target_os = "windows")]
 const PRE_PASTE_DELAY: Duration = Duration::from_millis(60);
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 const PRE_PASTE_DELAY: Duration = Duration::from_millis(10);
+
+/// On Linux Wayland, `wl-copy` forks a daemon that must register with the
+/// compositor as clipboard owner before the paste keystroke is sent.
+/// 10ms is too short; 150ms gives the daemon time to start serving data.
+#[cfg(target_os = "linux")]
+const PRE_PASTE_DELAY: Duration = Duration::from_millis(150);
 
 /// Delay after the paste keystroke before restoring the original clipboard.
 /// The target app must have time to read the clipboard contents.
@@ -30,8 +36,13 @@ const PRE_PASTE_DELAY: Duration = Duration::from_millis(10);
 #[cfg(target_os = "windows")]
 const POST_PASTE_DELAY: Duration = Duration::from_millis(350);
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 const POST_PASTE_DELAY: Duration = Duration::from_millis(100);
+
+/// On Linux Wayland, the target app reads clipboard asynchronously via
+/// the compositor. Give it more time before restoring the original clipboard.
+#[cfg(target_os = "linux")]
+const POST_PASTE_DELAY: Duration = Duration::from_millis(250);
 
 /// Paste text at cursor position using clipboard + key simulation.
 ///
