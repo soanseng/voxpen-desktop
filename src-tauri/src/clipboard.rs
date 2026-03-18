@@ -127,13 +127,15 @@ impl ClipboardManager for WlClipboard {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| AppError::Paste(format!("wl-copy spawn failed: {e}")))?;
-        if let Some(ref mut stdin) = child.stdin {
+        let write_result = if let Some(mut stdin) = child.stdin.take() {
             stdin
                 .write_all(text.as_bytes())
-                .map_err(|e| AppError::Paste(format!("wl-copy write failed: {e}")))?;
-        }
-        // Close stdin so wl-copy gets EOF and can fork its daemon.
-        drop(child.stdin.take());
+                .map_err(|e| AppError::Paste(format!("wl-copy write failed: {e}")))
+        } else {
+            Ok(())
+        };
+        // stdin is dropped here regardless of write success — wl-copy gets EOF.
+        write_result?;
         let status = child
             .wait()
             .map_err(|e| AppError::Paste(format!("wl-copy wait failed: {e}")))?;

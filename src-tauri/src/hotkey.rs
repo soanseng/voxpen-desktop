@@ -500,8 +500,12 @@ async fn do_stop_recording(
             #[cfg(target_os = "linux")]
             {
                 let original = clipboard.get_text().unwrap_or(None);
+                let script_path = app
+                    .path()
+                    .resolve("resources/voxpen-paste.sh", tauri::path::BaseDirectory::Resource)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("voxpen-paste.sh"));
                 let mut cmd = std::process::Command::new("setsid");
-                cmd.arg("voxpen-paste.sh")
+                cmd.arg(&script_path)
                     .arg(&final_text);
                 if let Some(ref orig) = original {
                     cmd.arg(orig);
@@ -954,6 +958,11 @@ fn handle_edit_hotkey_event(
             let processing_flag = processing.clone();
             let voice_edit_selection = state.voice_edit_selection.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
+            // Capture focused window for paste focus restore.
+            #[cfg(target_os = "linux")]
+            let focused_window_id = crate::active_window::get_focused_window_id();
+            #[cfg(not(target_os = "linux"))]
+            let focused_window_id: Option<String> = None;
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -1012,6 +1021,7 @@ fn handle_edit_hotkey_event(
                     pcm_data,
                     selected_text,
                     processing_flag,
+                    focused_window_id,
                 )
                 .await;
             });
@@ -1034,8 +1044,10 @@ async fn do_voice_edit_stop(
     pcm_data: Vec<i16>,
     selected_text: String,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
+    focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
+    #[cfg(not(target_os = "linux"))]
     use voxpen_core::input::paste::paste_text;
     use voxpen_core::pipeline::prompts;
     use voxpen_core::pipeline::state::{Language, TonePreset};
@@ -1188,15 +1200,55 @@ async fn do_voice_edit_stop(
 
     // Paste to replace selection
     if auto_paste {
-        let text = edited_text.clone();
-        let cb = clipboard.clone();
-        let kb = keyboard.clone();
-        match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
-            .await
+        // Hide the overlay BEFORE pasting. On KDE Wayland, a visible
+        // overlay window (even with focusable=false) blocks uinput key
+        // events from reaching the user's focused app.
         {
-            Ok(Err(e)) => eprintln!("voice edit: paste failed: {e}"),
-            Err(e) => eprintln!("voice edit: paste task panicked: {e}"),
-            Ok(Ok(())) => {}
+            let ctrl = controller.lock().await;
+            ctrl.reset();
+            drop(ctrl);
+        }
+        // Give the compositor time to process the overlay hide.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        #[cfg(target_os = "linux")]
+        {
+            let original = clipboard.get_text().unwrap_or(None);
+            let script_path = app
+                .path()
+                .resolve("resources/voxpen-paste.sh", tauri::path::BaseDirectory::Resource)
+                .unwrap_or_else(|_| std::path::PathBuf::from("voxpen-paste.sh"));
+            let mut cmd = std::process::Command::new("setsid");
+            cmd.arg(&script_path)
+                .arg(&edited_text);
+            if let Some(ref orig) = original {
+                cmd.arg(orig);
+            }
+            if let Some(ref wid) = focused_window_id {
+                cmd.env("VOXPEN_WINDOW_ID", wid);
+            }
+            match cmd
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(_) => {}
+                Err(e) => eprintln!("voice edit: paste script spawn failed: {e}"),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let text = edited_text.clone();
+            let cb = clipboard.clone();
+            let kb = keyboard.clone();
+            match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
+                .await
+            {
+                Ok(Err(e)) => eprintln!("voice edit: paste failed: {e}"),
+                Err(e) => eprintln!("voice edit: paste task panicked: {e}"),
+                Ok(Ok(())) => {}
+            }
         }
     }
 

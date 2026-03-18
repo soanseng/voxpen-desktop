@@ -13,8 +13,8 @@ pub fn is_wayland() -> bool {
 /// Create the appropriate keyboard simulator for the current platform.
 ///
 /// On Linux Wayland sessions, tries in order:
-/// 1. `xdotool` — works on KDE Wayland via XWayland compatibility
-/// 2. `ydotool` — kernel-level `/dev/uinput`, works on GNOME/sway
+/// 1. `ydotool` — kernel-level `/dev/uinput`, works on GNOME/sway
+/// 2. `xdotool` — works on KDE Wayland via XWayland compatibility
 /// 3. `wtype` — Wayland virtual-keyboard protocol, wlroots-based only
 /// 4. `enigo` — X11 fallback
 ///
@@ -336,8 +336,8 @@ impl WtypeKeyboard {
             .stderr(std::process::Stdio::null())
             .status();
         match check {
-            Ok(_) => Ok(Self),
-            Err(_) => Err(AppError::Paste(
+            Ok(s) if s.success() => Ok(Self),
+            _ => Err(AppError::Paste(
                 "wtype not found — install with: pacman -S wtype".to_string(),
             )),
         }
