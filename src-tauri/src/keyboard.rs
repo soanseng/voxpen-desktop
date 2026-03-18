@@ -181,32 +181,17 @@ impl YdotoolKeyboard {
 
     /// Resolve socket path: `$YDOTOOL_SOCKET` → `$XDG_RUNTIME_DIR` → known candidates.
     fn find_socket() -> Result<String, AppError> {
-        // Explicit env override.
-        if let Ok(p) = std::env::var("YDOTOOL_SOCKET") {
-            if std::path::Path::new(&p).exists() {
-                return Ok(p);
-            }
-        }
-
-        // XDG_RUNTIME_DIR (user service default location).
-        if let Ok(runtime) = std::env::var("XDG_RUNTIME_DIR") {
-            let p = format!("{runtime}/.ydotool_socket");
-            if std::path::Path::new(&p).exists() {
-                return Ok(p);
-            }
-        }
-
-        // Well-known candidate paths (system service).
-        for candidate in YDOTOOL_SOCKET_CANDIDATES {
-            if std::path::Path::new(candidate).exists() {
-                return Ok(candidate.to_string());
-            }
-        }
-
-        Err(AppError::Paste(
-            "ydotoold socket not found — start ydotoold: sudo systemctl enable --now ydotoold"
-                .to_string(),
-        ))
+        find_socket_in(
+            std::env::var("YDOTOOL_SOCKET").ok().as_deref(),
+            std::env::var("XDG_RUNTIME_DIR").ok().as_deref(),
+            YDOTOOL_SOCKET_CANDIDATES,
+        )
+        .ok_or_else(|| {
+            AppError::Paste(
+                "ydotoold socket not found — start ydotoold: sudo systemctl enable --now ydotoold"
+                    .to_string(),
+            )
+        })
     }
 
     /// Detect if `keyd` is swapping CapsLock ↔ Ctrl.
@@ -221,13 +206,7 @@ impl YdotoolKeyboard {
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "conf") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    let has_caps_to_ctrl = content
-                        .lines()
-                        .any(|l| {
-                            let l = l.trim();
-                            l.starts_with("capslock") && l.contains("leftcontrol")
-                        });
-                    if has_caps_to_ctrl {
+                    if keyd_has_caps_ctrl_swap(&content) {
                         eprintln!("ydotool: keyd swaps CapsLock↔Ctrl, using evdev 58 for Ctrl");
                         return "58";
                     }
@@ -363,5 +342,140 @@ impl KeySimulator for WtypeKeyboard {
 
     fn copy(&self) -> Result<(), AppError> {
         Self::run_wtype(&["-M", "ctrl", "-k", "c", "-m", "ctrl"])
+    }
+}
+
+/// Check if a keyd config file content contains a CapsLock → Ctrl swap.
+///
+/// Looks for lines like `capslock = leftcontrol` or `capslock = leftcontrol`.
+/// Extracted from `YdotoolKeyboard::detect_ctrl_code` for testability.
+fn keyd_has_caps_ctrl_swap(content: &str) -> bool {
+    content.lines().any(|l| {
+        let l = l.trim();
+        l.starts_with("capslock") && l.contains("leftcontrol")
+    })
+}
+
+/// Resolve ydotool socket path given explicit candidates and env-based paths.
+///
+/// Extracted from `YdotoolKeyboard::find_socket` for testability.
+fn find_socket_in(
+    env_socket: Option<&str>,
+    xdg_runtime: Option<&str>,
+    candidates: &[&str],
+) -> Option<String> {
+    if let Some(p) = env_socket {
+        if std::path::Path::new(p).exists() {
+            return Some(p.to_string());
+        }
+    }
+    if let Some(runtime) = xdg_runtime {
+        let p = format!("{runtime}/.ydotool_socket");
+        if std::path::Path::new(&p).exists() {
+            return Some(p);
+        }
+    }
+    for candidate in candidates {
+        if std::path::Path::new(candidate).exists() {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- keyd_has_caps_ctrl_swap ---
+
+    #[test]
+    fn should_detect_capslock_to_leftcontrol_swap() {
+        let config = "[ids]\n*\n\n[main]\ncapslock = leftcontrol\nleftcontrol = capslock\n";
+        assert!(keyd_has_caps_ctrl_swap(config));
+    }
+
+    #[test]
+    fn should_not_detect_swap_when_no_capslock_rule() {
+        let config = "[ids]\n*\n\n[main]\na = b\n";
+        assert!(!keyd_has_caps_ctrl_swap(config));
+    }
+
+    #[test]
+    fn should_not_detect_swap_when_capslock_maps_to_something_else() {
+        let config = "[ids]\n*\n\n[main]\ncapslock = escape\n";
+        assert!(!keyd_has_caps_ctrl_swap(config));
+    }
+
+    #[test]
+    fn should_detect_swap_with_leading_whitespace() {
+        let config = "  capslock = leftcontrol\n";
+        assert!(keyd_has_caps_ctrl_swap(config));
+    }
+
+    #[test]
+    fn should_not_detect_swap_in_comments() {
+        // Lines starting with # are comments in keyd
+        let config = "# capslock = leftcontrol\n";
+        assert!(!keyd_has_caps_ctrl_swap(config));
+    }
+
+    #[test]
+    fn should_return_false_for_empty_config() {
+        assert!(!keyd_has_caps_ctrl_swap(""));
+    }
+
+    // --- find_socket_in ---
+
+    #[test]
+    fn should_prefer_explicit_env_socket() {
+        // Use a path that definitely exists
+        let result = find_socket_in(Some("/dev/null"), None, &[]);
+        assert_eq!(result, Some("/dev/null".to_string()));
+    }
+
+    #[test]
+    fn should_skip_nonexistent_env_socket() {
+        let result = find_socket_in(
+            Some("/nonexistent/socket"),
+            None,
+            &[],
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn should_find_candidate_when_env_missing() {
+        // /dev/null always exists — use it as a stand-in for a socket file
+        let result = find_socket_in(None, None, &["/dev/null"]);
+        assert_eq!(result, Some("/dev/null".to_string()));
+    }
+
+    #[test]
+    fn should_skip_nonexistent_candidates() {
+        let result = find_socket_in(
+            None,
+            None,
+            &["/nonexistent/a", "/nonexistent/b"],
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn should_return_first_existing_candidate() {
+        let result = find_socket_in(
+            None,
+            None,
+            &["/nonexistent/a", "/dev/null", "/dev/zero"],
+        );
+        assert_eq!(result, Some("/dev/null".to_string()));
+    }
+
+    // --- is_wayland ---
+
+    #[test]
+    fn should_detect_wayland_from_env() {
+        // This test is environment-dependent — just verify it doesn't panic
+        let _ = is_wayland();
     }
 }

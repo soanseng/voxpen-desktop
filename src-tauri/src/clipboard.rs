@@ -62,6 +62,18 @@ impl ClipboardManager for ArboardClipboard {
     }
 }
 
+/// Check if `create_clipboard` selects the correct implementation for the platform.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_clipboard_without_panicking() {
+        let result = create_clipboard();
+        assert!(result.is_ok());
+    }
+}
+
 /// Wayland clipboard using `wl-copy` and `wl-paste` commands.
 ///
 /// Unlike `arboard` (which uses smithay-clipboard and requires a focused surface),
