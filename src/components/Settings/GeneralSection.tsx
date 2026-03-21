@@ -438,6 +438,52 @@ export default function GeneralSection({
         onSaved={(s) => onUpdate("hotkey_edit", s)}
         t={t}
       />
+
+      {/* Audio Ducking */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t("audioDucking")}
+          </label>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            {t("audioDuckingHint")}
+          </p>
+        </div>
+        <ToggleSwitch
+          id="audio-ducking"
+          checked={settings.audio_ducking_enabled}
+          onChange={(v) => onUpdate("audio_ducking_enabled", v)}
+        />
+      </div>
+
+      {settings.audio_ducking_enabled && (
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t("audioDuckingVolume")}
+            </label>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {t("audioDuckingVolumeHint")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={settings.audio_ducking_volume}
+              onChange={(e) =>
+                onUpdate("audio_ducking_volume", parseInt(e.target.value))
+              }
+              className="w-24"
+            />
+            <span className="w-10 text-right text-sm text-gray-600 dark:text-gray-400">
+              {settings.audio_ducking_volume}%
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

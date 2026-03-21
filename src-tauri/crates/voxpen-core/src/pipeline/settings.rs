@@ -97,6 +97,22 @@ pub struct Settings {
     /// First matching rule wins. Empty = feature disabled.
     #[serde(default)]
     pub app_tone_rules: Vec<AppToneRule>,
+    /// Whether to lower other apps' audio volume while recording.
+    /// Default: true.
+    #[serde(default = "default_true")]
+    pub audio_ducking_enabled: bool,
+    /// Volume level (0–100) to duck other apps to while recording.
+    /// Default: 20 (%).
+    #[serde(default = "default_audio_ducking_volume")]
+    pub audio_ducking_volume: u8,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_audio_ducking_volume() -> u8 {
+    20
 }
 
 fn default_hotkey_toggle() -> String {
@@ -137,6 +153,8 @@ impl Default for Settings {
             voice_commands_enabled: false,
             hotkey_edit: "CommandOrControl+Shift+E".to_string(),
             app_tone_rules: Vec::new(),
+            audio_ducking_enabled: true,
+            audio_ducking_volume: default_audio_ducking_volume(),
         }
     }
 }
@@ -399,5 +417,38 @@ mod tests {
         let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
         let s: Settings = serde_json::from_str(json).unwrap();
         assert!(s.app_tone_rules.is_empty());
+    }
+
+    // -- audio_ducking tests --
+
+    #[test]
+    fn should_default_audio_ducking_enabled_to_true() {
+        let s = Settings::default();
+        assert!(s.audio_ducking_enabled);
+    }
+
+    #[test]
+    fn should_default_audio_ducking_volume_to_20() {
+        let s = Settings::default();
+        assert_eq!(s.audio_ducking_volume, 20);
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_audio_ducking() {
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert!(s.audio_ducking_enabled);
+        assert_eq!(s.audio_ducking_volume, 20);
+    }
+
+    #[test]
+    fn should_roundtrip_audio_ducking_fields() {
+        let mut s = Settings::default();
+        s.audio_ducking_enabled = false;
+        s.audio_ducking_volume = 35;
+        let json = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&json).unwrap();
+        assert!(!s2.audio_ducking_enabled);
+        assert_eq!(s2.audio_ducking_volume, 35);
     }
 }

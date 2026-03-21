@@ -204,5 +204,9 @@
   "maxRecordingDuration": "Max Recording Duration",
   "maxRecordingDurationHint": "0 = unlimited",
   "seconds": "sec",
-  "recordingTimedOut": "Recording time limit reached"
+  "recordingTimedOut": "Recording time limit reached",
+  "audioDucking": "Lower Other Apps' Volume",
+  "audioDuckingHint": "Automatically lower other applications' audio while recording.",
+  "audioDuckingVolume": "Ducked Volume",
+  "audioDuckingVolumeHint": "Volume level (%) for other apps during recording."
 }

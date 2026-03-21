@@ -1,5 +1,6 @@
 mod active_window;
 mod audio;
+mod audio_ducking;
 mod clipboard;
 mod commands;
 mod dictionary;
@@ -276,6 +277,7 @@ pub fn run() {
                 recording_timeout_handle: Arc::new(tokio::sync::Mutex::new(None)),
                 voice_edit_selection: Arc::new(tokio::sync::Mutex::new(None)),
                 auto_tone_override,
+                audio_ducker: audio_ducking::create_audio_ducker(),
                 license_manager: Arc::new(license_mgr),
                 models_dir,
                 #[cfg(feature = "local-whisper")]

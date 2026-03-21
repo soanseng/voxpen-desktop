@@ -204,5 +204,9 @@
   "maxRecordingDuration": "最長錄音時間",
   "maxRecordingDurationHint": "0 = 無限制",
   "seconds": "秒",
-  "recordingTimedOut": "錄音時間上限已達"
+  "recordingTimedOut": "錄音時間上限已達",
+  "audioDucking": "錄音時降低其他音量",
+  "audioDuckingHint": "錄音時自動降低其他應用程式的音量。",
+  "audioDuckingVolume": "降低後音量",
+  "audioDuckingVolumeHint": "錄音時其他應用程式的音量（%）。"
 }

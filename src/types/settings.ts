@@ -27,6 +27,8 @@ export interface Settings {
   voice_commands_enabled: boolean;
   hotkey_edit: string;
   app_tone_rules: AppToneRule[];
+  audio_ducking_enabled: boolean;
+  audio_ducking_volume: number;
 }
 
 export type LicenseTier = "Free" | "Pro";
@@ -103,4 +105,6 @@ export const defaultSettings: Settings = {
   voice_commands_enabled: false,
   hotkey_edit: "CommandOrControl+Shift+E",
   app_tone_rules: [],
+  audio_ducking_enabled: true,
+  audio_ducking_volume: 20,
 };

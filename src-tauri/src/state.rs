@@ -270,6 +270,8 @@ pub struct AppState {
             crate::licensing::SqliteUsageDb,
         >,
     >,
+    /// Audio ducker: lowers other apps' volume while recording.
+    pub audio_ducker: Arc<dyn voxpen_core::audio::ducking::AudioDucker>,
     /// Directory where local whisper model files are stored.
     pub models_dir: PathBuf,
     /// Shared local STT provider — accessible by both GroqSttProvider

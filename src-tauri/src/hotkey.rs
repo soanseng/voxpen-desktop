@@ -602,6 +602,7 @@ fn handle_hotkey_event(
             let dictionary = state.dictionary.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
             let auto_tone_override = state.auto_tone_override.clone();
+            let audio_ducker = state.audio_ducker.clone();
 
             // Reset the signal before starting
             recording_started.store(false, Ordering::SeqCst);
@@ -668,6 +669,16 @@ fn handle_hotkey_event(
                         // Signal that recording has actually started
                         recording_started.store(true, Ordering::SeqCst);
 
+                        // Duck other apps' audio if enabled
+                        {
+                            let s = settings.lock().await;
+                            if s.audio_ducking_enabled {
+                                if let Err(e) = audio_ducker.duck(s.audio_ducking_volume) {
+                                    eprintln!("audio ducking failed (non-fatal): {e}");
+                                }
+                            }
+                        }
+
                         // Read max duration setting
                         let max_secs = {
                             let s = settings.lock().await;
@@ -688,6 +699,7 @@ fn handle_hotkey_event(
                             let timeout_processing = processing_flag.clone();
                             let timeout_auto_tone_override = auto_tone_override.clone();
                             let timeout_focused_window_id = focused_window_id.clone();
+                            let timeout_ducker = audio_ducker.clone();
 
                             let handle = tauri::async_runtime::spawn(async move {
                                 use std::sync::atomic::Ordering;
@@ -703,6 +715,11 @@ fn handle_hotkey_event(
                                     return;
                                 }
                                 timeout_recording_started.store(false, Ordering::SeqCst);
+
+                                // Restore other apps' audio
+                                if let Err(e) = timeout_ducker.restore() {
+                                    eprintln!("audio restore failed (non-fatal): {e}");
+                                }
 
                                 let pcm_data = match timeout_recorder.stop() {
                                     Ok(data) => data,
@@ -771,6 +788,7 @@ fn handle_hotkey_event(
             let focused_window_id = crate::active_window::get_focused_window_id();
             #[cfg(not(target_os = "linux"))]
             let focused_window_id: Option<String> = None;
+            let audio_ducker = state.audio_ducker.clone();
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -790,6 +808,11 @@ fn handle_hotkey_event(
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
                 recording_started.store(false, Ordering::SeqCst);
+
+                // Restore other apps' audio
+                if let Err(e) = audio_ducker.restore() {
+                    eprintln!("audio restore failed (non-fatal): {e}");
+                }
 
                 // Abort the auto-stop timeout — user stopped manually.
                 let handle = timeout_handle.lock().await.take();
@@ -865,6 +888,8 @@ fn handle_edit_hotkey_event(
             let voice_edit_selection = state.voice_edit_selection.clone();
             let processing_flag = processing.clone();
             let app_for_err = app.clone();
+            let audio_ducker = state.audio_ducker.clone();
+            let settings = state.settings.clone();
 
             // Reset before starting
             recording_started.store(false, Ordering::SeqCst);
@@ -931,6 +956,16 @@ fn handle_edit_hotkey_event(
                 match recorder.start() {
                     Ok(()) => {
                         recording_started.store(true, Ordering::SeqCst);
+
+                        // Duck other apps' audio if enabled
+                        {
+                            let s = settings.lock().await;
+                            if s.audio_ducking_enabled {
+                                if let Err(e) = audio_ducker.duck(s.audio_ducking_volume) {
+                                    eprintln!("audio ducking failed (non-fatal): {e}");
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         let msg = format_audio_error(&e);
@@ -963,6 +998,7 @@ fn handle_edit_hotkey_event(
             let focused_window_id = crate::active_window::get_focused_window_id();
             #[cfg(not(target_os = "linux"))]
             let focused_window_id: Option<String> = None;
+            let audio_ducker = state.audio_ducker.clone();
 
             tauri::async_runtime::spawn(async move {
                 use std::sync::atomic::Ordering;
@@ -981,6 +1017,11 @@ fn handle_edit_hotkey_event(
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
                 recording_started.store(false, Ordering::SeqCst);
+
+                // Restore other apps' audio
+                if let Err(e) = audio_ducker.restore() {
+                    eprintln!("audio restore failed (non-fatal): {e}");
+                }
 
                 // Abort any active auto-stop timeout for this recording
                 if let Some(h) = timeout_handle.lock().await.take() {
