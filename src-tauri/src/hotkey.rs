@@ -401,7 +401,7 @@ fn resolve_action(
 /// Shared stop logic called by both manual key release and the auto-timeout task.
 ///
 /// `pcm_data` must already be captured from the recorder before calling this.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_variables)]
 async fn do_stop_recording(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
@@ -413,7 +413,7 @@ async fn do_stop_recording(
     license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
     pcm_data: Vec<i16>,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
-    _focused_window_id: Option<String>,
+    focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]
@@ -506,7 +506,7 @@ async fn do_stop_recording(
                     .unwrap_or_else(|_| std::path::PathBuf::from("voxpen-paste.sh"));
                 let mut cmd = std::process::Command::new("setsid");
                 cmd.arg(&script_path)
-                    .arg(&final_text);
+                    .arg(final_text);
                 if let Some(ref orig) = original {
                     cmd.arg(orig);
                 }
@@ -1072,7 +1072,7 @@ fn handle_edit_hotkey_event(
 
 /// Voice edit stop: STT the edit command, run LLM with voice-edit prompt,
 /// paste the result to replace the original selection.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_variables)]
 async fn do_voice_edit_stop(
     app: tauri::AppHandle,
     controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
@@ -1085,7 +1085,7 @@ async fn do_voice_edit_stop(
     pcm_data: Vec<i16>,
     selected_text: String,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
-    _focused_window_id: Option<String>,
+    focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]
