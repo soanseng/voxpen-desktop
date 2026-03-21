@@ -184,6 +184,40 @@ fn build_tray_menu(
     Ok((menu, usage_item, upgrade_item))
 }
 
+/// Resolve the path to the `voxpen-paste.sh` helper script.
+///
+/// Search order:
+///   1. `{exe_dir}/resources/voxpen-paste.sh` — matches `npx tauri build` layout
+///      and the install script layout.
+///   2. Tauri resource resolver (`BaseDirectory::Resource`).
+///   3. Bare filename `voxpen-paste.sh` — found via `PATH` at runtime.
+#[cfg(target_os = "linux")]
+pub(crate) fn paste_script_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    // 1. Relative to the running binary
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("resources/voxpen-paste.sh");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+
+    // 2. Tauri resource resolver (works for .deb / .rpm / AppImage installs)
+    if let Ok(p) = app
+        .path()
+        .resolve("resources/voxpen-paste.sh", BaseDirectory::Resource)
+    {
+        if p.exists() {
+            return p;
+        }
+    }
+
+    // 3. Fall back to PATH lookup
+    eprintln!("paste: resources/voxpen-paste.sh not found next to binary or via Tauri resolver, falling back to PATH");
+    std::path::PathBuf::from("voxpen-paste.sh")
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())

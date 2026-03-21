@@ -500,10 +500,7 @@ async fn do_stop_recording(
             #[cfg(target_os = "linux")]
             {
                 let original = clipboard.get_text().unwrap_or(None);
-                let script_path = app
-                    .path()
-                    .resolve("resources/voxpen-paste.sh", tauri::path::BaseDirectory::Resource)
-                    .unwrap_or_else(|_| std::path::PathBuf::from("voxpen-paste.sh"));
+                let script_path = crate::paste_script_path(&app);
                 let mut cmd = std::process::Command::new("setsid");
                 cmd.arg(&script_path)
                     .arg(final_text);
@@ -1255,10 +1252,7 @@ async fn do_voice_edit_stop(
         #[cfg(target_os = "linux")]
         {
             let original = clipboard.get_text().unwrap_or(None);
-            let script_path = app
-                .path()
-                .resolve("resources/voxpen-paste.sh", tauri::path::BaseDirectory::Resource)
-                .unwrap_or_else(|_| std::path::PathBuf::from("voxpen-paste.sh"));
+            let script_path = crate::paste_script_path(&app);
             let mut cmd = std::process::Command::new("setsid");
             cmd.arg(&script_path)
                 .arg(&edited_text);

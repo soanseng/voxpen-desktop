@@ -30,6 +30,7 @@
 - **自動貼上** — 轉錄結果直接貼到游標位置
 - **翻譯模式** — 將語音翻譯為目標語言
 - **多語言支援** — 自動偵測、中文、English、日本語
+- **音訊閃避** — 錄音時自動降低其他應用程式音量
 - **浮動指示器** — 錄音／處理狀態顯示
 - **轉錄紀錄** — 可搜尋的 SQLite 資料庫
 - **無遙測** — API Key 僅存於本機（加密儲存）
@@ -64,7 +65,7 @@ AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式�
 
 1. 安裝系統相依套件：
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool wl-clipboard xdotool
    ```
 2. 從[最新版本](https://github.com/soanseng/voxpen-desktop/releases)下載 `voxpen-desktop`
 3. 設定執行權限並放到 PATH 中：
@@ -72,6 +73,23 @@ AppImage 內包含 Ubuntu 的 WebKit 函式庫，可能與較新的系統函式�
    chmod +x voxpen-desktop
    cp voxpen-desktop ~/.local/bin/voxpen
    ```
+
+> **注意**：上述手動複製僅安裝執行檔。若需 Wayland 自動貼上功能，請改用下方的安裝腳本，會一併安裝所需的輔助腳本和桌面項目。
+
+#### 安裝腳本（從原始碼建置）
+
+提供 Linux 安裝腳本，可一次安裝執行檔、資源檔（自動貼上輔助腳本）、桌面項目與圖示：
+
+```bash
+git clone https://github.com/soanseng/voxpen-desktop.git
+cd voxpen-desktop
+pnpm install
+npx tauri build
+./scripts/install-linux.sh            # 安裝
+./scripts/install-linux.sh uninstall  # 移除
+```
+
+腳本會安裝至 `~/.local/bin/`，並檢查 Wayland 自動貼上所需的相依套件。
 
 ### Debian / Ubuntu
 

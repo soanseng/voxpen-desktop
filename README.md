@@ -30,6 +30,7 @@ Built with **Tauri v2** (Rust backend + React frontend), BYOK (Bring Your Own Ke
 - **Auto-paste** — transcription goes straight to cursor position
 - **Translation mode** — translate speech to a target language
 - **Multi-language** — Auto-detect, 中文, English, 日本語
+- **Audio ducking** — automatically lower other apps' volume while recording
 - **Floating overlay** — recording/processing status indicator
 - **Transcription history** — searchable SQLite database
 - **No telemetry** — your API keys stay local (encrypted storage)
@@ -64,7 +65,7 @@ The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible wit
 
 1. Install system dependencies:
    ```bash
-   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool
+   sudo pacman -S webkit2gtk-4.1 libayatana-appindicator ydotool wl-clipboard xdotool
    ```
 2. Download `voxpen-desktop` from the [latest release](https://github.com/soanseng/voxpen-desktop/releases)
 3. Make it executable and place it in your PATH:
@@ -72,6 +73,23 @@ The AppImage bundles Ubuntu's WebKit libraries which may be ABI-incompatible wit
    chmod +x voxpen-desktop
    cp voxpen-desktop ~/.local/bin/voxpen
    ```
+
+> **Note**: The manual copy above installs only the binary. For Wayland auto-paste support, use the install script below, which also installs the required helper script and desktop entry.
+
+#### Install Script (Build from Source)
+
+An install script is provided for Linux users who build from source. It installs the binary, resources (auto-paste helper script), desktop entry, and icon:
+
+```bash
+git clone https://github.com/soanseng/voxpen-desktop.git
+cd voxpen-desktop
+pnpm install
+npx tauri build
+./scripts/install-linux.sh            # install
+./scripts/install-linux.sh uninstall  # remove
+```
+
+The script installs to `~/.local/bin/` and checks for required Wayland dependencies.
 
 ### Debian / Ubuntu
 
