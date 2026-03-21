@@ -414,6 +414,7 @@ async fn do_stop_recording(
     pcm_data: Vec<i16>,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
     focused_window_id: Option<String>,
+    active_app: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]
@@ -518,6 +519,9 @@ async fn do_stop_recording(
                 }
                 if let Some(ref wid) = focused_window_id {
                     cmd.env("VOXPEN_WINDOW_ID", wid);
+                }
+                if let Some(ref app_name) = active_app {
+                    cmd.env("VOXPEN_ACTIVE_APP", app_name);
                 }
                 match cmd
                     .stdin(std::process::Stdio::null())
@@ -705,6 +709,7 @@ fn handle_hotkey_event(
                             let timeout_processing = processing_flag.clone();
                             let timeout_auto_tone_override = auto_tone_override.clone();
                             let timeout_focused_window_id = focused_window_id.clone();
+                            let timeout_active_app = active_app.clone();
                             let timeout_ducker = audio_ducker.clone();
 
                             let handle = tauri::async_runtime::spawn(async move {
@@ -753,6 +758,7 @@ fn handle_hotkey_event(
                                     pcm_data,
                                     timeout_processing,
                                     timeout_focused_window_id,
+                                    timeout_active_app,
                                 )
                                 .await;
 
@@ -789,11 +795,12 @@ fn handle_hotkey_event(
             let processing_flag = processing.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
             let auto_tone_override = state.auto_tone_override.clone();
-            // Capture focused window for paste focus restore.
+            // Capture focused window and active app for paste focus restore / terminal detection.
             #[cfg(target_os = "linux")]
             let focused_window_id = crate::active_window::get_focused_window_id();
             #[cfg(not(target_os = "linux"))]
             let focused_window_id: Option<String> = None;
+            let active_app = crate::active_window::get_active_app_name();
             let audio_ducker = state.audio_ducker.clone();
 
             tauri::async_runtime::spawn(async move {
@@ -850,6 +857,7 @@ fn handle_hotkey_event(
                     pcm_data,
                     processing_flag,
                     focused_window_id,
+                    active_app,
                 )
                 .await;
 
@@ -999,11 +1007,12 @@ fn handle_edit_hotkey_event(
             let processing_flag = processing.clone();
             let voice_edit_selection = state.voice_edit_selection.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
-            // Capture focused window for paste focus restore.
+            // Capture focused window and active app for paste focus restore / terminal detection.
             #[cfg(target_os = "linux")]
             let focused_window_id = crate::active_window::get_focused_window_id();
             #[cfg(not(target_os = "linux"))]
             let focused_window_id: Option<String> = None;
+            let active_app = crate::active_window::get_active_app_name();
             let audio_ducker = state.audio_ducker.clone();
 
             tauri::async_runtime::spawn(async move {
@@ -1069,6 +1078,7 @@ fn handle_edit_hotkey_event(
                     selected_text,
                     processing_flag,
                     focused_window_id,
+                    active_app,
                 )
                 .await;
             });
@@ -1092,6 +1102,7 @@ async fn do_voice_edit_stop(
     selected_text: String,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
     focused_window_id: Option<String>,
+    active_app: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]
@@ -1279,6 +1290,9 @@ async fn do_voice_edit_stop(
             }
             if let Some(ref wid) = focused_window_id {
                 cmd.env("VOXPEN_WINDOW_ID", wid);
+            }
+            if let Some(ref app_name) = active_app {
+                cmd.env("VOXPEN_ACTIVE_APP", app_name);
             }
             match cmd
                 .stdin(std::process::Stdio::null())
