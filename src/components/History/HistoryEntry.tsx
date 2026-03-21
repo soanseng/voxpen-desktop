@@ -32,7 +32,8 @@ const DEFAULT_BADGE = {
 };
 
 function formatTimestamp(ts: number): string {
-  const date = new Date(ts);
+  // Backend stores Unix epoch in seconds; JS Date expects milliseconds.
+  const date = new Date(ts * 1000);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
