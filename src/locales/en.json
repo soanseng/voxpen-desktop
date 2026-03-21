@@ -207,6 +207,6 @@
   "recordingTimedOut": "Recording time limit reached",
   "audioDucking": "Lower Other Apps' Volume",
   "audioDuckingHint": "Automatically lower other applications' audio while recording.",
-  "audioDuckingVolume": "Ducked Volume",
-  "audioDuckingVolumeHint": "Volume level (%) for other apps during recording."
+  "audioDuckingVolume": "Other Apps' Volume",
+  "audioDuckingVolumeHint": "Volume level of other apps while recording. 0% = mute, 50% = half volume."
 }

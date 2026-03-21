@@ -413,7 +413,7 @@ async fn do_stop_recording(
     license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
     pcm_data: Vec<i16>,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
-    focused_window_id: Option<String>,
+    _focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]
@@ -1085,7 +1085,7 @@ async fn do_voice_edit_stop(
     pcm_data: Vec<i16>,
     selected_text: String,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
-    focused_window_id: Option<String>,
+    _focused_window_id: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
     #[cfg(not(target_os = "linux"))]

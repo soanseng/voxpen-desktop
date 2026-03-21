@@ -6,6 +6,7 @@ use voxpen_core::error::AppError;
 use voxpen_core::input::paste::KeySimulator;
 
 /// Detect whether the current session is running under Wayland.
+#[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok()
 }
@@ -130,6 +131,7 @@ impl KeySimulator for EnigoKeyboard {
 /// **keyd awareness**: If `keyd` is running and swaps CapsLock ↔ Ctrl,
 /// ydotool must send 58 (physical CapsLock) to produce Ctrl, because
 /// keyd intercepts uinput events before the compositor sees them.
+#[cfg(target_os = "linux")]
 pub struct YdotoolKeyboard {
     socket_path: String,
     /// Effective evdev code for Left Ctrl (29 normally, 58 if keyd swaps).
@@ -137,10 +139,12 @@ pub struct YdotoolKeyboard {
 }
 
 /// Default socket paths to probe, in priority order.
+#[cfg(target_os = "linux")]
 const YDOTOOL_SOCKET_CANDIDATES: &[&str] = &[
     "/tmp/.ydotool_socket",
 ];
 
+#[cfg(target_os = "linux")]
 impl YdotoolKeyboard {
     pub fn new() -> Result<Self, AppError> {
         // 1. Check ydotool binary exists.
@@ -234,6 +238,7 @@ impl YdotoolKeyboard {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl KeySimulator for YdotoolKeyboard {
     fn paste(&self) -> Result<(), AppError> {
         let ctrl_press = format!("{}:1", self.ctrl_code);
@@ -253,8 +258,10 @@ impl KeySimulator for YdotoolKeyboard {
 /// KDE Plasma forwards X11 synthetic input events from XWayland to the
 /// focused Wayland window, making `xdotool` a reliable option on KDE.
 /// Does NOT work on non-KDE Wayland compositors (GNOME, sway, etc.).
+#[cfg(target_os = "linux")]
 pub struct XdotoolKeyboard;
 
+#[cfg(target_os = "linux")]
 impl XdotoolKeyboard {
     pub fn new() -> Result<Self, AppError> {
         // xdotool requires DISPLAY (XWayland) to be available.
@@ -287,6 +294,7 @@ impl XdotoolKeyboard {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl KeySimulator for XdotoolKeyboard {
     fn paste(&self) -> Result<(), AppError> {
         Self::run_xdotool(&["key", "--clearmodifiers", "ctrl+v"])
@@ -304,8 +312,10 @@ impl KeySimulator for XdotoolKeyboard {
 /// reliably do on many Wayland compositors.
 ///
 /// Install: `pacman -S wtype` (Arch) or build from source.
+#[cfg(target_os = "linux")]
 pub struct WtypeKeyboard;
 
+#[cfg(target_os = "linux")]
 impl WtypeKeyboard {
     pub fn new() -> Result<Self, AppError> {
         // Verify wtype is available at init time for fast failure.
@@ -335,6 +345,7 @@ impl WtypeKeyboard {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl KeySimulator for WtypeKeyboard {
     fn paste(&self) -> Result<(), AppError> {
         Self::run_wtype(&["-M", "ctrl", "-k", "v", "-m", "ctrl"])
@@ -349,6 +360,7 @@ impl KeySimulator for WtypeKeyboard {
 ///
 /// Looks for lines like `capslock = leftcontrol` or `capslock = leftcontrol`.
 /// Extracted from `YdotoolKeyboard::detect_ctrl_code` for testability.
+#[cfg(target_os = "linux")]
 fn keyd_has_caps_ctrl_swap(content: &str) -> bool {
     content.lines().any(|l| {
         let l = l.trim();
@@ -359,6 +371,7 @@ fn keyd_has_caps_ctrl_swap(content: &str) -> bool {
 /// Resolve ydotool socket path given explicit candidates and env-based paths.
 ///
 /// Extracted from `YdotoolKeyboard::find_socket` for testability.
+#[cfg(target_os = "linux")]
 fn find_socket_in(
     env_socket: Option<&str>,
     xdg_runtime: Option<&str>,
@@ -383,7 +396,7 @@ fn find_socket_in(
     None
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

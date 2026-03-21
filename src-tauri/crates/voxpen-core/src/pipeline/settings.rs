@@ -101,8 +101,9 @@ pub struct Settings {
     /// Default: true.
     #[serde(default = "default_true")]
     pub audio_ducking_enabled: bool,
-    /// Volume level (0–100) to duck other apps to while recording.
-    /// Default: 20 (%).
+    /// Volume level for other apps while recording (0 = mute, 50 = half volume).
+    /// This value is passed directly to the audio ducker as a percentage.
+    /// Range: 0–50. Default: 20 (%).
     #[serde(default = "default_audio_ducking_volume")]
     pub audio_ducking_volume: u8,
 }

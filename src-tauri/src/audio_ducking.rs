@@ -58,18 +58,23 @@ mod windows_impl {
         needs_uninit: bool,
     }
 
+    /// RPC_E_CHANGED_MODE (0x80010106): COM already initialized with a
+    /// different apartment model on this thread. Safe to proceed — we just
+    /// must not call CoUninitialize since we didn't initialize it.
+    const RPC_E_CHANGED_MODE: i32 = 0x80010106u32 as i32;
+
     impl ComGuard {
-        /// Call `CoInitializeEx`. If COM was freshly initialized (`S_OK`),
-        /// the guard will call `CoUninitialize` on drop. If it was already
-        /// initialized on this thread (`S_FALSE`), we leave the lifetime
-        /// to the original caller.
         unsafe fn init() -> Result<Self, AppError> {
-            match CoInitializeEx(None, COINIT_MULTITHREADED) {
-                Ok(()) => Ok(Self { needs_uninit: true }),
-                Err(e) if e.code().0 == 1 /* S_FALSE — already initialized */ => {
-                    Ok(Self { needs_uninit: false })
-                }
-                Err(e) => Err(AppError::Audio(format!("CoInitializeEx: {e}"))),
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if hr.is_ok() {
+                Ok(Self { needs_uninit: true })
+            } else if hr.0 == RPC_E_CHANGED_MODE {
+                // COM already initialized as STA on this thread (e.g. by
+                // cpal or enigo). We can still use COM APIs.
+                eprintln!("audio ducking: COM already STA, proceeding");
+                Ok(Self { needs_uninit: false })
+            } else {
+                Err(AppError::Audio(format!("CoInitializeEx: {hr}")))
             }
         }
     }
@@ -167,7 +172,7 @@ mod windows_impl {
                     }
 
                     let session_id = match session2.GetSessionIdentifier() {
-                        Ok(id) => id.to_string_lossy(),
+                        Ok(id) => id.to_string().unwrap_or_else(|_| format!("pid-{pid}")),
                         Err(_) => format!("pid-{pid}"),
                     };
 
@@ -232,7 +237,10 @@ mod windows_impl {
                     };
 
                     let session_id = match session2.GetSessionIdentifier() {
-                        Ok(id) => id.to_string_lossy(),
+                        Ok(id) => {
+                            let pid = session2.GetProcessId().unwrap_or(0);
+                            id.to_string().unwrap_or_else(|_| format!("pid-{pid}"))
+                        }
                         Err(_) => {
                             let pid = session2.GetProcessId().unwrap_or(0);
                             format!("pid-{pid}")
