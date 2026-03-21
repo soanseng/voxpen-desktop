@@ -167,6 +167,12 @@ impl<S: SttProvider, L: LlmProvider> PipelineController<S, L> {
             }
         };
 
+        // Filter Whisper hallucinations — prompt echoes on silence/noise.
+        if crate::pipeline::guard::is_hallucination(&raw_text) {
+            self.reset();
+            return Err(AppError::Audio("no speech detected".to_string()));
+        }
+
         // Apply voice command substitutions (e.g. "comma" → ",") if enabled.
         let raw_text = if self.config.voice_commands_enabled {
             crate::pipeline::voice_commands::apply(&raw_text, &self.config.language)
@@ -650,5 +656,37 @@ mod tests {
         let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
 
         assert_eq!(result.unwrap(), "hello comma world");
+    }
+
+    // -- Hallucination guard tests --
+
+    #[tokio::test]
+    async fn should_discard_whisper_hallucination_and_reset_to_idle() {
+        let controller = PipelineController::new(
+            config_with_key(),
+            mock_stt_success("請勿使用簡體中文。"),
+            mock_llm_unused(),
+        );
+        controller.on_start_recording().unwrap();
+
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
+
+        assert!(matches!(result, Err(AppError::Audio(msg)) if msg == "no speech detected"));
+        assert_eq!(controller.current_state(), PipelineState::Idle);
+    }
+
+    #[tokio::test]
+    async fn should_discard_hallucination_even_with_refinement_enabled() {
+        let controller = PipelineController::new(
+            config_with_refinement(),
+            mock_stt_success("以繁體中文輸出，可能夾雜英文。請勿使用簡體中文。"),
+            mock_llm_unused(), // LLM should never be called
+        );
+        controller.on_start_recording().unwrap();
+
+        let result = controller.on_stop_recording(vec![100, 200], None, vec![]).await;
+
+        assert!(matches!(result, Err(AppError::Audio(_))));
+        assert_eq!(controller.current_state(), PipelineState::Idle);
     }
 }

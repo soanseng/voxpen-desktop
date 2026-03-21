@@ -1,5 +1,6 @@
 pub mod chunked_transcribe;
 pub mod controller;
+pub mod guard;
 pub mod prompts;
 pub mod refine;
 pub mod settings;

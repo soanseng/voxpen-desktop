@@ -431,6 +431,15 @@ async fn do_stop_recording(
         return;
     }
 
+    // Skip silent recordings — prevents Whisper hallucinations when
+    // the user presses the hotkey but doesn't speak.
+    if voxpen_core::audio::is_silent(&pcm_data) {
+        let ctrl = controller.lock().await;
+        ctrl.reset();
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
     // Fetch vocabulary for prompt injection
     let vocab_words = dictionary.get_words(500).unwrap_or_default();
     let stt_lang = {
@@ -1095,6 +1104,15 @@ async fn do_voice_edit_stop(
 
     // Skip very short recordings (<0.5s at 16kHz)
     if pcm_len < 8000 {
+        let ctrl = controller.lock().await;
+        ctrl.reset();
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    // Skip silent recordings — prevents Whisper hallucinations when
+    // the user presses the hotkey but doesn't speak.
+    if voxpen_core::audio::is_silent(&pcm_data) {
         let ctrl = controller.lock().await;
         ctrl.reset();
         processing_flag.store(false, Ordering::SeqCst);
