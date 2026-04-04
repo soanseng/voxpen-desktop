@@ -81,6 +81,11 @@ impl HotkeyManager {
     }
 
     /// Register PTT, Toggle, and Voice Edit hotkeys. Any can be empty to skip.
+    ///
+    /// Individual registration failures are collected but do not prevent other
+    /// hotkeys from being registered.  The rdev listener thread is always
+    /// started so that single-key shortcuts keep working even when X11 combo
+    /// grabs fail (e.g. after a KDE/XWayland upgrade).
     pub fn register_all(
         &mut self,
         app: &AppHandle,
@@ -90,43 +95,55 @@ impl HotkeyManager {
     ) -> Result<(), String> {
         self.unregister_all(app);
 
+        let mut errors: Vec<String> = Vec::new();
+
         if !ptt_shortcut.is_empty() {
-            if is_combo_shortcut(ptt_shortcut) {
-                self.register_combo(app, ptt_shortcut, RecordingMode::HoldToRecord)?;
+            let res = if is_combo_shortcut(ptt_shortcut) {
+                self.register_combo(app, ptt_shortcut, RecordingMode::HoldToRecord)
             } else {
-                self.register_single_key(ptt_shortcut, RecordingMode::HoldToRecord)?;
+                self.register_single_key(ptt_shortcut, RecordingMode::HoldToRecord)
+            };
+            match res {
+                Ok(()) => self.registered_ptt = Some(ptt_shortcut.to_string()),
+                Err(e) => errors.push(e),
             }
-            self.registered_ptt = Some(ptt_shortcut.to_string());
         }
 
         if !toggle_shortcut.is_empty() {
-            if is_combo_shortcut(toggle_shortcut) {
-                self.register_combo(app, toggle_shortcut, RecordingMode::Toggle)?;
+            let res = if is_combo_shortcut(toggle_shortcut) {
+                self.register_combo(app, toggle_shortcut, RecordingMode::Toggle)
             } else {
-                self.register_single_key(toggle_shortcut, RecordingMode::Toggle)?;
+                self.register_single_key(toggle_shortcut, RecordingMode::Toggle)
+            };
+            match res {
+                Ok(()) => self.registered_toggle = Some(toggle_shortcut.to_string()),
+                Err(e) => errors.push(e),
             }
-            self.registered_toggle = Some(toggle_shortcut.to_string());
         }
 
         // Register Voice Edit hotkey (combo only; single-key support deferred)
         if !edit_shortcut.is_empty() && is_combo_shortcut(edit_shortcut) {
-            self.register_edit_combo(app, edit_shortcut)?;
-            self.registered_edit = Some(edit_shortcut.to_string());
+            match self.register_edit_combo(app, edit_shortcut) {
+                Ok(()) => self.registered_edit = Some(edit_shortcut.to_string()),
+                Err(e) => errors.push(e),
+            }
         }
 
-        // Ensure rdev listener thread is running if any single keys are registered
+        // Always start the rdev listener so single-key shortcuts work even
+        // when X11 combo registration fails.
         self.ensure_rdev_thread(app);
 
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
     fn unregister_all(&mut self, app: &AppHandle) {
-        if self.registered_ptt.is_some()
-            || self.registered_toggle.is_some()
-            || self.registered_edit.is_some()
-        {
-            let _ = app.global_shortcut().unregister_all();
-        }
+        // Always clear X11 grabs unconditionally — stale grabs from a previous
+        // crash or from a failed partial registration must be cleaned up.
+        let _ = app.global_shortcut().unregister_all();
         self.rdev_state.ptt_key_index.store(0, Ordering::SeqCst);
         self.rdev_state
             .toggle_key_index
@@ -217,7 +234,7 @@ impl HotkeyManager {
                 let ptt_down = AtomicBool::new(false);
                 let toggle_down = AtomicBool::new(false);
 
-                let _ = rdev::listen(move |event| {
+                if let Err(e) = rdev::listen(move |event| {
                     let ptt_idx = rdev_state.ptt_key_index.load(Ordering::SeqCst);
                     let toggle_idx = rdev_state.toggle_key_index.load(Ordering::SeqCst);
 
@@ -300,7 +317,9 @@ impl HotkeyManager {
                     if toggle_idx == 0 {
                         toggle_down.store(false, Ordering::SeqCst);
                     }
-                });
+                }) {
+                    eprintln!("rdev: listen failed: {e:?}");
+                }
             });
         }
     }
@@ -521,16 +540,26 @@ async fn do_stop_recording(
                     cmd.env("VOXPEN_WINDOW_ID", wid);
                 }
                 if let Some(ref app_name) = active_app {
-                    cmd.env("VOXPEN_ACTIVE_APP", app_name);
+                    cmd.env("VOXPEN_ACTIVE_APP", app_name.to_lowercase());
                 }
                 match cmd
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::inherit())
                     .spawn()
                 {
-                    Ok(_) => {}
-                    Err(e) => eprintln!("paste script spawn failed: {e}"),
+                    Ok(mut child) => {
+                        // Wait briefly for the paste script to finish so we can log errors
+                        match child.wait() {
+                            Ok(status) => {
+                                if !status.success() {
+                                    eprintln!("paste: script exited with {status}");
+                                }
+                            }
+                            Err(e) => eprintln!("paste: wait error: {e}"),
+                        }
+                    }
+                    Err(e) => eprintln!("paste: script spawn failed: {e}"),
                 }
             }
             #[cfg(not(target_os = "linux"))]

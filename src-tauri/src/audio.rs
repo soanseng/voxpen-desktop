@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleRate, Stream};
+use cpal::{SampleFormat, SampleRate, Stream};
 
 use voxpen_core::audio::encoder;
 use voxpen_core::audio::recorder::AudioRecorder;
@@ -86,6 +86,7 @@ impl AudioRecorder for CpalRecorder {
 
         let rate = default_cfg.sample_rate().0;
         let channels = default_cfg.channels();
+        let sample_format = default_cfg.sample_format();
 
         let config = cpal::StreamConfig {
             channels,
@@ -102,18 +103,43 @@ impl AudioRecorder for CpalRecorder {
         let recording = Arc::clone(&self.recording);
         recording.store(true, Ordering::SeqCst);
 
-        let stream = device
-            .build_input_stream(
-                &config,
-                move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    if recording.load(Ordering::SeqCst) {
-                        buffer.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(data);
-                    }
-                },
-                |err| eprintln!("audio stream error: {err}"),
-                None,
-            )
-            .map_err(|e| AppError::Audio(format!("failed to build input stream: {e}")))?;
+        // Build input stream matching the device's native sample format.
+        // PipeWire defaults to F32; older ALSA setups may use I16.
+        let stream = match sample_format {
+            SampleFormat::F32 => {
+                let buffer = Arc::clone(&buffer);
+                let recording = Arc::clone(&recording);
+                device.build_input_stream(
+                    &config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        if recording.load(Ordering::SeqCst) {
+                            let converted: Vec<i16> = data.iter().map(|&s| {
+                                (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+                            }).collect();
+                            buffer.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(&converted);
+                        }
+                    },
+                    |err| eprintln!("audio stream error: {err}"),
+                    None,
+                )
+            }
+            SampleFormat::I16 => {
+                device.build_input_stream(
+                    &config,
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        if recording.load(Ordering::SeqCst) {
+                            buffer.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(data);
+                        }
+                    },
+                    |err| eprintln!("audio stream error: {err}"),
+                    None,
+                )
+            }
+            fmt => {
+                return Err(AppError::Audio(format!("unsupported sample format: {fmt:?}")));
+            }
+        }
+        .map_err(|e| AppError::Audio(format!("failed to build input stream: {e}")))?;
 
         stream
             .play()

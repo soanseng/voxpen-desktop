@@ -7,12 +7,14 @@ pub mod recorder;
 ///
 /// For 16-bit PCM (range -32768..32767):
 /// - Dead silence: RMS ≈ 0
-/// - Quiet room background: RMS ≈ 50–300
-/// - Quiet speech: RMS ≈ 500–2000
-/// - Normal speech: RMS ≈ 2000–8000
+/// - Quiet room background: RMS ≈ 20–80
+/// - Quiet speech (laptop mic): RMS ≈ 80–500
+/// - Normal speech: RMS ≈ 500–8000
 ///
-/// 200 is conservative — catches genuine silence while allowing quiet speech.
-const SILENCE_RMS_THRESHOLD: f64 = 200.0;
+/// 50 is conservative — catches genuine dead silence while allowing quiet
+/// laptop mics and low-gain devices (e.g. Meteor Lake sof-hda-dsp via
+/// PipeWire F32→I16 path).
+const SILENCE_RMS_THRESHOLD: f64 = 50.0;
 
 /// Check if PCM audio data is effectively silent (no speech detected).
 ///
@@ -43,8 +45,8 @@ mod tests {
 
     #[test]
     fn should_detect_low_noise_as_silent() {
-        // Simulate low background noise (RMS ≈ 50)
-        let data: Vec<i16> = (0..16000).map(|i| (i % 100) as i16 - 50).collect();
+        // Simulate very low background noise (RMS ≈ 15)
+        let data: Vec<i16> = (0..16000).map(|i| (i % 30) as i16 - 15).collect();
         assert!(is_silent(&data));
     }
 
