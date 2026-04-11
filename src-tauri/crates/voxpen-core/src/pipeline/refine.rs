@@ -57,12 +57,25 @@ pub async fn refine(
     system_prompt.push_str(SPEECH_TAG_INSTRUCTION);
     let user_content = format!("<speech>\n{text}\n</speech>");
 
+    // Dynamically raise max_tokens so long transcriptions aren't truncated.
+    // Refinement/translation output is roughly the same length as input.
+    // Estimate needed tokens from char count (not byte count — avoids 3×
+    // overestimate for CJK UTF-8). Multiply by 2 for safety margin (covers
+    // CJK's ~1.5 chars/token ratio plus minor expansion from punctuation).
+    // Floor: configured default (2048). Cap: 16384 to stay within API limits.
+    let estimated_output_tokens = (text.chars().count() as u32).saturating_mul(2);
+    let mut config = config.clone();
+    config.max_tokens = config
+        .max_tokens
+        .max(estimated_output_tokens.saturating_add(1024))
+        .min(16384);
+
     let base_url = if provider == "custom" && !custom_base_url.is_empty() {
         custom_base_url
     } else {
         groq::base_url_for_provider(provider)
     };
-    groq::chat_completion_with_provider(config, &system_prompt, &user_content, provider, base_url)
+    groq::chat_completion_with_provider(&config, &system_prompt, &user_content, provider, base_url)
         .await
 }
 
@@ -93,7 +106,13 @@ async fn refine_with_base_url(
     };
     system_prompt.push_str(SPEECH_TAG_INSTRUCTION);
     let user_content = format!("<speech>\n{text}\n</speech>");
-    groq::chat_completion_with_provider(config, &system_prompt, &user_content, provider, base_url)
+    let estimated_output_tokens = (text.chars().count() as u32).saturating_mul(2);
+    let mut config = config.clone();
+    config.max_tokens = config
+        .max_tokens
+        .max(estimated_output_tokens.saturating_add(1024))
+        .min(16384);
+    groq::chat_completion_with_provider(&config, &system_prompt, &user_content, provider, base_url)
         .await
 }
 

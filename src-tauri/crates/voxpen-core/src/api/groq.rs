@@ -30,7 +30,7 @@ pub const DEFAULT_LLM_MODEL: &str = "openai/gpt-oss-120b";
 pub const ALT_LLM_MODEL: &str = "openai/gpt-oss-20b";
 /// LLM temperature (low for consistent refinement)
 pub const LLM_TEMPERATURE: f32 = 0.3;
-/// LLM max tokens
+/// Default LLM max tokens (floor value; dynamically raised for long input)
 pub const LLM_MAX_TOKENS: u32 = 2048;
 
 /// Configuration for a single STT API call.
