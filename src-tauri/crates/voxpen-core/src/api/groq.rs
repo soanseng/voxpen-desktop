@@ -513,12 +513,16 @@ pub(crate) async fn chat_completion_with_provider(
         .map(|c| c.message.content)
         .ok_or_else(|| AppError::Refinement("no response from LLM".to_string()))?;
 
-    // Strip <think>…</think> blocks that reasoning models (Qwen3, DeepSeek-R1,
-    // etc.) may emit even when reasoning_format is set. This is a universal
-    // safety net for all providers including custom endpoints.
-    let text = strip_thinking_tags(&text);
+    // Clean up wrapper tags that models may echo from our prompt scaffolding.
+    let text = clean_llm_output(&text);
 
     Ok(text)
+}
+
+/// Clean common model-only wrapper tags from LLM output.
+fn clean_llm_output(text: &str) -> String {
+    let without_thinking = strip_thinking_tags(text);
+    strip_outer_speech_tags(&without_thinking)
 }
 
 /// Strip `<think>…</think>` blocks from LLM output.
@@ -541,6 +545,19 @@ fn strip_thinking_tags(text: &str) -> String {
     }
     result.push_str(rest);
     result.trim().to_string()
+}
+
+/// Strip a single outer `<speech>…</speech>` wrapper if it encloses the whole
+/// output. Inner or partial mentions are left untouched.
+fn strip_outer_speech_tags(text: &str) -> String {
+    let trimmed = text.trim();
+    let Some(after_open) = trimmed.strip_prefix("<speech>") else {
+        return trimmed.to_string();
+    };
+    let Some(inner) = after_open.strip_suffix("</speech>") else {
+        return trimmed.to_string();
+    };
+    inner.trim().to_string()
 }
 
 #[cfg(test)]
@@ -1062,6 +1079,30 @@ mod tests {
     fn should_handle_empty_think_block() {
         let input = "<think></think>Just the answer";
         assert_eq!(strip_thinking_tags(input), "Just the answer");
+    }
+
+    #[test]
+    fn should_strip_outer_speech_tags() {
+        let input = "<speech>\n整理後的文字\n</speech>";
+        assert_eq!(strip_outer_speech_tags(input), "整理後的文字");
+    }
+
+    #[test]
+    fn should_not_strip_partial_speech_tags() {
+        let input = "整理後的文字 </speech>";
+        assert_eq!(strip_outer_speech_tags(input), "整理後的文字 </speech>");
+    }
+
+    #[test]
+    fn should_not_strip_inline_speech_tags() {
+        let input = "請保留 <speech> 這個字串作為範例";
+        assert_eq!(strip_outer_speech_tags(input), "請保留 <speech> 這個字串作為範例");
+    }
+
+    #[test]
+    fn should_clean_thinking_and_outer_speech_tags() {
+        let input = "<think>reasoning</think><speech>\n整理後的文字\n</speech>";
+        assert_eq!(clean_llm_output(input), "整理後的文字");
     }
 
     // -----------------------------------------------------------------------
