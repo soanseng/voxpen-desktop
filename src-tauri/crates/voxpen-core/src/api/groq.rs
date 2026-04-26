@@ -3,7 +3,10 @@ use std::fmt;
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CONNECT_TIMEOUT, GROQ_BASE_URL, OPENAI_BASE_URL, OPENROUTER_BASE_URL, READ_WRITE_TIMEOUT};
+use crate::api::{
+    CONNECT_TIMEOUT, GROQ_BASE_URL, OPENAI_BASE_URL, OPENROUTER_BASE_URL, READ_WRITE_TIMEOUT,
+    STT_TIMEOUT,
+};
 use crate::error::AppError;
 use crate::pipeline::state::Language;
 
@@ -273,7 +276,7 @@ pub(crate) async fn transcribe_with_base_url(
 ) -> Result<String, AppError> {
     let client = reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(READ_WRITE_TIMEOUT)
+        .timeout(STT_TIMEOUT)
         .build()
         .map_err(AppError::Network)?;
 

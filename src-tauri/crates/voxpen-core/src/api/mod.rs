@@ -4,6 +4,9 @@ use std::time::Duration;
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// HTTP read/write timeout (matching Android OkHttp config)
 pub const READ_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Speech-to-text request timeout. Long recordings can need more than the
+/// generic chat timeout for upload and transcription.
+pub const STT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Groq API base URL
 pub const GROQ_BASE_URL: &str = "https://api.groq.com/";
