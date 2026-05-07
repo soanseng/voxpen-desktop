@@ -120,7 +120,16 @@ pub async fn save_settings(
     store.save().map_err(|e| e.to_string())?;
 
     // Sync to shared settings so providers use the latest values
-    *state.settings.lock().await = settings.clone();
+    let hotkeys_changed = {
+        let mut shared = state.settings.lock().await;
+        let changed = shared.hotkey_ptt != settings.hotkey_ptt
+            || shared.hotkey_toggle != settings.hotkey_toggle
+            || shared.hotkey_edit != settings.hotkey_edit
+            || shared.listen_command_enabled != settings.listen_command_enabled
+            || shared.hotkey_listen_command != settings.hotkey_listen_command;
+        *shared = settings.clone();
+        changed
+    };
 
     // Sync pipeline controller config (refinement_enabled, language, models)
     let mut ctrl = state.controller.lock().await;
@@ -135,6 +144,18 @@ pub async fn save_settings(
             state.local_stt.set_model_path(path);
         }
         state.local_stt.set_language(settings.stt_language.clone());
+    }
+
+    if hotkeys_changed {
+        let mut mgr = state.hotkey_manager.lock().await;
+        mgr.register_all(
+            &app,
+            &settings.hotkey_ptt,
+            &settings.hotkey_toggle,
+            &settings.hotkey_edit,
+            settings.listen_command_enabled,
+            &settings.hotkey_listen_command,
+        )?;
     }
 
     Ok(())
