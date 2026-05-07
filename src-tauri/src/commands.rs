@@ -37,7 +37,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
 
-/// Change a hotkey at runtime. `kind` is "ptt" or "toggle".
+/// Change a hotkey at runtime. `kind` is "ptt", "toggle", "edit", or "listen_command".
 #[tauri::command]
 pub async fn set_hotkey(
     app: tauri::AppHandle,
@@ -45,8 +45,8 @@ pub async fn set_hotkey(
     shortcut: String,
     kind: String,
 ) -> Result<(), String> {
-    // Empty shortcut is only invalid for ptt and toggle; "edit" can be empty (= disabled)
-    if shortcut.trim().is_empty() && kind != "edit" {
+    // Empty shortcut is only invalid for ptt and toggle; optional feature hotkeys can be empty.
+    if shortcut.trim().is_empty() && kind != "edit" && kind != "listen_command" {
         return Err("Hotkey cannot be empty".to_string());
     }
 
@@ -56,6 +56,7 @@ pub async fn set_hotkey(
         "ptt" => s.hotkey_ptt = shortcut.clone(),
         "toggle" => s.hotkey_toggle = shortcut.clone(),
         "edit" => s.hotkey_edit = shortcut.clone(),
+        "listen_command" => s.hotkey_listen_command = shortcut.clone(),
         _ => return Err(format!("Unknown hotkey kind: {kind}")),
     }
     let settings_clone = s.clone();
@@ -68,6 +69,8 @@ pub async fn set_hotkey(
         &settings_clone.hotkey_ptt,
         &settings_clone.hotkey_toggle,
         &settings_clone.hotkey_edit,
+        settings_clone.listen_command_enabled,
+        &settings_clone.hotkey_listen_command,
     )?;
     drop(mgr);
 

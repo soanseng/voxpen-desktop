@@ -110,6 +110,7 @@ pub struct HotkeyManager {
     registered_ptt: Option<String>,
     registered_toggle: Option<String>,
     registered_edit: Option<String>,
+    registered_listen_command: Option<String>,
     rdev_state: Arc<RdevState>,
 }
 
@@ -119,6 +120,7 @@ impl HotkeyManager {
             registered_ptt: None,
             registered_toggle: None,
             registered_edit: None,
+            registered_listen_command: None,
             rdev_state: Arc::new(RdevState {
                 ptt_key_index: AtomicU8::new(0),
                 toggle_key_index: AtomicU8::new(0),
@@ -140,6 +142,8 @@ impl HotkeyManager {
         ptt_shortcut: &str,
         toggle_shortcut: &str,
         edit_shortcut: &str,
+        listen_command_enabled: bool,
+        listen_command_shortcut: &str,
     ) -> Result<(), String> {
         self.unregister_all(app);
 
@@ -177,6 +181,16 @@ impl HotkeyManager {
             }
         }
 
+        if listen_command_enabled
+            && !listen_command_shortcut.is_empty()
+            && is_combo_shortcut(listen_command_shortcut)
+        {
+            match self.register_listen_command_combo(app, listen_command_shortcut) {
+                Ok(()) => self.registered_listen_command = Some(listen_command_shortcut.to_string()),
+                Err(e) => errors.push(e),
+            }
+        }
+
         // Always start the rdev listener so single-key shortcuts work even
         // when X11 combo registration fails.
         self.ensure_rdev_thread(app);
@@ -197,6 +211,27 @@ impl HotkeyManager {
         self.registered_ptt = None;
         self.registered_toggle = None;
         self.registered_edit = None;
+        self.registered_listen_command = None;
+    }
+
+    fn register_listen_command_combo(&self, app: &AppHandle, shortcut: &str) -> Result<(), String> {
+        let app_handle = app.clone();
+        let processing = self.rdev_state.processing.clone();
+
+        app.global_shortcut()
+            .on_shortcut(shortcut, move |_app, _shortcut, event| {
+                let app = app_handle.clone();
+                let state: tauri::State<'_, AppState> = app.state();
+                handle_listen_command_hotkey_event(&app, &state, event.state, &processing, true);
+            })
+            .map_err(|e| {
+                format!(
+                    "Failed to register listen command shortcut '{}': {}",
+                    shortcut, e
+                )
+            })?;
+
+        Ok(())
     }
 
     fn register_edit_combo(&self, app: &AppHandle, shortcut: &str) -> Result<(), String> {
@@ -1227,6 +1262,161 @@ fn handle_edit_hotkey_event(
     }
 }
 
+/// Press/release handler for the Listen to My Command hotkey.
+fn handle_listen_command_hotkey_event(
+    app: &AppHandle,
+    state: &tauri::State<'_, AppState>,
+    shortcut_state: ShortcutState,
+    processing: &Arc<AtomicBool>,
+    is_combo: bool,
+) {
+    let is_recording = state.recording_started.load(Ordering::SeqCst);
+    let action = resolve_action(
+        shortcut_state,
+        &RecordingMode::HoldToRecord,
+        is_recording,
+        is_combo,
+    );
+
+    match action {
+        HotkeyAction::Ignore => {}
+        HotkeyAction::Start => start_listen_command_recording(app, state, processing),
+        HotkeyAction::Stop => stop_listen_command_recording(app, state, processing),
+    }
+}
+
+fn start_listen_command_recording(
+    app: &AppHandle,
+    state: &tauri::State<'_, AppState>,
+    processing: &Arc<AtomicBool>,
+) {
+    if processing
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+
+    let controller = state.controller.clone();
+    let recorder = state.recorder.clone();
+    let recording_started = state.recording_started.clone();
+    let processing_flag = processing.clone();
+    let app_for_err = app.clone();
+    let audio_ducker = state.audio_ducker.clone();
+    let settings = state.settings.clone();
+
+    recording_started.store(false, Ordering::SeqCst);
+
+    tauri::async_runtime::spawn(async move {
+        let ctrl = controller.lock().await;
+        if let Err(e) = ctrl.on_start_recording() {
+            let _ = app_for_err.emit(
+                "pipeline-state",
+                &PipelineState::Error {
+                    message: e.to_string(),
+                },
+            );
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+        drop(ctrl);
+
+        match recorder.start() {
+            Ok(()) => {
+                recording_started.store(true, Ordering::SeqCst);
+                let s = settings.lock().await;
+                if s.audio_ducking_enabled {
+                    if let Err(e) = audio_ducker.duck(s.audio_ducking_volume) {
+                        eprintln!("listen command: audio ducking failed (non-fatal): {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                let msg = format_audio_error(&e);
+                let _ = app_for_err.emit("pipeline-state", &PipelineState::Error { message: msg });
+                processing_flag.store(false, Ordering::SeqCst);
+            }
+        }
+    });
+}
+
+fn stop_listen_command_recording(
+    app: &AppHandle,
+    state: &tauri::State<'_, AppState>,
+    processing: &Arc<AtomicBool>,
+) {
+    let controller = state.controller.clone();
+    let recorder = state.recorder.clone();
+    let clipboard = state.clipboard.clone();
+    let keyboard = state.keyboard.clone();
+    let settings = state.settings.clone();
+    let history = state.history.clone();
+    let dictionary = state.dictionary.clone();
+    let license_mgr = state.license_manager.clone();
+    let app_handle = app.clone();
+    let recording_started = state.recording_started.clone();
+    let processing_flag = processing.clone();
+    let timeout_handle = state.recording_timeout_handle.clone();
+    #[cfg(target_os = "linux")]
+    let focused_window_id = crate::active_window::get_focused_window_id();
+    #[cfg(not(target_os = "linux"))]
+    let focused_window_id: Option<String> = None;
+    let active_app = crate::active_window::get_active_app_name();
+    let audio_ducker = state.audio_ducker.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !recording_started.load(Ordering::SeqCst) {
+            if tokio::time::Instant::now() >= deadline {
+                eprintln!("listen command: recording never started, aborting");
+                let ctrl = controller.lock().await;
+                ctrl.reset();
+                drop(ctrl);
+                processing_flag.store(false, Ordering::SeqCst);
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        recording_started.store(false, Ordering::SeqCst);
+
+        if let Err(e) = audio_ducker.restore() {
+            eprintln!("listen command: audio restore failed (non-fatal): {e}");
+        }
+
+        if let Some(h) = timeout_handle.lock().await.take() {
+            h.abort();
+        }
+
+        let pcm_data = match recorder.stop() {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("listen command: audio stop error: {e}");
+                let ctrl = controller.lock().await;
+                ctrl.reset();
+                drop(ctrl);
+                processing_flag.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+
+        do_listen_command_stop(
+            app_handle,
+            controller,
+            clipboard,
+            keyboard,
+            settings,
+            history,
+            dictionary,
+            license_mgr,
+            pcm_data,
+            processing_flag,
+            focused_window_id,
+            active_app,
+        )
+        .await;
+    });
+}
+
 /// Voice edit stop: STT the edit command, run LLM with voice-edit prompt,
 /// paste the result to replace the original selection.
 #[allow(clippy::too_many_arguments, unused_variables)]
@@ -1487,6 +1677,261 @@ async fn do_voice_edit_stop(
     processing_flag.store(false, Ordering::SeqCst);
 
     // Reset to idle after delay
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let ctrl = controller.lock().await;
+    match ctrl.current_state() {
+        PipelineState::Refined { .. } | PipelineState::Error { .. } => {
+            ctrl.reset();
+        }
+        _ => {}
+    }
+    drop(ctrl);
+}
+
+#[allow(clippy::too_many_arguments, unused_variables)]
+async fn do_listen_command_stop(
+    app: tauri::AppHandle,
+    controller: Arc<
+        tokio::sync::Mutex<
+            voxpen_core::pipeline::controller::PipelineController<
+                crate::state::GroqSttProvider,
+                crate::state::GroqLlmProvider,
+            >,
+        >,
+    >,
+    clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
+    keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
+    settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
+    history: Arc<crate::history::HistoryDb>,
+    dictionary: Arc<crate::dictionary::DictionaryDb>,
+    license_mgr: Arc<
+        voxpen_core::licensing::LicenseManager<
+            voxpen_core::licensing::DirectLemonSqueezy,
+            crate::licensing::TauriLicenseStore,
+            crate::licensing::SqliteUsageDb,
+        >,
+    >,
+    pcm_data: Vec<i16>,
+    processing_flag: Arc<std::sync::atomic::AtomicBool>,
+    focused_window_id: Option<String>,
+    active_app: Option<String>,
+) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    #[cfg(not(target_os = "linux"))]
+    use voxpen_core::input::paste::paste_text;
+
+    let pcm_len = pcm_data.len();
+
+    if pcm_len < 4000 {
+        let ctrl = controller.lock().await;
+        ctrl.emit_error(
+            "Command recording was too short. Speak for at least 0.25 seconds.".to_string(),
+        );
+        drop(ctrl);
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    if voxpen_core::audio::is_silent(&pcm_data) {
+        let ctrl = controller.lock().await;
+        ctrl.emit_error("No speech detected. Please try again.".to_string());
+        drop(ctrl);
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    let vocab_words = dictionary.get_words(500).unwrap_or_default();
+    let (stt_lang, command_provider, command_model, command_custom_base_url, auto_paste) = {
+        let s = settings.lock().await;
+        (
+            s.stt_language.clone(),
+            s.listen_command_provider.clone(),
+            s.listen_command_model.clone(),
+            s.listen_command_custom_base_url.clone(),
+            s.auto_paste,
+        )
+    };
+    let vocabulary_hint =
+        voxpen_core::pipeline::vocabulary::build_stt_hint(&vocab_words, &stt_lang);
+
+    let ctrl = controller.lock().await;
+    let spoken_command = match ctrl
+        .on_stop_recording_stt_only(pcm_data, vocabulary_hint)
+        .await
+    {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("listen command: STT failed: {e}");
+            ctrl.emit_error(e.to_string());
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+    drop(ctrl);
+
+    let voice_status =
+        license_mgr.check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
+    if voice_status == voxpen_core::licensing::UsageStatus::Exhausted {
+        let ctrl = controller.lock().await;
+        ctrl.emit_error(
+            "Daily voice limit reached. Upgrade to Pro for unlimited access.".to_string(),
+        );
+        drop(ctrl);
+        let _ = app.emit("usage-exhausted", ());
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    // v1 metering reuses the existing AI quota bucket to avoid a license schema migration.
+    let command_status =
+        license_mgr.check_category(voxpen_core::licensing::UsageCategory::Refinement);
+    if command_status == voxpen_core::licensing::UsageStatus::Exhausted {
+        let ctrl = controller.lock().await;
+        ctrl.emit_error(
+            "Daily AI command limit reached. Upgrade to Pro for unlimited access.".to_string(),
+        );
+        drop(ctrl);
+        let _ = app.emit("usage-exhausted", ());
+        processing_flag.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    let llm_key = match crate::state::get_api_key_from_handle(&app, &command_provider) {
+        Ok(k) => k,
+        Err(e) => {
+            let ctrl = controller.lock().await;
+            ctrl.emit_error(format!("Command LLM API key not configured: {e}"));
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    let chat_config = voxpen_core::api::groq::ChatConfig {
+        api_key: llm_key,
+        model: command_model.clone(),
+        temperature: voxpen_core::api::groq::LLM_TEMPERATURE,
+        max_tokens: 4096,
+    };
+
+    let generated = match tokio::time::timeout(
+        std::time::Duration::from_secs(45),
+        voxpen_core::pipeline::task_command::generate(
+            &spoken_command,
+            active_app.as_deref(),
+            &chat_config,
+            &command_provider,
+            &command_custom_base_url,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            let ctrl = controller.lock().await;
+            ctrl.emit_error(format!("Listen to My Command failed: {e}"));
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+        Err(_) => {
+            let ctrl = controller.lock().await;
+            ctrl.emit_error("Listen to My Command timed out after 45s".to_string());
+            drop(ctrl);
+            processing_flag.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    {
+        let ctrl = controller.lock().await;
+        ctrl.emit_refined(spoken_command.clone(), generated.clone());
+        drop(ctrl);
+    }
+
+    let entry = {
+        let s = settings.lock().await;
+        voxpen_core::history::TranscriptionEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+            original_text: spoken_command,
+            refined_text: Some(generated.clone()),
+            language: s.stt_language.clone(),
+            audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
+            provider: s.stt_provider.clone(),
+            status: voxpen_core::history::TranscriptionStatus::Completed,
+            error_message: None,
+            audio_path: None,
+            kind: voxpen_core::history::TranscriptionKind::ListenCommand,
+            llm_provider: Some(command_provider.clone()),
+            llm_model: Some(command_model.clone()),
+        }
+    };
+
+    if let Err(e) = history.insert(&entry) {
+        eprintln!("listen command history insert error: {e}");
+    }
+
+    let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::VoiceInput);
+    // Same quota bucket as refinement in v1, but command mode uses separate provider/model settings.
+    let _ = license_mgr.record_usage(voxpen_core::licensing::UsageCategory::Refinement);
+    let _ = app.emit("usage-updated", ());
+
+    if auto_paste {
+        {
+            let ctrl = controller.lock().await;
+            ctrl.reset();
+            drop(ctrl);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        #[cfg(target_os = "linux")]
+        {
+            let original = clipboard.get_text().unwrap_or(None);
+            let script_path = crate::paste_script_path(&app);
+            let mut cmd = std::process::Command::new("setsid");
+            cmd.arg(&script_path).arg(&generated);
+            if let Some(ref orig) = original {
+                cmd.arg(orig);
+            }
+            if let Some(ref wid) = focused_window_id {
+                cmd.env("VOXPEN_WINDOW_ID", wid);
+            }
+            if let Some(ref app_name) = active_app {
+                cmd.env("VOXPEN_ACTIVE_APP", app_name);
+            }
+            match cmd
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(_) => {}
+                Err(e) => eprintln!("listen command: paste script spawn failed: {e}"),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let text = generated.clone();
+            let cb = clipboard.clone();
+            let kb = keyboard.clone();
+            match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
+                .await
+            {
+                Ok(Err(e)) => eprintln!("listen command: paste failed: {e}"),
+                Err(e) => eprintln!("listen command: paste task panicked: {e}"),
+                Ok(Ok(())) => {}
+            }
+        }
+    }
+
+    processing_flag.store(false, Ordering::SeqCst);
+
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let ctrl = controller.lock().await;
     match ctrl.current_state() {
