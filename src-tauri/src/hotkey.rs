@@ -13,6 +13,8 @@ use voxpen_core::pipeline::state::{PipelineState, RecordingMode};
 
 use crate::state::AppState;
 
+const SINGLE_KEY_RELEASE_DEBOUNCE_MS: u64 = 50;
+
 /// Lookup table mapping index (1-based) to rdev::Key.
 /// Index 0 means "disabled / no key active".
 const RDEV_KEY_TABLE: &[rdev::Key] = &[
@@ -46,6 +48,52 @@ struct RdevState {
     thread_spawned: AtomicBool,
     /// Debounce flag shared with the hotkey event handler.
     processing: Arc<AtomicBool>,
+}
+
+/// Tracks a single rdev key across key-repeat press/release pairs.
+///
+/// Some Linux input stacks report held keys as repeated Release/Press pairs.
+/// For push-to-talk that would stop the recording at the first repeat tick.
+/// We defer Release briefly and cancel it if a matching Press arrives.
+struct SingleKeyState {
+    down: AtomicBool,
+    release_pending: AtomicBool,
+}
+
+impl SingleKeyState {
+    fn new() -> Self {
+        Self {
+            down: AtomicBool::new(false),
+            release_pending: AtomicBool::new(false),
+        }
+    }
+
+    fn on_press(&self) -> bool {
+        if self.release_pending.swap(false, Ordering::SeqCst) {
+            self.down.store(true, Ordering::SeqCst);
+            return false;
+        }
+
+        !self.down.swap(true, Ordering::SeqCst)
+    }
+
+    fn on_release(&self) -> bool {
+        if self.down.swap(false, Ordering::SeqCst) {
+            self.release_pending.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn should_emit_debounced_release(&self) -> bool {
+        self.release_pending.swap(false, Ordering::SeqCst) && !self.down.load(Ordering::SeqCst)
+    }
+
+    fn reset(&self) {
+        self.down.store(false, Ordering::SeqCst);
+        self.release_pending.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Look up a key name and return its 1-based index into RDEV_KEY_TABLE.
@@ -218,8 +266,8 @@ impl HotkeyManager {
             let rdev_state = self.rdev_state.clone();
 
             thread::spawn(move || {
-                let ptt_down = AtomicBool::new(false);
-                let toggle_down = AtomicBool::new(false);
+                let ptt_state = Arc::new(SingleKeyState::new());
+                let toggle_state = Arc::new(SingleKeyState::new());
 
                 if let Err(e) = rdev::listen(move |event| {
                     let ptt_idx = rdev_state.ptt_key_index.load(Ordering::SeqCst);
@@ -230,7 +278,7 @@ impl HotkeyManager {
                             // Check PTT key
                             if ptt_idx > 0
                                 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize]
-                                && !ptt_down.swap(true, Ordering::SeqCst)
+                                && ptt_state.on_press()
                             {
                                 let app = app_handle.clone();
                                 let s: tauri::State<'_, AppState> = app.state();
@@ -246,7 +294,7 @@ impl HotkeyManager {
                             // Check Toggle key
                             if toggle_idx > 0
                                 && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
-                                && !toggle_down.swap(true, Ordering::SeqCst)
+                                && toggle_state.on_press()
                             {
                                 let app = app_handle.clone();
                                 let s: tauri::State<'_, AppState> = app.state();
@@ -264,33 +312,25 @@ impl HotkeyManager {
                             // Check PTT key
                             if ptt_idx > 0
                                 && k == RDEV_KEY_TABLE[(ptt_idx - 1) as usize]
-                                && ptt_down.swap(false, Ordering::SeqCst)
+                                && ptt_state.on_release()
                             {
-                                let app = app_handle.clone();
-                                let s: tauri::State<'_, AppState> = app.state();
-                                handle_hotkey_event(
-                                    &app,
-                                    &s,
-                                    ShortcutState::Released,
-                                    &rdev_state.processing,
-                                    false,
-                                    &RecordingMode::HoldToRecord,
+                                schedule_single_key_release(
+                                    app_handle.clone(),
+                                    rdev_state.clone(),
+                                    ptt_state.clone(),
+                                    RecordingMode::HoldToRecord,
                                 );
                             }
                             // Check Toggle key
                             if toggle_idx > 0
                                 && k == RDEV_KEY_TABLE[(toggle_idx - 1) as usize]
-                                && toggle_down.swap(false, Ordering::SeqCst)
+                                && toggle_state.on_release()
                             {
-                                let app = app_handle.clone();
-                                let s: tauri::State<'_, AppState> = app.state();
-                                handle_hotkey_event(
-                                    &app,
-                                    &s,
-                                    ShortcutState::Released,
-                                    &rdev_state.processing,
-                                    false,
-                                    &RecordingMode::Toggle,
+                                schedule_single_key_release(
+                                    app_handle.clone(),
+                                    rdev_state.clone(),
+                                    toggle_state.clone(),
+                                    RecordingMode::Toggle,
                                 );
                             }
                         }
@@ -299,10 +339,10 @@ impl HotkeyManager {
 
                     // Reset key_down flags when respective key is disabled
                     if ptt_idx == 0 {
-                        ptt_down.store(false, Ordering::SeqCst);
+                        ptt_state.reset();
                     }
                     if toggle_idx == 0 {
-                        toggle_down.store(false, Ordering::SeqCst);
+                        toggle_state.reset();
                     }
                 }) {
                     eprintln!("rdev: listen failed: {e:?}");
@@ -310,6 +350,32 @@ impl HotkeyManager {
             });
         }
     }
+}
+
+fn schedule_single_key_release(
+    app_handle: AppHandle,
+    rdev_state: Arc<RdevState>,
+    key_state: Arc<SingleKeyState>,
+    mode: RecordingMode,
+) {
+    thread::spawn(move || {
+        thread::sleep(std::time::Duration::from_millis(
+            SINGLE_KEY_RELEASE_DEBOUNCE_MS,
+        ));
+
+        if key_state.should_emit_debounced_release() {
+            let app = app_handle.clone();
+            let s: tauri::State<'_, AppState> = app.state();
+            handle_hotkey_event(
+                &app,
+                &s,
+                ShortcutState::Released,
+                &rdev_state.processing,
+                false,
+                &mode,
+            );
+        }
+    });
 }
 
 /// Returns true if shortcut string is a combo (contains '+').
@@ -343,6 +409,7 @@ fn parse_rdev_key(name: &str) -> Option<rdev::Key> {
 }
 
 /// Resolved action after considering recording mode and platform quirks.
+#[derive(Debug, PartialEq, Eq)]
 enum HotkeyAction {
     Start,
     Stop,
@@ -1452,4 +1519,76 @@ fn format_audio_error(err: &voxpen_core::error::AppError) -> String {
     }
 
     msg
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_debounce_single_key_repeat_release() {
+        let key = SingleKeyState::new();
+
+        assert!(key.on_press());
+        assert!(key.on_release());
+
+        // Linux key repeat can surface as Release immediately followed by
+        // Press while the user is still holding the physical key.
+        assert!(!key.on_press());
+        assert!(!key.should_emit_debounced_release());
+
+        assert!(key.on_release());
+        assert!(key.should_emit_debounced_release());
+    }
+
+    #[test]
+    fn should_ignore_duplicate_single_key_press_until_release() {
+        let key = SingleKeyState::new();
+
+        assert!(key.on_press());
+        assert!(!key.on_press());
+        assert!(key.on_release());
+        assert!(key.should_emit_debounced_release());
+    }
+
+    #[test]
+    fn should_reset_pending_single_key_release_when_disabled() {
+        let key = SingleKeyState::new();
+
+        assert!(key.on_press());
+        assert!(key.on_release());
+        key.reset();
+
+        assert!(!key.should_emit_debounced_release());
+        assert!(key.on_press());
+    }
+
+    #[test]
+    fn should_toggle_hands_free_mode_on_press_only() {
+        assert_eq!(
+            resolve_action(ShortcutState::Pressed, &RecordingMode::Toggle, false, true),
+            HotkeyAction::Start
+        );
+        assert_eq!(
+            resolve_action(ShortcutState::Released, &RecordingMode::Toggle, true, true),
+            HotkeyAction::Ignore
+        );
+        assert_eq!(
+            resolve_action(ShortcutState::Pressed, &RecordingMode::Toggle, true, true),
+            HotkeyAction::Stop
+        );
+    }
+
+    #[test]
+    fn should_ignore_single_key_toggle_auto_repeat_press() {
+        let key = SingleKeyState::new();
+
+        assert!(key.on_press());
+        assert!(key.on_release());
+
+        // A repeat press during the same physical hold cancels pending release
+        // but must not emit a second Press that would toggle recording off.
+        assert!(!key.on_press());
+        assert!(!key.should_emit_debounced_release());
+    }
 }
