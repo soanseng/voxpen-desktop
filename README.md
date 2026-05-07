@@ -25,14 +25,15 @@ Built with **Tauri v2** (Rust backend + React frontend), BYOK (Bring Your Own Ke
 
 - **Global hotkey** — works system-wide in any app, no input method switching
 - **Hold-to-dictate** or **toggle** recording mode
-- **STT providers** — Groq Whisper, OpenAI Whisper, or custom endpoint
+- **STT providers** — Groq Whisper, OpenAI transcription models, or custom endpoint
+- **Reliable failures** — long live recordings are chunked; provider errors stay visible and can be retried from history
 - **LLM refinement** — auto-remove filler words, fix grammar, add punctuation
 - **Auto-paste** — transcription goes straight to cursor position
 - **Translation mode** — translate speech to a target language
 - **Multi-language** — Auto-detect, 中文, English, 日本語
 - **Audio ducking** — automatically lower other apps' volume while recording
-- **Floating overlay** — recording/processing status indicator
-- **Transcription history** — searchable SQLite database
+- **Floating overlay** — recording/processing status indicator with readable errors
+- **Transcription history** — searchable SQLite database with failed-recording retry
 - **No telemetry** — your API keys stay local (encrypted storage)
 
 ## Download

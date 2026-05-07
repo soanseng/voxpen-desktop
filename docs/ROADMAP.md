@@ -1,6 +1,6 @@
 # VoxPen Desktop — Feature Roadmap
 
-> Last updated: 2026-03-01
+> Last updated: 2026-05-07
 > Competitive reference: Typeless (primary benchmark), Wispr Flow
 
 ---
@@ -28,7 +28,8 @@
 | ✅ Language support: Auto / 中文 / English / 日本語 | Whisper prompt injection per language |
 | ✅ Tone presets | Casual, Professional, Email, Note, Social, Custom |
 | ✅ Custom vocabulary / personal dictionary | Injected into Whisper prompt |
-| ✅ Transcription history | SQLite, search, copy |
+| ✅ Transcription history | SQLite, search, copy, failed-recording retry |
+| ✅ Transcription reliability + manual resend | Live chunking, readable provider failures, saved WAV retry |
 | ✅ System tray | Status, quick language switch, menu |
 | ✅ Settings UI | Hotkey, STT/LLM config, API keys, theme, i18n |
 | ✅ Auto-update | Tauri updater + public releases repo |
@@ -44,6 +45,13 @@
 ---
 
 ## P0 — Safety / Reliability
+
+### Transcription Reliability + Manual Resend
+**Status:** ✅ Shipped — Plan: `docs/superpowers/plans/2026-05-07-transcription-reliability-retry.md`
+
+**Problem:** Push-to-talk and hands-free failures could look like no-ops, OpenAI/Groq provider errors could be truncated, and failed live recordings had no resend path.
+
+**Solution:** Live recordings now validate short/silent input visibly, split PCM into 60-second STT chunks, retry transient provider failures once, show bounded provider/status/body errors, persist failed live WAVs under app data, and expose history retry via `retry_transcription`.
 
 ### Recording Time Limit
 **Status:** ✅ Shipped — Plan: `docs/plans/2026-02-28-recording-time-limit.md`

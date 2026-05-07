@@ -12,7 +12,15 @@
 
 ## Planning Status
 
-Implementation has been completed on branch `fix/transcription-reliability-retry`. The checklist below is retained as the execution plan and review trace.
+Implementation has been completed and merged to `main` in commit `8e6cfcc` (`fix: make transcription failures retryable`). The checklist below is retained as the execution plan and review trace.
+
+## Implementation Result
+
+- OpenAI Audio API is a first-class STT provider for `whisper-1`, `gpt-4o-transcribe`, and `gpt-4o-mini-transcribe`.
+- OpenAI `gpt-4o*` transcription requests use `json` response format; Whisper/Groq paths keep `verbose_json`.
+- Live recordings are visibly rejected when too short or silent, split into 60-second STT chunks, and retried once for transient provider/network failures.
+- Failed live STT creates failed history rows with full bounded provider errors and saved WAV paths.
+- History retry calls `retry_transcription`, resends the saved recording with the current STT provider, and updates the same row after success.
 
 ## Problem Mapping
 
@@ -27,23 +35,23 @@ The user reports these symptoms:
 - Since recordings are already capturable, failed API calls should leave a resend path.
 - Follow-up clarification: OpenAI Audio API must be fully supported as a first-class STT provider, not just shown in settings. If OpenAI transcription fails after the user speaks, the user must be able to see the complete failure and manually resend the saved recording.
 
-Current code surfaces found in this branch:
+Original code surfaces identified before implementation:
 
-- `src-tauri/src/hotkey.rs` silently drops recordings shorter than 8000 samples, which is 0.5s at 16 kHz.
-- `src-tauri/src/hotkey.rs` silently drops recordings below `audio::is_silent()`.
-- `src-tauri/crates/voxpen-core/src/pipeline/transcribe.rs` sends the whole live recording as one WAV.
-- `src-tauri/crates/voxpen-core/src/api/groq.rs` has a 300s STT timeout but no retry/backoff and returns raw HTTP bodies that are too long for the overlay.
-- `src-tauri/src/commands.rs::test_api_key()` currently only supports `"groq"` and rejects other STT providers, so OpenAI key testing is not complete even though the settings UI offers OpenAI as an STT option.
-- Existing provider path selection in `api::groq::base_url_for_provider()` and `transcribe_with_base_url()` can target OpenAI's `/v1/audio/transcriptions`, but the plan must add explicit OpenAI tests so this does not regress or remain only incidentally supported.
-- `src-tauri/src/hotkey.rs` only writes history after successful transcription.
-- `src/components/Overlay.tsx` truncates error text with `max-w-[160px] truncate`.
+- `src-tauri/src/hotkey.rs` silently dropped recordings shorter than 8000 samples, which is 0.5s at 16 kHz.
+- `src-tauri/src/hotkey.rs` silently dropped recordings below `audio::is_silent()`.
+- `src-tauri/crates/voxpen-core/src/pipeline/transcribe.rs` sent the whole live recording as one WAV.
+- `src-tauri/crates/voxpen-core/src/api/groq.rs` had a 300s STT timeout but no retry/backoff and returned raw HTTP bodies that were too long for the overlay.
+- `src-tauri/src/commands.rs::test_api_key()` only supported `"groq"` and rejected other STT providers, so OpenAI key testing was not complete even though the settings UI offered OpenAI as an STT option.
+- Existing provider path selection in `api::groq::base_url_for_provider()` and `transcribe_with_base_url()` could target OpenAI's `/v1/audio/transcriptions`, but the plan needed explicit OpenAI tests so this did not regress or remain only incidentally supported.
+- `src-tauri/src/hotkey.rs` only wrote history after successful transcription.
+- `src/components/Overlay.tsx` truncated error text with `max-w-[160px] truncate`.
 
 ## Explicit OpenAI Audio API Support Requirements
 
 OpenAI support is complete only when all of these are true:
 
 - Selecting `stt_provider = "openai"` uses `https://api.openai.com/v1/audio/transcriptions`.
-- OpenAI STT models in settings are valid Audio API transcription models, currently `whisper-1` and `gpt-4o-transcribe`.
+- OpenAI STT models in settings are valid Audio API transcription models, currently `whisper-1`, `gpt-4o-transcribe`, and `gpt-4o-mini-transcribe`.
 - `test_api_key("openai", key)` performs an OpenAI-compatible transcription smoke test instead of returning `unsupported provider`.
 - Live push-to-talk and hands-free recordings use the same provider abstraction as Groq, including language, prompt, response format, retry, and full error normalization.
 - File transcription and failed-recording retry also work with OpenAI.
@@ -288,6 +296,7 @@ In `src/components/Settings/SttSection.tsx`, confirm `getModelsForProvider("open
 [
   { value: "whisper-1", label: "whisper-1" },
   { value: "gpt-4o-transcribe", label: "gpt-4o-transcribe" },
+  { value: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe" },
 ]
 ```
 

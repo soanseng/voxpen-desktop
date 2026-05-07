@@ -65,7 +65,7 @@ VoxPen Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux.
     └──────────────────────┘
 ```
 
-**Key principle**: The entire hotkey → record → transcribe → paste pipeline runs in Rust. The React frontend is only for the settings window and transcription history. This ensures minimal latency and no Electron-like overhead.
+**Key principle**: The entire hotkey → record → transcribe → paste pipeline runs in Rust. The React frontend is only for the settings window and transcription history. This ensures minimal latency and no Electron-like overhead. Live recordings are validated before STT, chunked into bounded provider calls, and saved as retryable WAV files when a provider failure needs manual resend.
 
 ## Core Features
 
@@ -79,6 +79,7 @@ VoxPen Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux.
 ### 2. Floating Overlay (Recording Indicator)
 - Tauri secondary window: small, frameless, always-on-top, click-through
 - States: Recording (red pulse) → Processing (spinner) → Done (green check, auto-hide) → Error (red X)
+- Error text wraps instead of truncating so provider/status/body snippets remain readable.
 - Position: user-configurable (corner of screen)
 - Does NOT steal focus from the active app
 
@@ -89,8 +90,10 @@ VoxPen Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux.
 
 ### 4. STT Providers (BYOK)
 - **Groq Whisper** (primary): `whisper-large-v3-turbo`
-- **OpenAI Whisper**: `whisper-1`, `gpt-4o-transcribe`
+- **OpenAI Audio API**: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`
 - **Custom Server**: user-defined endpoint
+- Live STT uses 60-second PCM chunking and retries retryable transient failures once (`408`, `429`, `5xx`, connect/timeout).
+- OpenAI `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` use `json` response format; Whisper/Groq paths keep `verbose_json`.
 
 #### Supported Languages (v1)
 - **Auto-detect** (default): best for mixed-language (中英混合)
@@ -119,8 +122,9 @@ VoxPen Desktop is a system-tray voice-to-text app for macOS, Windows, and Linux.
 - Overlay position, launch at login, theme (system/light/dark), i18n (繁中/English)
 
 ### 8. Transcription History
-- SQLite: id, timestamp, original_text, refined_text, language, audio_duration_ms, provider
-- Search/filter, click to copy, export (JSON/plain text), auto-cleanup (configurable retention)
+- SQLite: id, timestamp, original_text, refined_text, language, audio_duration_ms, provider, status, error_message, audio_path
+- Search/filter, click to copy, failed-row retry, export (JSON/plain text), auto-cleanup (configurable retention)
+- Failed live STT attempts are saved as WAV files under app data so users can manually resend them from history.
 
 ### 9. Audio File Transcription
 - Drag-and-drop or file picker, auto-chunking for files > 25MB
@@ -187,6 +191,7 @@ voxpen-desktop/
 │   │   ├── overlay.rs                 # Floating widget Tauri commands
 │   │   ├── storage.rs                 # Encrypted settings + API key manager
 │   │   ├── history.rs                 # SQLite transcription history
+│   │   ├── recording_store.rs         # Retryable WAV persistence for failed live STT
 │   │   └── commands.rs                # Tauri IPC commands
 │   └── icons/
 ├── src/                                # React frontend
@@ -230,9 +235,10 @@ voxpen-desktop/
 #[tauri::command] fn save_api_key(provider: String, key: String) -> Result<(), String>;
 #[tauri::command] fn get_history(limit: u32, offset: u32) -> Vec<TranscriptionEntry>;
 #[tauri::command] fn delete_history_entry(id: String) -> Result<(), String>;
+#[tauri::command] fn retry_transcription(id: String) -> Result<TranscriptionEntry, String>;
 #[tauri::command] fn transcribe_file(path: String) -> Result<TranscriptionResult, String>;
 #[tauri::command] fn set_hotkey(shortcut: String) -> Result<(), String>;
-#[tauri::command] fn test_api_key(provider: String, key: String) -> Result<bool, String>;
+#[tauri::command] fn test_api_key(provider: String, key: String) -> Result<bool, String>; // Groq/OpenAI STT smoke test
 ```
 
 ```rust
@@ -259,6 +265,25 @@ Body (multipart/form-data):
   prompt: per-language prompt hint
 ```
 
+### OpenAI Audio API STT
+```
+POST https://api.openai.com/v1/audio/transcriptions
+Headers: Authorization: Bearer {OPENAI_API_KEY}
+Body (multipart/form-data):
+  file: recording.wav (audio/wav)
+  model: whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe
+  response_format: verbose_json for whisper-1, json for gpt-4o*
+  language: zh (or en, ja, omit for auto-detect)
+  prompt: per-language prompt hint
+```
+
+### Live Transcription Reliability
+- Live PCM is split into 60-second chunks before STT; chunk texts are joined with spaces.
+- Retryable STT failures are retried once (`408`, `429`, `5xx`, connect, timeout).
+- Too-short or silent recordings emit `PipelineState::Error` instead of disappearing.
+- Provider failures are normalized as readable errors with provider name, HTTP status, and bounded response body.
+- Failed live STT saves a WAV under app data `recordings/` and writes a failed history row with `audio_path` for manual retry.
+
 ### LLM Refinement
 ```
 POST https://api.groq.com/openai/v1/chat/completions
@@ -276,8 +301,9 @@ Body (JSON):
 
 | Constant | Value | Location |
 |---|---|---|
-| Whisper models | `whisper-large-v3` / `whisper-large-v3-turbo` (default) | `api/groq.rs` |
-| STT response format | `verbose_json` | `api/groq.rs` |
+| Groq STT models | `whisper-large-v3` / `whisper-large-v3-turbo` (default) | `api/groq.rs` |
+| OpenAI STT models | `whisper-1` / `gpt-4o-transcribe` / `gpt-4o-mini-transcribe` | `api/groq.rs`, `Settings/SttSection.tsx` |
+| STT response format | `verbose_json` for Whisper/Groq, `json` for OpenAI `gpt-4o*` | `api/groq.rs` |
 | LLM models | `openai/gpt-oss-120b` (default) / `openai/gpt-oss-20b` | `api/groq.rs` |
 | LLM temperature | `0.3` | `api/groq.rs` |
 | LLM max tokens | `2048` | `api/groq.rs` |
@@ -285,11 +311,15 @@ Body (JSON):
 | PCM channels | `1` (mono) | `audio/recorder.rs` |
 | PCM bits per sample | `16` | `audio/recorder.rs` |
 | WAV header size | `44` bytes | `audio/encoder.rs` |
-| Groq base URL | `https://api.groq.com/` | `api/groq.rs` |
+| Groq base URL | `https://api.groq.com/` | `api/mod.rs` |
+| OpenAI base URL | `https://api.openai.com/` | `api/mod.rs` |
 | HTTP connect timeout | 30s | `api/mod.rs` |
 | HTTP read/write timeout | 60s | `api/mod.rs` |
 | Chunk size limit | 25 MB | `audio/chunker.rs` |
+| Live STT chunk duration | 60s | `pipeline/transcribe.rs` |
+| Retryable recording storage | App data `recordings/` | `recording_store.rs` |
 | Storage key (Groq) | `groq_api_key` | `storage.rs` |
+| Storage key (OpenAI) | `openai_api_key` | `storage.rs` |
 
 ## Default Refinement Prompts
 
