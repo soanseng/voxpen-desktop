@@ -120,6 +120,13 @@ pub async fn save_settings(
     state: tauri::State<'_, AppState>,
     settings: Settings,
 ) -> Result<(), String> {
+    if settings.listen_command_enabled
+        && !settings.hotkey_listen_command.trim().is_empty()
+        && !crate::hotkey::is_combo_shortcut(&settings.hotkey_listen_command)
+    {
+        return Err("Listen command hotkey must be a key combination".to_string());
+    }
+
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     let value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
     store.set("settings", value);
