@@ -191,6 +191,8 @@ impl HotkeyManager {
                 }
                 Err(e) => errors.push(e),
             }
+        } else if listen_command_enabled && !listen_command_shortcut.is_empty() {
+            errors.push("Listen command shortcut must be a key combination".to_string());
         }
 
         // Always start the rdev listener so single-key shortcuts work even
@@ -416,7 +418,7 @@ fn schedule_single_key_release(
 }
 
 /// Returns true if shortcut string is a combo (contains '+').
-fn is_combo_shortcut(s: &str) -> bool {
+pub(crate) fn is_combo_shortcut(s: &str) -> bool {
     s.contains('+')
 }
 

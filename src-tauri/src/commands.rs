@@ -49,6 +49,12 @@ pub async fn set_hotkey(
     if shortcut.trim().is_empty() && kind != "edit" && kind != "listen_command" {
         return Err("Hotkey cannot be empty".to_string());
     }
+    if kind == "listen_command"
+        && !shortcut.trim().is_empty()
+        && !crate::hotkey::is_combo_shortcut(&shortcut)
+    {
+        return Err("Listen command hotkey must be a key combination".to_string());
+    }
 
     // Update in-memory settings first
     let mut s = state.settings.lock().await;

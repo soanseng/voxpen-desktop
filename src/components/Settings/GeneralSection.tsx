@@ -190,7 +190,7 @@ function HotkeyPicker({
 
           {/* Presets */}
           <div className="flex gap-2">
-            {kind !== "edit" && (
+            {kind !== "edit" && kind !== "listen_command" && (
               <button
                 type="button"
                 onClick={() => { setPending("RAlt"); void save("RAlt"); }}
