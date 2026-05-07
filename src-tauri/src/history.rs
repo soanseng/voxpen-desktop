@@ -3,7 +3,9 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
-use voxpen_core::history::{TranscriptionEntry, TranscriptionStatus, CREATE_TABLE_SQL};
+use voxpen_core::history::{
+    TranscriptionEntry, TranscriptionKind, TranscriptionStatus, CREATE_TABLE_SQL,
+};
 use voxpen_core::pipeline::state::Language;
 
 /// Thread-safe SQLite database handle for history operations.
@@ -39,6 +41,9 @@ impl HistoryDb {
                 entry.status.as_str(),
                 entry.error_message.as_deref(),
                 entry.audio_path.as_deref(),
+                entry.kind.as_str(),
+                entry.llm_provider.as_deref(),
+                entry.llm_model.as_deref(),
             ],
         )
         .map_err(|e| format!("insert failed: {e}"))?;
@@ -161,6 +166,21 @@ fn migrate_schema(conn: &Connection) -> rusqlite::Result<()> {
     if !existing.iter().any(|c| c == "audio_path") {
         conn.execute("ALTER TABLE transcriptions ADD COLUMN audio_path TEXT", [])?;
     }
+    if !existing.iter().any(|c| c == "kind") {
+        conn.execute(
+            "ALTER TABLE transcriptions ADD COLUMN kind TEXT NOT NULL DEFAULT 'dictation'",
+            [],
+        )?;
+    }
+    if !existing.iter().any(|c| c == "llm_provider") {
+        conn.execute(
+            "ALTER TABLE transcriptions ADD COLUMN llm_provider TEXT",
+            [],
+        )?;
+    }
+    if !existing.iter().any(|c| c == "llm_model") {
+        conn.execute("ALTER TABLE transcriptions ADD COLUMN llm_model TEXT", [])?;
+    }
     Ok(())
 }
 
@@ -173,6 +193,7 @@ fn table_columns(conn: &Connection) -> rusqlite::Result<Vec<String>> {
 /// Map a rusqlite row to a TranscriptionEntry.
 fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<TranscriptionEntry> {
     let status: String = row.get(7)?;
+    let kind: String = row.get(10)?;
     Ok(TranscriptionEntry {
         id: row.get(0)?,
         timestamp: row.get(1)?,
@@ -187,6 +208,9 @@ fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<TranscriptionEntry> {
         status: TranscriptionStatus::from_db(&status),
         error_message: row.get(8)?,
         audio_path: row.get(9)?,
+        kind: TranscriptionKind::from_db(&kind),
+        llm_provider: row.get(11)?,
+        llm_model: row.get(12)?,
     })
 }
 
@@ -206,6 +230,9 @@ mod tests {
             status,
             error_message: None,
             audio_path: None,
+            kind: TranscriptionKind::Dictation,
+            llm_provider: None,
+            llm_model: None,
         }
     }
 
@@ -260,6 +287,9 @@ mod tests {
         assert_eq!(loaded.status, TranscriptionStatus::Completed);
         assert_eq!(loaded.error_message, None);
         assert_eq!(loaded.audio_path, None);
+        assert_eq!(loaded.kind, TranscriptionKind::Dictation);
+        assert_eq!(loaded.llm_provider, None);
+        assert_eq!(loaded.llm_model, None);
     }
 
     #[test]

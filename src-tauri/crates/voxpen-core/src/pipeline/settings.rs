@@ -93,6 +93,23 @@ pub struct Settings {
     /// Default: empty string (feature disabled).
     #[serde(default)]
     pub hotkey_edit: String,
+    /// Whether "Listen to My Command" mode is enabled.
+    /// This mode turns a spoken instruction into a pasteable LLM-generated artifact.
+    #[serde(default)]
+    pub listen_command_enabled: bool,
+    /// Hotkey for "Listen to My Command" mode. Combo shortcuts only.
+    #[serde(default = "default_hotkey_listen_command")]
+    pub hotkey_listen_command: String,
+    /// LLM provider used only for Listen to My Command generation.
+    /// This is independent from STT and refinement providers.
+    #[serde(default = "default_listen_command_provider")]
+    pub listen_command_provider: String,
+    /// LLM model used only for Listen to My Command generation.
+    #[serde(default = "default_listen_command_model")]
+    pub listen_command_model: String,
+    /// Custom OpenAI-compatible base URL used when `listen_command_provider == "custom"`.
+    #[serde(default)]
+    pub listen_command_custom_base_url: String,
     /// Rules for auto-selecting a tone preset based on the active application.
     /// First matching rule wins. Empty = feature disabled.
     #[serde(default)]
@@ -118,6 +135,20 @@ fn default_audio_ducking_volume() -> u8 {
 
 fn default_hotkey_toggle() -> String {
     "CommandOrControl+Shift+V".to_string()
+}
+
+fn default_hotkey_listen_command() -> String {
+    "CommandOrControl+Shift+L".to_string()
+}
+
+fn default_listen_command_provider() -> String {
+    "openai".to_string()
+}
+
+fn default_listen_command_model() -> String {
+    // OpenAI model list checked 2026-05-07:
+    // https://platform.openai.com/docs/models
+    "gpt-5.2".to_string()
 }
 
 fn default_max_recording_secs() -> u32 {
@@ -153,6 +184,11 @@ impl Default for Settings {
             translation_target: default_translation_target(),
             voice_commands_enabled: false,
             hotkey_edit: "CommandOrControl+Shift+E".to_string(),
+            listen_command_enabled: false,
+            hotkey_listen_command: default_hotkey_listen_command(),
+            listen_command_provider: default_listen_command_provider(),
+            listen_command_model: default_listen_command_model(),
+            listen_command_custom_base_url: String::new(),
             app_tone_rules: Vec::new(),
             audio_ducking_enabled: true,
             audio_ducking_volume: default_audio_ducking_volume(),
@@ -356,6 +392,50 @@ mod tests {
         // Old settings without hotkey_edit get the serde default (empty string),
         // not the struct Default. This is expected for backwards compat.
         assert_eq!(s.hotkey_edit, "");
+    }
+
+    #[test]
+    fn should_default_listen_command_to_disabled_with_combo_hotkey() {
+        let s = Settings::default();
+        assert!(!s.listen_command_enabled);
+        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Shift+L");
+        assert_eq!(s.listen_command_provider, "openai");
+        assert_eq!(s.listen_command_model, "gpt-5.2");
+        assert_eq!(s.listen_command_custom_base_url, "");
+    }
+
+    #[test]
+    fn should_roundtrip_listen_command_settings() {
+        let mut s = Settings::default();
+        s.listen_command_enabled = true;
+        s.hotkey_listen_command = "CommandOrControl+Alt+L".to_string();
+        s.listen_command_provider = "openrouter".to_string();
+        s.listen_command_model = "anthropic/claude-haiku-4.5".to_string();
+        s.listen_command_custom_base_url = "https://openrouter.ai/api/".to_string();
+
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+
+        assert!(back.listen_command_enabled);
+        assert_eq!(back.hotkey_listen_command, "CommandOrControl+Alt+L");
+        assert_eq!(back.listen_command_provider, "openrouter");
+        assert_eq!(back.listen_command_model, "anthropic/claude-haiku-4.5");
+        assert_eq!(
+            back.listen_command_custom_base_url,
+            "https://openrouter.ai/api/"
+        );
+    }
+
+    #[test]
+    fn should_deserialize_old_settings_without_listen_command_fields() {
+        let json = r#"{"hotkey_ptt":"RAlt","hotkey_toggle":"CommandOrControl+Shift+V","recording_mode":"HoldToRecord","auto_paste":true,"launch_at_login":false,"stt_provider":"groq","stt_language":"Auto","stt_model":"whisper-large-v3-turbo","refinement_enabled":false,"refinement_provider":"groq","refinement_model":"openai/gpt-oss-120b","theme":"system","ui_language":"en"}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+
+        assert!(!s.listen_command_enabled);
+        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Shift+L");
+        assert_eq!(s.listen_command_provider, "openai");
+        assert_eq!(s.listen_command_model, "gpt-5.2");
+        assert_eq!(s.listen_command_custom_base_url, "");
     }
 
     // -- AppToneRule tests --

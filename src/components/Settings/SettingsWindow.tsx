@@ -8,19 +8,21 @@ import { useSettings } from "../../hooks/useSettings";
 import GeneralSection from "./GeneralSection";
 import SttSection from "./SttSection";
 import RefinementSection from "./RefinementSection";
+import ListenCommandSection from "./ListenCommandSection";
 import AppearanceSection from "./AppearanceSection";
 import HistoryWindow from "../History/HistoryWindow";
 import DictionarySection from "./DictionarySection";
 import LicenseSection from "./LicenseSection";
 import FileTranscriptionSection from "./FileTranscriptionSection";
 
-type Tab = "license" | "general" | "speech" | "refinement" | "dictionary" | "fileTranscription" | "appearance" | "history";
+type Tab = "license" | "general" | "speech" | "refinement" | "listenCommand" | "dictionary" | "fileTranscription" | "appearance" | "history";
 
 const TAB_IDS: Tab[] = [
   "license",
   "general",
   "speech",
   "refinement",
+  "listenCommand",
   "dictionary",
   "fileTranscription",
   "appearance",
@@ -84,6 +86,7 @@ function TabIcon({ tab }: { tab: Tab }) {
         </svg>
       );
     case "refinement":
+    case "listenCommand":
       return (
         <svg
           className={cls}
@@ -221,7 +224,13 @@ export default function SettingsWindow() {
                 }
               >
                 <TabIcon tab={id} />
-                {id === "license" ? t("license.tab") : id === "fileTranscription" ? t("fileTranscription") : t(id)}
+                {id === "license"
+                  ? t("license.tab")
+                  : id === "fileTranscription"
+                    ? t("fileTranscription")
+                    : id === "listenCommand"
+                      ? t("listenCommandTab")
+                      : t(id)}
               </button>
             </li>
           ))}
@@ -250,6 +259,9 @@ export default function SettingsWindow() {
           )}
           {activeTab === "refinement" && (
             <RefinementSection settings={settings} onUpdate={updateSetting} />
+          )}
+          {activeTab === "listenCommand" && (
+            <ListenCommandSection settings={settings} onUpdate={updateSetting} />
           )}
           {activeTab === "dictionary" && <DictionarySection />}
           {activeTab === "fileTranscription" && (

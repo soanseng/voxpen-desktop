@@ -2,6 +2,8 @@
 
 Voice Commands let you insert punctuation and formatting symbols by speaking keyword phrases while you dictate. Instead of pausing to type a comma or pressing enter, just say the word.
 
+This is separate from **Listen to My Command**. Voice Commands are inline punctuation substitutions during normal dictation; Listen to My Command is a separate hotkey that sends a spoken instruction to a command LLM and pastes the generated result.
+
 ---
 
 ## Enabling Voice Commands

@@ -85,6 +85,13 @@ export default function HistoryEntry({ entry, onDelete, onRetry }: HistoryEntryP
   const failureMessage = retryError ?? entry.error_message ?? t("historyFailed");
   const displayText = isFailed ? failureMessage : entry.refined_text ?? entry.original_text;
   const badge = LANGUAGE_BADGE[entry.language] ?? DEFAULT_BADGE;
+  const originalLabel = entry.kind === "listen_command" ? t("instruction") : t("original");
+  const refinedLabel =
+    entry.kind === "listen_command"
+      ? t("result")
+      : entry.kind === "voice_edit"
+        ? t("edited")
+        : t("refined");
 
   function handleCopy() {
     navigator.clipboard.writeText(displayText).then(() => {
@@ -207,7 +214,7 @@ export default function HistoryEntry({ entry, onDelete, onRetry }: HistoryEntryP
             ) : (
               <div>
                 <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  {t("original")}
+                  {originalLabel}
                 </h4>
                 <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
                   {entry.original_text}
@@ -219,7 +226,7 @@ export default function HistoryEntry({ entry, onDelete, onRetry }: HistoryEntryP
             {entry.refined_text && !isFailed && (
               <div>
                 <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  {t("refined")}
+                  {refinedLabel}
                 </h4>
                 <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
                   {entry.refined_text}
@@ -232,8 +239,15 @@ export default function HistoryEntry({ entry, onDelete, onRetry }: HistoryEntryP
           <div className="mt-3 flex items-center gap-3">
             {/* Provider badge */}
             <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-              {entry.provider}
+              {t("sttProvider")}: {entry.provider}
             </span>
+
+            {entry.llm_provider && (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                {t("aiProvider")}: {entry.llm_provider}
+                {entry.llm_model ? ` / ${entry.llm_model}` : ""}
+              </span>
+            )}
 
             {/* Duration */}
             {entry.audio_duration_ms > 0 && (

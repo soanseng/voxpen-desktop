@@ -11,6 +11,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:debug": "tauri build --debug",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:core": "cargo test -p voxpen-core --manifest-path src-tauri/Cargo.toml",
     "lint:core": "cargo clippy -p voxpen-core --manifest-path src-tauri/Cargo.toml -- -D warnings"
   },

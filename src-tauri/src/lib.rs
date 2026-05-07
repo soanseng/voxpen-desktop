@@ -588,6 +588,8 @@ pub fn run() {
                     &saved_settings.hotkey_ptt,
                     &saved_settings.hotkey_toggle,
                     &saved_settings.hotkey_edit,
+                    saved_settings.listen_command_enabled,
+                    &saved_settings.hotkey_listen_command,
                 ) {
                     eprintln!("failed to register hotkeys: {e}");
                 }

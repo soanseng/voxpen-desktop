@@ -37,7 +37,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
 
-/// Change a hotkey at runtime. `kind` is "ptt" or "toggle".
+/// Change a hotkey at runtime. `kind` is "ptt", "toggle", "edit", or "listen_command".
 #[tauri::command]
 pub async fn set_hotkey(
     app: tauri::AppHandle,
@@ -45,9 +45,15 @@ pub async fn set_hotkey(
     shortcut: String,
     kind: String,
 ) -> Result<(), String> {
-    // Empty shortcut is only invalid for ptt and toggle; "edit" can be empty (= disabled)
-    if shortcut.trim().is_empty() && kind != "edit" {
+    // Empty shortcut is only invalid for ptt and toggle; optional feature hotkeys can be empty.
+    if shortcut.trim().is_empty() && kind != "edit" && kind != "listen_command" {
         return Err("Hotkey cannot be empty".to_string());
+    }
+    if kind == "listen_command"
+        && !shortcut.trim().is_empty()
+        && !crate::hotkey::is_combo_shortcut(&shortcut)
+    {
+        return Err("Listen command hotkey must be a key combination".to_string());
     }
 
     // Update in-memory settings first
@@ -56,6 +62,7 @@ pub async fn set_hotkey(
         "ptt" => s.hotkey_ptt = shortcut.clone(),
         "toggle" => s.hotkey_toggle = shortcut.clone(),
         "edit" => s.hotkey_edit = shortcut.clone(),
+        "listen_command" => s.hotkey_listen_command = shortcut.clone(),
         _ => return Err(format!("Unknown hotkey kind: {kind}")),
     }
     let settings_clone = s.clone();
@@ -68,6 +75,8 @@ pub async fn set_hotkey(
         &settings_clone.hotkey_ptt,
         &settings_clone.hotkey_toggle,
         &settings_clone.hotkey_edit,
+        settings_clone.listen_command_enabled,
+        &settings_clone.hotkey_listen_command,
     )?;
     drop(mgr);
 
@@ -111,13 +120,29 @@ pub async fn save_settings(
     state: tauri::State<'_, AppState>,
     settings: Settings,
 ) -> Result<(), String> {
+    if settings.listen_command_enabled
+        && !settings.hotkey_listen_command.trim().is_empty()
+        && !crate::hotkey::is_combo_shortcut(&settings.hotkey_listen_command)
+    {
+        return Err("Listen command hotkey must be a key combination".to_string());
+    }
+
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     let value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
     store.set("settings", value);
     store.save().map_err(|e| e.to_string())?;
 
     // Sync to shared settings so providers use the latest values
-    *state.settings.lock().await = settings.clone();
+    let hotkeys_changed = {
+        let mut shared = state.settings.lock().await;
+        let changed = shared.hotkey_ptt != settings.hotkey_ptt
+            || shared.hotkey_toggle != settings.hotkey_toggle
+            || shared.hotkey_edit != settings.hotkey_edit
+            || shared.listen_command_enabled != settings.listen_command_enabled
+            || shared.hotkey_listen_command != settings.hotkey_listen_command;
+        *shared = settings.clone();
+        changed
+    };
 
     // Sync pipeline controller config (refinement_enabled, language, models)
     let mut ctrl = state.controller.lock().await;
@@ -132,6 +157,18 @@ pub async fn save_settings(
             state.local_stt.set_model_path(path);
         }
         state.local_stt.set_language(settings.stt_language.clone());
+    }
+
+    if hotkeys_changed {
+        let mut mgr = state.hotkey_manager.lock().await;
+        mgr.register_all(
+            &app,
+            &settings.hotkey_ptt,
+            &settings.hotkey_toggle,
+            &settings.hotkey_edit,
+            settings.listen_command_enabled,
+            &settings.hotkey_listen_command,
+        )?;
     }
 
     Ok(())
@@ -637,6 +674,9 @@ pub async fn transcribe_file(
         status: TranscriptionStatus::Completed,
         error_message: None,
         audio_path: None,
+        kind: voxpen_core::history::TranscriptionKind::Dictation,
+        llm_provider: None,
+        llm_model: None,
     };
     if let Err(e) = state.history.insert(&entry) {
         eprintln!("history insert error: {e}");

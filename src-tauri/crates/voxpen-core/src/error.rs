@@ -18,6 +18,9 @@ pub enum AppError {
     #[error("Refinement failed: {0}")]
     Refinement(String),
 
+    #[error("Command failed: {0}")]
+    Command(String),
+
     #[error("Audio error: {0}")]
     Audio(String),
 
@@ -77,6 +80,12 @@ mod tests {
     fn should_display_refinement_error() {
         let err = AppError::Refinement("timeout".to_string());
         assert_eq!(err.to_string(), "Refinement failed: timeout");
+    }
+
+    #[test]
+    fn should_display_command_error() {
+        let err = AppError::Command("empty result".to_string());
+        assert_eq!(err.to_string(), "Command failed: empty result");
     }
 
     #[test]

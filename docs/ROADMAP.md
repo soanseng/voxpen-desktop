@@ -39,6 +39,7 @@
 | ✅ Translation Mode | Speak in one language, output in another. Toggle + target language in Settings |
 | ✅ Voice Commands for Formatting | "comma" → `,` · "new line" → `\n` · "new paragraph" → `\n\n` · supports EN/ZH/JA/KO |
 | ✅ Select Text → Voice Edit | Select text in any app → hold hotkey → speak edit command → replaced |
+| ✅ Listen to My Command | Separate hotkey → spoken instruction → command LLM → pasteable result |
 | ✅ Context-Aware Auto Tone | Active app detected at hotkey press → first matching AppToneRule applied for that session |
 | ✅ Recording Time Limit | Configurable max duration (default 6 min). Auto-stop + timeout indicator in overlay |
 
@@ -76,6 +77,13 @@
 - "驚嘆號" / "exclamation mark" / "느낌표" → `!`
 
 **Approach:** Post-STT, regex-free string replacement in `pipeline/voice_commands.rs`. Configurable toggle in Settings → General. Zero new API calls. Works with or without LLM refinement.
+
+### Listen to My Command
+**Status:** ✅ Shipped — Plan: `docs/superpowers/plans/2026-05-07-listen-command.md`
+
+**What:** Hold a separate hotkey, speak an instruction, and paste a generated artifact such as code, an email draft, a task list, or a PR summary.
+
+**Approach:** Dedicated Rust pipeline: STT-only transcription followed by `pipeline::task_command` using independent command provider/model settings. Supports OpenAI, Groq, OpenRouter, and custom OpenAI-compatible providers. The v1 safety boundary is pasteable output only: no shell execution, direct file edits, app control, or claimed side effects.
 
 ---
 

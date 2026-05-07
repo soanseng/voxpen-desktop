@@ -118,7 +118,7 @@ function HotkeyPicker({
   label: string;
   hint: string;
   currentValue: string;
-  kind: "ptt" | "toggle" | "edit";
+  kind: "ptt" | "toggle" | "edit" | "listen_command";
   onSaved: (shortcut: string) => void;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
@@ -190,7 +190,7 @@ function HotkeyPicker({
 
           {/* Presets */}
           <div className="flex gap-2">
-            {kind !== "edit" && (
+            {kind !== "edit" && kind !== "listen_command" && (
               <button
                 type="button"
                 onClick={() => { setPending("RAlt"); void save("RAlt"); }}
@@ -205,14 +205,20 @@ function HotkeyPicker({
             )}
             <button
               type="button"
-              onClick={() => { setPending("CommandOrControl+Shift+V"); void save("CommandOrControl+Shift+V"); }}
+              onClick={() => {
+                const shortcut = kind === "listen_command"
+                  ? "CommandOrControl+Shift+L"
+                  : "CommandOrControl+Shift+V";
+                setPending(shortcut);
+                void save(shortcut);
+              }}
               className={
                 "rounded-md border border-gray-300 px-3 py-1.5 text-xs " +
                 "text-gray-600 hover:bg-gray-100 " +
                 "dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
               }
             >
-              {t("hotkeyPresetCombo")}
+              {kind === "listen_command" ? t("hotkeyListenCommandPreset") : t("hotkeyPresetCombo")}
             </button>
             {kind === "edit" && (
               <button
@@ -438,6 +444,34 @@ export default function GeneralSection({
         onSaved={(s) => onUpdate("hotkey_edit", s)}
         t={t}
       />
+
+      {/* Listen to My Command */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t("listenCommandEnabled")}
+          </label>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            {t("listenCommandEnabledHint")}
+          </p>
+        </div>
+        <ToggleSwitch
+          id="listen-command-enabled"
+          checked={settings.listen_command_enabled}
+          onChange={(v) => onUpdate("listen_command_enabled", v)}
+        />
+      </div>
+
+      <div className={settings.listen_command_enabled ? "" : "opacity-40"}>
+        <HotkeyPicker
+          label={t("hotkeyListenCommand")}
+          hint={t("hotkeyListenCommandHint")}
+          currentValue={settings.hotkey_listen_command}
+          kind="listen_command"
+          onSaved={(s) => onUpdate("hotkey_listen_command", s)}
+          t={t}
+        />
+      </div>
 
       {/* Audio Ducking */}
       <div className="flex items-center justify-between">
