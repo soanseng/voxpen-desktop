@@ -5,6 +5,7 @@ import type { TranscriptionEntry } from "../../types/history";
 interface HistoryEntryProps {
   entry: TranscriptionEntry;
   onDelete: (id: string) => void;
+  onRetry: (id: string) => Promise<void>;
 }
 
 const LANGUAGE_BADGE: Record<string, { label: string; className: string }> = {
@@ -72,13 +73,17 @@ function truncate(text: string, maxLen: number): string {
   return text.slice(0, maxLen) + "...";
 }
 
-export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
+export default function HistoryEntry({ entry, onDelete, onRetry }: HistoryEntryProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
-  const displayText = entry.refined_text ?? entry.original_text;
+  const isFailed = entry.status === "failed";
+  const failureMessage = retryError ?? entry.error_message ?? t("historyFailed");
+  const displayText = isFailed ? failureMessage : entry.refined_text ?? entry.original_text;
   const badge = LANGUAGE_BADGE[entry.language] ?? DEFAULT_BADGE;
 
   function handleCopy() {
@@ -99,11 +104,26 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
     onDelete(entry.id);
   }
 
+  async function handleRetry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await onRetry(entry.id);
+    } catch (error) {
+      setRetryError(String(error));
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   return (
     <div
       className={
-        "rounded-lg border border-gray-200 bg-white transition-shadow hover:shadow-sm " +
-        "dark:border-gray-700 dark:bg-gray-800"
+        "rounded-lg border bg-white transition-shadow hover:shadow-sm " +
+        (isFailed
+          ? "border-red-200 dark:border-red-900/70 "
+          : "border-gray-200 dark:border-gray-700 ") +
+        "dark:bg-gray-800"
       }
     >
       {/* Collapsed header -- always visible */}
@@ -136,9 +156,22 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
         </span>
 
         {/* Truncated text */}
-        <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
+        <span
+          className={
+            "min-w-0 flex-1 truncate text-sm " +
+            (isFailed
+              ? "text-red-700 dark:text-red-300"
+              : "text-gray-700 dark:text-gray-300")
+          }
+        >
           {truncate(displayText, 80)}
         </span>
+
+        {isFailed && (
+          <span className="flex-shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-900/40 dark:text-red-300">
+            {t("historyFailed")}
+          </span>
+        )}
 
         {/* Language badge */}
         <span
@@ -157,23 +190,33 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
           {/* Original + Refined side by side (or stacked) */}
           <div
             className={
-              entry.refined_text
+              entry.refined_text && !isFailed
                 ? "grid gap-4 sm:grid-cols-2"
                 : ""
             }
           >
-            {/* Original text */}
-            <div>
-              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                {t("original")}
-              </h4>
-              <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                {entry.original_text}
-              </p>
-            </div>
+            {isFailed ? (
+              <div>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-red-500 dark:text-red-400">
+                  {t("fullError")}
+                </h4>
+                <p className="whitespace-pre-wrap break-words text-sm text-red-700 dark:text-red-300">
+                  {failureMessage}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  {t("original")}
+                </h4>
+                <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                  {entry.original_text}
+                </p>
+              </div>
+            )}
 
             {/* Refined text */}
-            {entry.refined_text && (
+            {entry.refined_text && !isFailed && (
               <div>
                 <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                   {t("refined")}
@@ -200,6 +243,25 @@ export default function HistoryEntry({ entry, onDelete }: HistoryEntryProps) {
             )}
 
             <div className="flex-1" />
+
+            {isFailed && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleRetry();
+                }}
+                disabled={retrying}
+                title={retrying ? t("retrying") : t("retry")}
+                className={
+                  "rounded px-2 py-1 text-xs font-medium transition-colors " +
+                  "bg-red-50 text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 " +
+                  "dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                }
+              >
+                {retrying ? t("retrying") : t("retry")}
+              </button>
+            )}
 
             {/* Copy button */}
             <button

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,9 @@ pub const ALT_LLM_MODEL: &str = "openai/gpt-oss-20b";
 pub const LLM_TEMPERATURE: f32 = 0.3;
 /// Default LLM max tokens (floor value; dynamically raised for long input)
 pub const LLM_MAX_TOKENS: u32 = 2048;
+const STT_RETRY_ATTEMPTS: usize = 2;
+const STT_RETRY_DELAY: Duration = Duration::from_millis(350);
+const ERROR_BODY_LIMIT: usize = 1400;
 
 /// Configuration for a single STT API call.
 #[derive(Clone)]
@@ -95,6 +98,82 @@ pub struct WhisperResponse {
     pub text: String,
 }
 
+fn transcription_path(provider: &str) -> &'static str {
+    if provider == "groq" {
+        "openai/v1/audio/transcriptions"
+    } else {
+        "v1/audio/transcriptions"
+    }
+}
+
+fn transcription_response_format(config: &SttConfig, provider: &str) -> String {
+    if provider == "openai"
+        && matches!(
+            config.model.as_str(),
+            "gpt-4o-transcribe" | "gpt-4o-mini-transcribe"
+        )
+        && config.response_format == "verbose_json"
+    {
+        return "json".to_string();
+    }
+
+    config.response_format.clone()
+}
+
+fn bounded_body(body: &str) -> String {
+    if body.chars().count() <= ERROR_BODY_LIMIT {
+        return body.to_string();
+    }
+    let truncated: String = body.chars().take(ERROR_BODY_LIMIT).collect();
+    format!("{truncated}...")
+}
+
+fn transcription_http_error(provider: &str, status: reqwest::StatusCode, body: String) -> AppError {
+    AppError::Transcription(format!(
+        "{} HTTP {}: {}",
+        provider,
+        status.as_u16(),
+        bounded_body(body.trim())
+    ))
+}
+
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error()
+}
+
+fn is_retryable_network_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout()
+}
+
+async fn parse_transcription_response(
+    response: reqwest::Response,
+    provider: &str,
+) -> Result<WhisperResponse, AppError> {
+    let status = response.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(AppError::ApiKeyMissing(provider.to_string()));
+    }
+
+    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+        return Err(AppError::Transcription(format!(
+            "{provider} HTTP 413: file too large (max 25MB)"
+        )));
+    }
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(transcription_http_error(provider, status, body));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| AppError::Transcription(format!("failed to parse response: {e}")))
+}
+
 /// Transcribe WAV audio via Groq Whisper API.
 ///
 /// Sends a multipart POST to Groq's OpenAI-compatible endpoint.
@@ -141,7 +220,10 @@ pub(crate) async fn transcribe_file_with_base_url(
     let mut form = multipart::Form::new()
         .part("file", file_part)
         .text("model", config.model.clone())
-        .text("response_format", config.response_format.clone());
+        .text(
+            "response_format",
+            transcription_response_format(config, provider),
+        );
 
     if let Some(code) = config.language.code() {
         form = form.text("language", code.to_string());
@@ -153,11 +235,7 @@ pub(crate) async fn transcribe_file_with_base_url(
         .unwrap_or(config.language.prompt());
     form = form.text("prompt", prompt.to_string());
 
-    let path = if provider == "groq" {
-        "openai/v1/audio/transcriptions"
-    } else {
-        "v1/audio/transcriptions"
-    };
+    let path = transcription_path(provider);
     let url = format!("{base_url}{path}");
 
     let response = client
@@ -174,16 +252,14 @@ pub(crate) async fn transcribe_file_with_base_url(
     }
 
     if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-        return Err(AppError::Transcription("file too large (max 25MB)".to_string()));
+        return Err(AppError::Transcription(format!(
+            "{provider} HTTP 413: file too large (max 25MB)"
+        )));
     }
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(AppError::Transcription(format!(
-            "HTTP {}: {}",
-            status.as_u16(),
-            body
-        )));
+        return Err(transcription_http_error(provider, status, body));
     }
 
     let whisper: WhisperResponse = response
@@ -203,7 +279,10 @@ pub async fn transcribe_file_with_segments(
     provider: &str,
 ) -> Result<WhisperVerboseResponse, AppError> {
     let base_url = base_url_for_provider(provider);
-    transcribe_file_with_segments_internal(config, file_data, filename, mime_type, provider, base_url).await
+    transcribe_file_with_segments_internal(
+        config, file_data, filename, mime_type, provider, base_url,
+    )
+    .await
 }
 
 /// Internal: with configurable base URL for testing.
@@ -229,34 +308,43 @@ pub(crate) async fn transcribe_file_with_segments_internal(
     let mut form = multipart::Form::new()
         .part("file", file_part)
         .text("model", config.model.clone())
-        .text("response_format", "verbose_json".to_string());
+        .text(
+            "response_format",
+            transcription_response_format(config, provider),
+        );
 
     if let Some(code) = config.language.code() {
         form = form.text("language", code.to_string());
     }
 
-    let prompt = config.prompt_override.as_deref().unwrap_or(config.language.prompt());
+    let prompt = config
+        .prompt_override
+        .as_deref()
+        .unwrap_or(config.language.prompt());
     form = form.text("prompt", prompt.to_string());
 
-    let path = if provider == "groq" {
-        "openai/v1/audio/transcriptions"
-    } else {
-        "v1/audio/transcriptions"
-    };
+    let path = transcription_path(provider);
     let url = format!("{base_url}{path}");
 
-    let response = client.post(&url).bearer_auth(&config.api_key).multipart(form).send().await?;
+    let response = client
+        .post(&url)
+        .bearer_auth(&config.api_key)
+        .multipart(form)
+        .send()
+        .await?;
     let status = response.status();
 
     if status == reqwest::StatusCode::UNAUTHORIZED {
         return Err(AppError::ApiKeyMissing(provider.to_string()));
     }
     if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-        return Err(AppError::Transcription("file too large (max 25MB)".to_string()));
+        return Err(AppError::Transcription(format!(
+            "{provider} HTTP 413: file too large (max 25MB)"
+        )));
     }
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(AppError::Transcription(format!("HTTP {}: {}", status.as_u16(), body)));
+        return Err(transcription_http_error(provider, status, body));
     }
 
     let verbose: WhisperVerboseResponse = response
@@ -280,67 +368,62 @@ pub(crate) async fn transcribe_with_base_url(
         .build()
         .map_err(AppError::Network)?;
 
-    let file_part = multipart::Part::bytes(wav_data.to_vec())
-        .file_name("recording.wav")
-        .mime_str("audio/wav")
-        .map_err(|e| AppError::Transcription(e.to_string()))?;
+    let url = format!("{}{}", base_url, transcription_path(provider));
 
-    let mut form = multipart::Form::new()
-        .part("file", file_part)
-        .text("model", config.model.clone())
-        .text("response_format", config.response_format.clone());
+    for attempt in 1..=STT_RETRY_ATTEMPTS {
+        let file_part = multipart::Part::bytes(wav_data.to_vec())
+            .file_name("recording.wav")
+            .mime_str("audio/wav")
+            .map_err(|e| AppError::Transcription(e.to_string()))?;
 
-    // Add language param if not auto-detect
-    if let Some(code) = config.language.code() {
-        form = form.text("language", code.to_string());
+        let mut form = multipart::Form::new()
+            .part("file", file_part)
+            .text("model", config.model.clone())
+            .text(
+                "response_format",
+                transcription_response_format(config, provider),
+            );
+
+        // Add language param if not auto-detect
+        if let Some(code) = config.language.code() {
+            form = form.text("language", code.to_string());
+        }
+
+        // Add prompt hint — use override (with vocabulary) if available
+        let prompt = config
+            .prompt_override
+            .as_deref()
+            .unwrap_or(config.language.prompt());
+        form = form.text("prompt", prompt.to_string());
+
+        let response = match client
+            .post(&url)
+            .bearer_auth(&config.api_key)
+            .multipart(form)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) if attempt < STT_RETRY_ATTEMPTS && is_retryable_network_error(&e) => {
+                tokio::time::sleep(STT_RETRY_DELAY).await;
+                continue;
+            }
+            Err(e) => return Err(AppError::Network(e)),
+        };
+
+        let status = response.status();
+        if !status.is_success() && is_retryable_status(status) && attempt < STT_RETRY_ATTEMPTS {
+            tokio::time::sleep(STT_RETRY_DELAY).await;
+            continue;
+        }
+
+        let whisper = parse_transcription_response(response, provider).await?;
+        return Ok(whisper.text);
     }
 
-    // Add prompt hint — use override (with vocabulary) if available
-    let prompt = config
-        .prompt_override
-        .as_deref()
-        .unwrap_or(config.language.prompt());
-    form = form.text("prompt", prompt.to_string());
-
-    let path = if provider == "groq" {
-        "openai/v1/audio/transcriptions"
-    } else {
-        "v1/audio/transcriptions"
-    };
-    let url = format!("{base_url}{path}");
-
-    let response = client
-        .post(&url)
-        .bearer_auth(&config.api_key)
-        .multipart(form)
-        .send()
-        .await?;
-
-    let status = response.status();
-
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(AppError::ApiKeyMissing(provider.to_string()));
-    }
-
-    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-        return Err(AppError::Transcription("file too large".to_string()));
-    }
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(AppError::Transcription(format!(
-            "HTTP {}: {}",
-            status.as_u16(),
-            body
-        )));
-    }
-
-    let whisper: WhisperResponse = response
-        .json()
-        .await
-        .map_err(|e| AppError::Transcription(format!("failed to parse response: {e}")))?;
-
-    Ok(whisper.text)
+    Err(AppError::Transcription(format!(
+        "{provider} transcription failed after retry"
+    )))
 }
 
 // ---------------------------------------------------------------------------
@@ -472,10 +555,7 @@ pub(crate) async fn chat_completion_with_provider(
     };
     let url = format!("{base_url}{path}");
 
-    let mut req = client
-        .post(&url)
-        .bearer_auth(&config.api_key)
-        .json(&body);
+    let mut req = client.post(&url).bearer_auth(&config.api_key).json(&body);
 
     // OpenRouter requires these headers for their API
     if provider == "openrouter" {
@@ -570,6 +650,36 @@ mod tests {
         SttConfig::new(api_key.to_string(), language)
     }
 
+    #[test]
+    fn should_use_json_response_format_for_openai_gpt_4o_transcribe_models() {
+        let mut config = test_config("key", Language::Auto);
+        config.model = "gpt-4o-transcribe".to_string();
+        config.response_format = "verbose_json".to_string();
+
+        assert_eq!(transcription_response_format(&config, "openai"), "json");
+
+        config.model = "gpt-4o-mini-transcribe".to_string();
+        assert_eq!(transcription_response_format(&config, "openai"), "json");
+    }
+
+    #[test]
+    fn should_keep_verbose_json_for_openai_whisper_and_groq() {
+        let mut config = test_config("key", Language::Auto);
+        config.response_format = "verbose_json".to_string();
+
+        config.model = "whisper-1".to_string();
+        assert_eq!(
+            transcription_response_format(&config, "openai"),
+            "verbose_json"
+        );
+
+        config.model = "whisper-large-v3-turbo".to_string();
+        assert_eq!(
+            transcription_response_format(&config, "groq"),
+            "verbose_json"
+        );
+    }
+
     #[tokio::test]
     async fn should_return_transcription_when_api_responds_successfully() {
         let server = MockServer::start().await;
@@ -578,8 +688,7 @@ mod tests {
             .and(path("/openai/v1/audio/transcriptions"))
             .and(header("authorization", "Bearer test-key-123"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"text": "你好世界"})),
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "你好世界"})),
             )
             .mount(&server)
             .await;
@@ -685,6 +794,84 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[tokio::test]
+    async fn should_use_v1_transcription_path_for_openai_provider() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/audio/transcriptions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"text": "openai live result"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("openai-key", Language::English);
+        let wav_data = crate::audio::encoder::pcm_to_wav(&[100, 200, 300]);
+
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "openai", &format!("{}/", server.uri()))
+                .await;
+
+        assert_eq!(result.unwrap(), "openai live result");
+    }
+
+    #[tokio::test]
+    async fn should_retry_live_transcription_once_for_transient_http_errors() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/audio/transcriptions"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("upstream failed"))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let config = test_config("openai-key", Language::Auto);
+        let wav_data = crate::audio::encoder::pcm_to_wav(&[100, 200, 300]);
+
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "openai", &format!("{}/", server.uri()))
+                .await;
+
+        match result {
+            Err(AppError::Transcription(msg)) => {
+                assert!(msg.contains("openai HTTP 500"));
+                assert!(msg.contains("upstream failed"));
+            }
+            other => panic!("expected retried Transcription error, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_not_retry_live_transcription_for_bad_request() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/audio/transcriptions"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("bad model"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config("openai-key", Language::Auto);
+        let wav_data = crate::audio::encoder::pcm_to_wav(&[100, 200, 300]);
+
+        let result =
+            transcribe_with_base_url(&config, &wav_data, "openai", &format!("{}/", server.uri()))
+                .await;
+
+        match result {
+            Err(AppError::Transcription(msg)) => {
+                assert!(msg.contains("openai HTTP 400"));
+                assert!(msg.contains("bad model"));
+            }
+            other => panic!("expected non-retried Transcription error, got {:?}", other),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Chat Completion tests
     // -----------------------------------------------------------------------
@@ -712,8 +899,7 @@ mod tests {
             .and(path("/openai/v1/chat/completions"))
             .and(header("authorization", "Bearer test-chat-key"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(chat_response_json("整理後的文字")),
+                ResponseTemplate::new(200).set_body_json(chat_response_json("整理後的文字")),
             )
             .mount(&server)
             .await;
@@ -798,8 +984,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/openai/v1/chat/completions"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"choices": []})),
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"choices": []})),
             )
             .mount(&server)
             .await;
@@ -831,9 +1016,7 @@ mod tests {
             .and(path("/v1/chat/completions"))
             .and(header("HTTP-Referer", "https://voxpen.app"))
             .and(header("X-Title", "VoxPen"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(chat_response_json("refined")),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_json("refined")))
             .expect(1)
             .mount(&server)
             .await;
@@ -857,9 +1040,7 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(chat_response_json("refined")),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_json("refined")))
             .expect(1)
             .mount(&server)
             .await;
@@ -1096,7 +1277,10 @@ mod tests {
     #[test]
     fn should_not_strip_inline_speech_tags() {
         let input = "請保留 <speech> 這個字串作為範例";
-        assert_eq!(strip_outer_speech_tags(input), "請保留 <speech> 這個字串作為範例");
+        assert_eq!(
+            strip_outer_speech_tags(input),
+            "請保留 <speech> 這個字串作為範例"
+        );
     }
 
     #[test]
@@ -1160,9 +1344,15 @@ mod tests {
         let fake_data = vec![0u8; 100];
 
         let result = transcribe_file_with_segments_internal(
-            &config, &fake_data, "test.wav", "audio/wav", "groq",
+            &config,
+            &fake_data,
+            "test.wav",
+            "audio/wav",
+            "groq",
             &format!("{}/", server.uri()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.text, "Hello world.");
         assert_eq!(result.segments.len(), 1);

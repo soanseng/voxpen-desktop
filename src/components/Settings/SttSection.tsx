@@ -47,6 +47,7 @@ function getModelsForProvider(provider: string) {
       return [
         { value: "whisper-1", label: "whisper-1" },
         { value: "gpt-4o-transcribe", label: "gpt-4o-transcribe" },
+        { value: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe" },
       ];
     default:
       return [];
@@ -91,6 +92,12 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
   useEffect(() => {
     getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => setKeyStatus(null));
   }, [settings.stt_provider]);
+
+  useEffect(() => {
+    if (models.length > 0 && !models.some((model) => model.value === settings.stt_model)) {
+      onUpdate("stt_model", models[0].value);
+    }
+  }, [models, onUpdate, settings.stt_model]);
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return;

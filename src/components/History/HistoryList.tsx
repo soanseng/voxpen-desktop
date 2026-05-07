@@ -5,9 +5,10 @@ import HistoryEntry from "./HistoryEntry";
 interface HistoryListProps {
   entries: TranscriptionEntry[];
   onDelete: (id: string) => void;
+  onRetry: (id: string) => Promise<void>;
 }
 
-export default function HistoryList({ entries, onDelete }: HistoryListProps) {
+export default function HistoryList({ entries, onDelete, onRetry }: HistoryListProps) {
   const { t } = useTranslation();
 
   if (entries.length === 0) {
@@ -39,7 +40,12 @@ export default function HistoryList({ entries, onDelete }: HistoryListProps) {
   return (
     <div className="space-y-2">
       {entries.map((entry) => (
-        <HistoryEntry key={entry.id} entry={entry} onDelete={onDelete} />
+        <HistoryEntry
+          key={entry.id}
+          entry={entry}
+          onDelete={onDelete}
+          onRetry={onRetry}
+        />
       ))}
     </div>
   );

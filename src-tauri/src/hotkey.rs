@@ -16,7 +16,7 @@ use crate::state::AppState;
 /// Lookup table mapping index (1-based) to rdev::Key.
 /// Index 0 means "disabled / no key active".
 const RDEV_KEY_TABLE: &[rdev::Key] = &[
-    rdev::Key::AltGr,       // 1  — RAlt
+    rdev::Key::AltGr,        // 1  — RAlt
     rdev::Key::Alt,          // 2  — LAlt
     rdev::Key::ControlRight, // 3  — RControl
     rdev::Key::ControlLeft,  // 4  — LControl
@@ -145,19 +145,13 @@ impl HotkeyManager {
         // crash or from a failed partial registration must be cleaned up.
         let _ = app.global_shortcut().unregister_all();
         self.rdev_state.ptt_key_index.store(0, Ordering::SeqCst);
-        self.rdev_state
-            .toggle_key_index
-            .store(0, Ordering::SeqCst);
+        self.rdev_state.toggle_key_index.store(0, Ordering::SeqCst);
         self.registered_ptt = None;
         self.registered_toggle = None;
         self.registered_edit = None;
     }
 
-    fn register_edit_combo(
-        &self,
-        app: &AppHandle,
-        shortcut: &str,
-    ) -> Result<(), String> {
+    fn register_edit_combo(&self, app: &AppHandle, shortcut: &str) -> Result<(), String> {
         let app_handle = app.clone();
         let processing = self.rdev_state.processing.clone();
 
@@ -192,19 +186,12 @@ impl HotkeyManager {
         Ok(())
     }
 
-    fn register_single_key(
-        &self,
-        key_name: &str,
-        mode: RecordingMode,
-    ) -> Result<(), String> {
-        let index =
-            rdev_key_index(key_name).ok_or_else(|| format!("Unknown key: {}", key_name))?;
+    fn register_single_key(&self, key_name: &str, mode: RecordingMode) -> Result<(), String> {
+        let index = rdev_key_index(key_name).ok_or_else(|| format!("Unknown key: {}", key_name))?;
 
         match mode {
             RecordingMode::HoldToRecord => {
-                self.rdev_state
-                    .ptt_key_index
-                    .store(index, Ordering::SeqCst);
+                self.rdev_state.ptt_key_index.store(index, Ordering::SeqCst);
             }
             RecordingMode::Toggle => {
                 self.rdev_state
@@ -423,42 +410,75 @@ fn resolve_action(
 #[allow(clippy::too_many_arguments, unused_variables)]
 async fn do_stop_recording(
     app: tauri::AppHandle,
-    controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
+    controller: Arc<
+        tokio::sync::Mutex<
+            voxpen_core::pipeline::controller::PipelineController<
+                crate::state::GroqSttProvider,
+                crate::state::GroqLlmProvider,
+            >,
+        >,
+    >,
     clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
     keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,
     dictionary: Arc<crate::dictionary::DictionaryDb>,
-    license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
+    license_mgr: Arc<
+        voxpen_core::licensing::LicenseManager<
+            voxpen_core::licensing::DirectLemonSqueezy,
+            crate::licensing::TauriLicenseStore,
+            crate::licensing::SqliteUsageDb,
+        >,
+    >,
     pcm_data: Vec<i16>,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
     focused_window_id: Option<String>,
     active_app: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    use voxpen_core::history::TranscriptionStatus;
     #[cfg(not(target_os = "linux"))]
     use voxpen_core::input::paste::paste_text;
     use voxpen_core::pipeline::state::PipelineState;
-    use tauri::Emitter;
 
     let pcm_len = pcm_data.len();
 
-    // Skip very short recordings (<0.5s at 16kHz)
-    if pcm_len < 8000 {
+    // Reject very short recordings (<0.25s at 16kHz) with visible feedback.
+    if pcm_len < 4000 {
+        let message = "Recording was too short. Speak for at least 0.25 seconds.".to_string();
+        let ctrl = controller.lock().await;
+        ctrl.emit_error(message);
+        drop(ctrl);
+        processing_flag.store(false, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         let ctrl = controller.lock().await;
         ctrl.reset();
-        processing_flag.store(false, Ordering::SeqCst);
         return;
     }
 
-    // Skip silent recordings — prevents Whisper hallucinations when
+    // Reject silent recordings — prevents Whisper hallucinations when
     // the user presses the hotkey but doesn't speak.
     if voxpen_core::audio::is_silent(&pcm_data) {
+        let message = "No speech detected. Please try again.".to_string();
+        let ctrl = controller.lock().await;
+        ctrl.emit_error(message);
+        drop(ctrl);
+        processing_flag.store(false, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         let ctrl = controller.lock().await;
         ctrl.reset();
-        processing_flag.store(false, Ordering::SeqCst);
         return;
     }
+
+    let entry_id = uuid::Uuid::new_v4().to_string();
+    let audio_path = match crate::recording_store::save_live_recording(&app, &entry_id, &pcm_data) {
+        Ok(path) => Some(path),
+        Err(e) => {
+            eprintln!("failed to save retryable recording: {e}");
+            None
+        }
+    };
 
     // Fetch vocabulary for prompt injection
     let vocab_words = dictionary.get_words(500).unwrap_or_default();
@@ -489,7 +509,7 @@ async fn do_stop_recording(
 
         let s = settings.lock().await;
         let entry = voxpen_core::history::TranscriptionEntry {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: entry_id.clone(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -499,6 +519,9 @@ async fn do_stop_recording(
             language: s.stt_language.clone(),
             audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
             provider: s.stt_provider.clone(),
+            status: TranscriptionStatus::Completed,
+            error_message: None,
+            audio_path: audio_path.clone(),
         };
         let auto_paste = s.auto_paste;
         drop(s);
@@ -531,8 +554,7 @@ async fn do_stop_recording(
                 let original = clipboard.get_text().unwrap_or(None);
                 let script_path = crate::paste_script_path(&app);
                 let mut cmd = std::process::Command::new("setsid");
-                cmd.arg(&script_path)
-                    .arg(final_text);
+                cmd.arg(&script_path).arg(final_text);
                 if let Some(ref orig) = original {
                     cmd.arg(orig);
                 }
@@ -567,8 +589,10 @@ async fn do_stop_recording(
                 let text = final_text.clone();
                 let cb = clipboard.clone();
                 let kb = keyboard.clone();
-                match tokio::task::spawn_blocking(move || paste_text(cb.as_ref(), kb.as_ref(), &text))
-                    .await
+                match tokio::task::spawn_blocking(move || {
+                    paste_text(cb.as_ref(), kb.as_ref(), &text)
+                })
+                .await
                 {
                     Ok(Err(e)) => eprintln!("paste failed: {e}"),
                     Err(e) => eprintln!("paste panicked: {e}"),
@@ -578,6 +602,26 @@ async fn do_stop_recording(
         }
     } else if let Err(ref e) = result {
         eprintln!("pipeline error: {e}");
+        let s = settings.lock().await;
+        let entry = voxpen_core::history::TranscriptionEntry {
+            id: entry_id,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+            original_text: String::new(),
+            refined_text: None,
+            language: s.stt_language.clone(),
+            audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
+            provider: s.stt_provider.clone(),
+            status: TranscriptionStatus::Failed,
+            error_message: Some(e.to_string()),
+            audio_path,
+        };
+        drop(s);
+        if let Err(history_error) = history.insert(&entry) {
+            eprintln!("history insert error for failed transcription: {history_error}");
+        }
     }
 
     // Allow next hotkey press immediately after paste completes.
@@ -648,8 +692,8 @@ fn handle_hotkey_event(
 
             tauri::async_runtime::spawn(async move {
                 // License usage gate — check VoiceInput category specifically
-                let voice_status = license_mgr
-                    .check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
+                let voice_status =
+                    license_mgr.check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
                 match &voice_status {
                     voxpen_core::licensing::UsageStatus::Exhausted => {
                         let _ = app_for_err.emit("usage-exhausted", ());
@@ -745,10 +789,8 @@ fn handle_hotkey_event(
                                 use std::sync::atomic::Ordering;
                                 use tauri::Emitter;
 
-                                tokio::time::sleep(std::time::Duration::from_secs(
-                                    max_secs as u64,
-                                ))
-                                .await;
+                                tokio::time::sleep(std::time::Duration::from_secs(max_secs as u64))
+                                    .await;
 
                                 // Only fire if still recording (user may have stopped manually just as timer fired)
                                 if !timeout_recording_started.load(Ordering::SeqCst) {
@@ -801,10 +843,8 @@ fn handle_hotkey_event(
                     Err(e) => {
                         let msg = format_audio_error(&e);
                         eprintln!("audio start error: {e}");
-                        let _ = app_for_err.emit(
-                            "pipeline-state",
-                            &PipelineState::Error { message: msg },
-                        );
+                        let _ = app_for_err
+                            .emit("pipeline-state", &PipelineState::Error { message: msg });
                         processing_flag.store(false, Ordering::SeqCst);
                     }
                 }
@@ -910,7 +950,12 @@ fn handle_edit_hotkey_event(
 ) {
     let is_recording = state.recording_started.load(Ordering::SeqCst);
     // Voice edit is always hold-to-record
-    let action = resolve_action(shortcut_state, &RecordingMode::HoldToRecord, is_recording, is_combo);
+    let action = resolve_action(
+        shortcut_state,
+        &RecordingMode::HoldToRecord,
+        is_recording,
+        is_combo,
+    );
 
     match action {
         HotkeyAction::Ignore => {}
@@ -940,11 +985,9 @@ fn handle_edit_hotkey_event(
             tauri::async_runtime::spawn(async move {
                 // 1. Simulate Ctrl+C / Cmd+C to copy the selection to clipboard
                 let kb = keyboard.clone();
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    kb.copy()
-                })
-                .await
-                .unwrap_or_else(|e| Err(voxpen_core::error::AppError::Paste(e.to_string())))
+                if let Err(e) = tokio::task::spawn_blocking(move || kb.copy())
+                    .await
+                    .unwrap_or_else(|e| Err(voxpen_core::error::AppError::Paste(e.to_string())))
                 {
                     let _ = app_for_err.emit(
                         "pipeline-state",
@@ -961,17 +1004,15 @@ fn handle_edit_hotkey_event(
 
                 // 3. Read the selected text from clipboard
                 let cb = clipboard.clone();
-                let selected = match tokio::task::spawn_blocking(move || {
-                    cb.get_text()
-                })
-                .await
-                {
+                let selected = match tokio::task::spawn_blocking(move || cb.get_text()).await {
                     Ok(Ok(Some(text))) if !text.is_empty() => text,
                     _ => {
                         let _ = app_for_err.emit(
                             "pipeline-state",
                             &PipelineState::Error {
-                                message: "No text selected. Please select text before using Voice Edit.".to_string(),
+                                message:
+                                    "No text selected. Please select text before using Voice Edit."
+                                        .to_string(),
                             },
                         );
                         processing_flag.store(false, Ordering::SeqCst);
@@ -1012,10 +1053,8 @@ fn handle_edit_hotkey_event(
                     }
                     Err(e) => {
                         let msg = format_audio_error(&e);
-                        let _ = app_for_err.emit(
-                            "pipeline-state",
-                            &PipelineState::Error { message: msg },
-                        );
+                        let _ = app_for_err
+                            .emit("pipeline-state", &PipelineState::Error { message: msg });
                         processing_flag.store(false, Ordering::SeqCst);
                     }
                 }
@@ -1120,13 +1159,26 @@ fn handle_edit_hotkey_event(
 #[allow(clippy::too_many_arguments, unused_variables)]
 async fn do_voice_edit_stop(
     app: tauri::AppHandle,
-    controller: Arc<tokio::sync::Mutex<voxpen_core::pipeline::controller::PipelineController<crate::state::GroqSttProvider, crate::state::GroqLlmProvider>>>,
+    controller: Arc<
+        tokio::sync::Mutex<
+            voxpen_core::pipeline::controller::PipelineController<
+                crate::state::GroqSttProvider,
+                crate::state::GroqLlmProvider,
+            >,
+        >,
+    >,
     clipboard: Arc<dyn voxpen_core::input::clipboard::ClipboardManager>,
     keyboard: Arc<dyn voxpen_core::input::paste::KeySimulator>,
     settings: Arc<tokio::sync::Mutex<voxpen_core::pipeline::settings::Settings>>,
     history: Arc<crate::history::HistoryDb>,
     dictionary: Arc<crate::dictionary::DictionaryDb>,
-    license_mgr: Arc<voxpen_core::licensing::LicenseManager<voxpen_core::licensing::DirectLemonSqueezy, crate::licensing::TauriLicenseStore, crate::licensing::SqliteUsageDb>>,
+    license_mgr: Arc<
+        voxpen_core::licensing::LicenseManager<
+            voxpen_core::licensing::DirectLemonSqueezy,
+            crate::licensing::TauriLicenseStore,
+            crate::licensing::SqliteUsageDb,
+        >,
+    >,
     pcm_data: Vec<i16>,
     selected_text: String,
     processing_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -1134,11 +1186,11 @@ async fn do_voice_edit_stop(
     active_app: Option<String>,
 ) {
     use std::sync::atomic::Ordering;
+    use tauri::Emitter;
     #[cfg(not(target_os = "linux"))]
     use voxpen_core::input::paste::paste_text;
     use voxpen_core::pipeline::prompts;
     use voxpen_core::pipeline::state::{Language, TonePreset};
-    use tauri::Emitter;
 
     let pcm_len = pcm_data.len();
 
@@ -1170,7 +1222,10 @@ async fn do_voice_edit_stop(
 
     // STT-only: transcribe the edit command
     let ctrl = controller.lock().await;
-    let edit_command = match ctrl.on_stop_recording_stt_only(pcm_data, vocabulary_hint).await {
+    let edit_command = match ctrl
+        .on_stop_recording_stt_only(pcm_data, vocabulary_hint)
+        .await
+    {
         Ok(text) => text,
         Err(e) => {
             eprintln!("voice edit: STT failed: {e}");
@@ -1187,7 +1242,9 @@ async fn do_voice_edit_stop(
         license_mgr.check_category(voxpen_core::licensing::UsageCategory::VoiceInput);
     if voice_status == voxpen_core::licensing::UsageStatus::Exhausted {
         let ctrl = controller.lock().await;
-        ctrl.emit_error("Daily voice limit reached. Upgrade to Pro for unlimited access.".to_string());
+        ctrl.emit_error(
+            "Daily voice limit reached. Upgrade to Pro for unlimited access.".to_string(),
+        );
         drop(ctrl);
         let _ = app.emit("usage-exhausted", ());
         processing_flag.store(false, Ordering::SeqCst);
@@ -1281,6 +1338,9 @@ async fn do_voice_edit_stop(
             language: s.stt_language.clone(),
             audio_duration_ms: (pcm_len as u64 * 1000) / 16000,
             provider: s.stt_provider.clone(),
+            status: voxpen_core::history::TranscriptionStatus::Completed,
+            error_message: None,
+            audio_path: None,
         };
         (s.auto_paste, entry)
     };
@@ -1312,8 +1372,7 @@ async fn do_voice_edit_stop(
             let original = clipboard.get_text().unwrap_or(None);
             let script_path = crate::paste_script_path(&app);
             let mut cmd = std::process::Command::new("setsid");
-            cmd.arg(&script_path)
-                .arg(&edited_text);
+            cmd.arg(&script_path).arg(&edited_text);
             if let Some(ref orig) = original {
                 cmd.arg(orig);
             }
@@ -1384,8 +1443,7 @@ fn format_audio_error(err: &voxpen_core::error::AppError) -> String {
     }
 
     // WASAPI errors on Windows when mic permission is off
-    if lower.contains("wasapi") || lower.contains("not activated") || lower.contains("0x80070005")
-    {
+    if lower.contains("wasapi") || lower.contains("not activated") || lower.contains("0x80070005") {
         return format!(
             "Microphone access may be disabled. Please check \
              Settings > Privacy & Security > Microphone. ({})",

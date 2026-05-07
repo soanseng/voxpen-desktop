@@ -6,4 +6,7 @@ export interface TranscriptionEntry {
   language: string;
   audio_duration_ms: number;
   provider: string;
+  status: "completed" | "failed";
+  error_message: string | null;
+  audio_path: string | null;
 }

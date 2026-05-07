@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TranscriptionEntry } from "../../types/history";
-import { deleteHistoryEntry, getHistory, searchHistory } from "../../lib/tauri";
+import { deleteHistoryEntry, getHistory, retryTranscription, searchHistory } from "../../lib/tauri";
 import HistoryList from "./HistoryList";
 
 const PAGE_SIZE = 50;
@@ -53,6 +53,16 @@ export default function HistoryWindow() {
       setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch {
       // Delete failed silently
+    }
+  }
+
+  async function handleRetry(id: string) {
+    try {
+      const updated = await retryTranscription(id);
+      setEntries((prev) => prev.map((entry) => (entry.id === id ? updated : entry)));
+    } catch (error) {
+      await fetchEntries(query);
+      throw error;
     }
   }
 
@@ -120,7 +130,7 @@ export default function HistoryWindow() {
           </svg>
         </div>
       ) : (
-        <HistoryList entries={entries} onDelete={handleDelete} />
+        <HistoryList entries={entries} onDelete={handleDelete} onRetry={handleRetry} />
       )}
     </div>
   );

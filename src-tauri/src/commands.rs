@@ -3,12 +3,12 @@ use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 use voxpen_core::dictionary::DictionaryEntry;
+use voxpen_core::history::{TranscriptionEntry, TranscriptionStatus};
 use voxpen_core::licensing::types::{
     CategorizedUsageStatus, LicenseInfo, LicenseTier, UsageCategory,
 };
-use voxpen_core::pipeline::prompts;
-use voxpen_core::history::TranscriptionEntry;
 use voxpen_core::pipeline::controller::PipelineConfig;
+use voxpen_core::pipeline::prompts;
 use voxpen_core::pipeline::settings::Settings;
 use voxpen_core::pipeline::state::{Language, TonePreset};
 
@@ -128,10 +128,7 @@ pub async fn save_settings(
     #[cfg(feature = "local-whisper")]
     if settings.stt_provider == "local" {
         if let Some(model) = voxpen_core::whisper::models::model_by_id(&settings.stt_model) {
-            let path = voxpen_core::whisper::models::model_path(
-                &state.models_dir,
-                model.filename,
-            );
+            let path = voxpen_core::whisper::models::model_path(&state.models_dir, model.filename);
             state.local_stt.set_model_path(path);
         }
         state.local_stt.set_language(settings.stt_language.clone());
@@ -232,23 +229,24 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
     use voxpen_core::api::groq::{self, SttConfig};
     use voxpen_core::pipeline::state::Language;
 
-    if provider != "groq" {
-        return Err(format!("unsupported provider: {provider}"));
-    }
-
     // Send a tiny silent WAV to validate the API key
     let silent_pcm: Vec<i16> = vec![0; 16000]; // 1 second of silence
     let wav_data = voxpen_core::audio::encoder::pcm_to_wav(&silent_pcm);
+    let model = match provider.as_str() {
+        "groq" => groq::DEFAULT_STT_MODEL,
+        "openai" => "whisper-1",
+        _ => return Err(format!("unsupported provider: {provider}")),
+    };
 
     let config = SttConfig {
         api_key: key,
-        model: groq::DEFAULT_STT_MODEL.to_string(),
+        model: model.to_string(),
         language: Language::Auto,
         response_format: "verbose_json".to_string(),
         prompt_override: None,
     };
 
-    match groq::transcribe(&config, &wav_data).await {
+    match groq::transcribe_file(&config, &wav_data, "recording.wav", "audio/wav", &provider).await {
         Ok(_) => Ok(true),
         Err(voxpen_core::error::AppError::ApiKeyMissing(_)) => Ok(false),
         Err(_) => Ok(true), // Non-auth errors mean the key itself is valid
@@ -303,9 +301,7 @@ pub async fn get_dictionary_entries(
 
 /// Get dictionary entry count.
 #[tauri::command]
-pub async fn get_dictionary_count(
-    state: tauri::State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn get_dictionary_count(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     state.dictionary.count()
 }
 
@@ -440,9 +436,7 @@ pub async fn get_usage_status(
 
 /// Get the current license tier (Free or Pro).
 #[tauri::command]
-pub async fn get_license_tier(
-    state: tauri::State<'_, AppState>,
-) -> Result<LicenseTier, String> {
+pub async fn get_license_tier(state: tauri::State<'_, AppState>) -> Result<LicenseTier, String> {
     Ok(state.license_manager.current_tier())
 }
 
@@ -482,16 +476,19 @@ pub async fn transcribe_file(
     state: tauri::State<'_, AppState>,
     file_path: String,
 ) -> Result<FileTranscriptionResult, String> {
-    use voxpen_core::api::groq::{self, SttConfig, ChatConfig};
-    use voxpen_core::pipeline::refine;
+    use voxpen_core::api::groq::{self, ChatConfig, SttConfig};
     use voxpen_core::licensing::UsageStatus;
+    use voxpen_core::pipeline::refine;
 
     // Check FileTranscription quota
     let file_status = state
         .license_manager
         .check_category(UsageCategory::FileTranscription);
     if file_status == UsageStatus::Exhausted {
-        return Err("Daily file transcription limit reached. Upgrade to Pro for unlimited access.".to_string());
+        return Err(
+            "Daily file transcription limit reached. Upgrade to Pro for unlimited access."
+                .to_string(),
+        );
     }
 
     // Validate file extension
@@ -501,8 +498,9 @@ pub async fn transcribe_file(
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
-    let mime = mime_for_extension(&ext)
-        .ok_or_else(|| format!("Unsupported format: .{ext}. Supported: wav, mp3, flac, m4a, ogg, webm"))?;
+    let mime = mime_for_extension(&ext).ok_or_else(|| {
+        format!("Unsupported format: .{ext}. Supported: wav, mp3, flac, m4a, ogg, webm")
+    })?;
     let filename = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -510,14 +508,13 @@ pub async fn transcribe_file(
         .to_string();
 
     // Read file
-    let file_data = std::fs::read(&file_path)
-        .map_err(|e| format!("Failed to read file: {e}"))?;
+    let file_data = std::fs::read(&file_path).map_err(|e| format!("Failed to read file: {e}"))?;
 
     // Build STT config from settings
     let s = state.settings.lock().await;
     let stt_provider = s.stt_provider.clone();
-    let api_key = crate::state::get_api_key_from_handle(&app, &stt_provider)
-        .map_err(|e| e.to_string())?;
+    let api_key =
+        crate::state::get_api_key_from_handle(&app, &stt_provider).map_err(|e| e.to_string())?;
     let config = SttConfig {
         api_key,
         model: s.stt_model.clone(),
@@ -536,8 +533,8 @@ pub async fn transcribe_file(
 
     // Transcribe: for WAV > 25MB use chunking, otherwise single-call
     let (text, srt_content) = if ext == "wav" && file_data.len() > 25 * 1024 * 1024 {
-        use voxpen_core::audio::chunker::{chunk_wav, wav_duration_seconds};
         use voxpen_core::api::groq::transcribe_file_with_segments;
+        use voxpen_core::audio::chunker::{chunk_wav, wav_duration_seconds};
         use voxpen_core::pipeline::chunked_transcribe::merge_segments;
         use voxpen_core::srt::format_srt;
 
@@ -547,8 +544,14 @@ pub async fn transcribe_file(
         for chunk in &chunks {
             let duration = wav_duration_seconds(chunk).map_err(|e| e.to_string())?;
             let verbose = transcribe_file_with_segments(
-                &config, chunk, "chunk.wav", "audio/wav", &stt_provider,
-            ).await.map_err(|e| e.to_string())?;
+                &config,
+                chunk,
+                "chunk.wav",
+                "audio/wav",
+                &stt_provider,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
             chunk_results.push((verbose, duration));
         }
 
@@ -567,9 +570,10 @@ pub async fn transcribe_file(
         use voxpen_core::api::groq::transcribe_file_with_segments;
         use voxpen_core::srt::format_srt;
 
-        let verbose = transcribe_file_with_segments(
-            &config, &file_data, &filename, mime, &stt_provider,
-        ).await.map_err(|e| e.to_string())?;
+        let verbose =
+            transcribe_file_with_segments(&config, &file_data, &filename, mime, &stt_provider)
+                .await
+                .map_err(|e| e.to_string())?;
         let srt = format_srt(&verbose.segments);
         (verbose.text, srt)
     };
@@ -585,10 +589,18 @@ pub async fn transcribe_file(
             max_tokens: groq::LLM_MAX_TOKENS,
         };
         match refine::refine(
-            &text, &chat_config, &language, &[], &custom_prompt,
-            &tone_preset, &refinement_provider, &custom_base_url,
+            &text,
+            &chat_config,
+            &language,
+            &[],
+            &custom_prompt,
+            &tone_preset,
+            &refinement_provider,
+            &custom_base_url,
             None, // translation_target — wired in next task (TM-4)
-        ).await {
+        )
+        .await
+        {
             Ok(r) => Some(r),
             Err(e) => {
                 eprintln!("refinement failed for file transcription: {e}");
@@ -622,6 +634,9 @@ pub async fn transcribe_file(
         language: language.clone(),
         audio_duration_ms: 0, // unknown for file uploads
         provider: stt_provider,
+        status: TranscriptionStatus::Completed,
+        error_message: None,
+        audio_path: None,
     };
     if let Err(e) = state.history.insert(&entry) {
         eprintln!("history insert error: {e}");
@@ -632,6 +647,145 @@ pub async fn transcribe_file(
         refined,
         srt: srt_content,
     })
+}
+
+/// Retry a failed live transcription using its saved WAV and current settings.
+#[tauri::command]
+pub async fn retry_transcription(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<TranscriptionEntry, String> {
+    use voxpen_core::api::groq::{self, ChatConfig, SttConfig};
+    use voxpen_core::pipeline::refine;
+
+    let entry = state
+        .history
+        .get(&id)?
+        .ok_or_else(|| "history entry not found".to_string())?;
+    if entry.status != TranscriptionStatus::Failed {
+        return Err("only failed transcriptions can be retried".to_string());
+    }
+    let audio_path = entry
+        .audio_path
+        .as_deref()
+        .ok_or_else(|| "failed entry has no saved audio path".to_string())?;
+    let file_data = match crate::recording_store::read_recording(audio_path) {
+        Ok(data) => data,
+        Err(e) => {
+            let _ = state.history.update_failed(&id, &entry.provider, &e);
+            return Err(e);
+        }
+    };
+
+    let s = state.settings.lock().await;
+    let stt_provider = s.stt_provider.clone();
+    let api_key =
+        crate::state::get_api_key_from_handle(&app, &stt_provider).map_err(|e| e.to_string())?;
+    let stt_config = SttConfig {
+        api_key,
+        model: s.stt_model.clone(),
+        language: s.stt_language.clone(),
+        response_format: "verbose_json".to_string(),
+        prompt_override: None,
+    };
+    let refinement_enabled = s.refinement_enabled;
+    let refinement_provider = s.refinement_provider.clone();
+    let refinement_model = s.refinement_model.clone();
+    let custom_prompt = s.refinement_prompt.clone();
+    let tone_preset = s.tone_preset.clone();
+    let custom_base_url = s.custom_base_url.clone();
+    let language = s.stt_language.clone();
+    drop(s);
+
+    let text = match transcribe_retry_wav(&stt_config, &file_data, &stt_provider).await {
+        Ok(text) => text,
+        Err(e) => {
+            let message = e.to_string();
+            let _ = state.history.update_failed(&id, &stt_provider, &message);
+            return Err(message);
+        }
+    };
+
+    let refined = if refinement_enabled {
+        match crate::state::get_api_key_from_handle(&app, &refinement_provider) {
+            Ok(llm_key) => {
+                let chat_config = ChatConfig {
+                    api_key: llm_key,
+                    model: refinement_model,
+                    temperature: groq::LLM_TEMPERATURE,
+                    max_tokens: groq::LLM_MAX_TOKENS,
+                };
+                match refine::refine(
+                    &text,
+                    &chat_config,
+                    &language,
+                    &[],
+                    &custom_prompt,
+                    &tone_preset,
+                    &refinement_provider,
+                    &custom_base_url,
+                    None,
+                )
+                .await
+                {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        eprintln!("refinement failed for retry: {e}");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("refinement skipped for retry: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    state.history.update_completed(
+        &id,
+        &text,
+        refined.as_deref(),
+        &language,
+        entry.audio_duration_ms,
+        &stt_provider,
+    )?;
+
+    state
+        .history
+        .get(&id)?
+        .ok_or_else(|| "history entry missing after retry".to_string())
+}
+
+async fn transcribe_retry_wav(
+    config: &voxpen_core::api::groq::SttConfig,
+    file_data: &[u8],
+    provider: &str,
+) -> Result<String, voxpen_core::error::AppError> {
+    use voxpen_core::api::groq::transcribe_file_with_segments;
+
+    if file_data.len() <= 25 * 1024 * 1024 {
+        let verbose =
+            transcribe_file_with_segments(config, file_data, "retry.wav", "audio/wav", provider)
+                .await?;
+        return Ok(verbose.text);
+    }
+
+    let chunks = voxpen_core::audio::chunker::chunk_wav(file_data)?;
+    let mut texts = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        let verbose =
+            transcribe_file_with_segments(config, &chunk, "retry.wav", "audio/wav", provider)
+                .await?;
+        let text = verbose.text.trim();
+        if !text.is_empty() {
+            texts.push(text.to_string());
+        }
+    }
+    Ok(texts.join(" "))
 }
 
 // ---------------------------------------------------------------------------
@@ -720,17 +874,13 @@ pub async fn delete_whisper_model(
 ) -> Result<(), String> {
     let model = voxpen_core::whisper::models::model_by_id(&model_id)
         .ok_or_else(|| format!("unknown model: {model_id}"))?;
-    voxpen_core::whisper::models::delete_model(&state.models_dir, model)
-        .map_err(|e| e.to_string())
+    voxpen_core::whisper::models::delete_model(&state.models_dir, model).map_err(|e| e.to_string())
 }
 
 /// Simple semver comparison: is `latest` newer than `current`?
 fn version_newer(latest: &str, current: &str) -> bool {
-    let parse = |s: &str| -> Vec<u32> {
-        s.split('.')
-            .filter_map(|p| p.parse::<u32>().ok())
-            .collect()
-    };
+    let parse =
+        |s: &str| -> Vec<u32> { s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect() };
     let l = parse(latest);
     let c = parse(current);
     l > c

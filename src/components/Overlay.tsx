@@ -274,15 +274,15 @@ export default function Overlay() {
       >
       <div
         className={
-          "flex items-center gap-3 rounded-full px-5 py-2 shadow-lg backdrop-blur-md " +
+          "flex max-w-[calc(100vw-24px)] items-center gap-3 px-5 py-2 shadow-lg backdrop-blur-md " +
           "transition-all duration-300 " +
           (isRecording
-            ? "bg-red-900/80"
+            ? "rounded-full bg-red-900/80"
             : isProcessing
-              ? "bg-blue-900/80"
+              ? "rounded-full bg-blue-900/80"
               : isDone
-                ? "bg-green-900/80"
-                : "bg-gray-900/80")
+                ? "rounded-full bg-green-900/80"
+                : "max-w-[520px] rounded-xl bg-gray-900/80 sm:max-w-[640px]")
         }
       >
         {isRecording && (
@@ -341,7 +341,7 @@ export default function Overlay() {
                 d="M6 18L18 6M6 6l12 12"
               />
             </svg>
-            <span className="max-w-[160px] truncate text-xs font-medium text-red-300">
+            <span className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs font-medium leading-relaxed text-red-300">
               {state.data?.message ?? t("error")}
             </span>
           </>

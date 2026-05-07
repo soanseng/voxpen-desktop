@@ -8,6 +8,7 @@ mod history;
 mod hotkey;
 mod keyboard;
 mod licensing;
+mod recording_store;
 mod state;
 
 use std::sync::atomic::AtomicBool;
@@ -621,6 +622,7 @@ pub fn run() {
             commands::get_history,
             commands::search_history,
             commands::delete_history_entry,
+            commands::retry_transcription,
             commands::get_default_refinement_prompt,
             commands::get_dictionary_entries,
             commands::get_dictionary_count,

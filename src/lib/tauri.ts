@@ -50,6 +50,10 @@ export async function deleteHistoryEntry(id: string): Promise<void> {
   return invoke("delete_history_entry", { id });
 }
 
+export async function retryTranscription(id: string): Promise<TranscriptionEntry> {
+  return invoke<TranscriptionEntry>("retry_transcription", { id });
+}
+
 export async function searchHistory(
   query: string,
   limit: number,
