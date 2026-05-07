@@ -9,4 +9,7 @@ export interface TranscriptionEntry {
   status: "completed" | "failed";
   error_message: string | null;
   audio_path: string | null;
+  kind: "dictation" | "voice_edit" | "listen_command";
+  llm_provider: string | null;
+  llm_model: string | null;
 }

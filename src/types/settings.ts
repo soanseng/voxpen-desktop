@@ -26,6 +26,11 @@ export interface Settings {
   translation_target: "Chinese" | "English" | "Japanese" | "Korean" | "French" | "German" | "Spanish" | "Vietnamese" | "Indonesian" | "Thai";
   voice_commands_enabled: boolean;
   hotkey_edit: string;
+  listen_command_enabled: boolean;
+  hotkey_listen_command: string;
+  listen_command_provider: string;
+  listen_command_model: string;
+  listen_command_custom_base_url: string;
   app_tone_rules: AppToneRule[];
   audio_ducking_enabled: boolean;
   audio_ducking_volume: number;
@@ -104,6 +109,11 @@ export const defaultSettings: Settings = {
   translation_target: "English",
   voice_commands_enabled: false,
   hotkey_edit: "CommandOrControl+Shift+E",
+  listen_command_enabled: false,
+  hotkey_listen_command: "CommandOrControl+Shift+L",
+  listen_command_provider: "openai",
+  listen_command_model: "gpt-5.2",
+  listen_command_custom_base_url: "",
   app_tone_rules: [],
   audio_ducking_enabled: true,
   audio_ducking_volume: 20,

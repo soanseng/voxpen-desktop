@@ -589,6 +589,9 @@ async fn do_stop_recording(
             status: TranscriptionStatus::Completed,
             error_message: None,
             audio_path: audio_path.clone(),
+            kind: voxpen_core::history::TranscriptionKind::Dictation,
+            llm_provider: None,
+            llm_model: None,
         };
         let auto_paste = s.auto_paste;
         drop(s);
@@ -684,6 +687,9 @@ async fn do_stop_recording(
             status: TranscriptionStatus::Failed,
             error_message: Some(e.to_string()),
             audio_path,
+            kind: voxpen_core::history::TranscriptionKind::Dictation,
+            llm_provider: None,
+            llm_model: None,
         };
         drop(s);
         if let Err(history_error) = history.insert(&entry) {
@@ -1408,6 +1414,9 @@ async fn do_voice_edit_stop(
             status: voxpen_core::history::TranscriptionStatus::Completed,
             error_message: None,
             audio_path: None,
+            kind: voxpen_core::history::TranscriptionKind::VoiceEdit,
+            llm_provider: Some(s.refinement_provider.clone()),
+            llm_model: Some(s.refinement_model.clone()),
         };
         (s.auto_paste, entry)
     };

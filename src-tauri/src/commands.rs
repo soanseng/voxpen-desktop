@@ -637,6 +637,9 @@ pub async fn transcribe_file(
         status: TranscriptionStatus::Completed,
         error_message: None,
         audio_path: None,
+        kind: voxpen_core::history::TranscriptionKind::Dictation,
+        llm_provider: None,
+        llm_model: None,
     };
     if let Err(e) = state.history.insert(&entry) {
         eprintln!("history insert error: {e}");
