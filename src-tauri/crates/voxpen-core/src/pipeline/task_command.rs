@@ -103,9 +103,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/openai/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(chat_response(
-                "function debounce(fn, wait) { return fn; }",
-            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(chat_response("function debounce(fn, wait) { return fn; }")),
+            )
             .expect(1)
             .mount(&server)
             .await;
@@ -133,9 +134,9 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(chat_response(
-                "Custom provider output",
-            )))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(chat_response("Custom provider output")),
+            )
             .expect(1)
             .mount(&server)
             .await;
@@ -154,8 +155,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_reject_empty_command() {
-        let result =
-            super::generate("", None, &test_config("key"), "openai", "").await;
+        let result = super::generate("", None, &test_config("key"), "openai", "").await;
 
         match result {
             Err(AppError::Command(msg)) => assert_eq!(msg, "no command to run"),

@@ -186,7 +186,9 @@ impl HotkeyManager {
             && is_combo_shortcut(listen_command_shortcut)
         {
             match self.register_listen_command_combo(app, listen_command_shortcut) {
-                Ok(()) => self.registered_listen_command = Some(listen_command_shortcut.to_string()),
+                Ok(()) => {
+                    self.registered_listen_command = Some(listen_command_shortcut.to_string())
+                }
                 Err(e) => errors.push(e),
             }
         }

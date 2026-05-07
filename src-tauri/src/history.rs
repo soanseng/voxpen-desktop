@@ -173,7 +173,10 @@ fn migrate_schema(conn: &Connection) -> rusqlite::Result<()> {
         )?;
     }
     if !existing.iter().any(|c| c == "llm_provider") {
-        conn.execute("ALTER TABLE transcriptions ADD COLUMN llm_provider TEXT", [])?;
+        conn.execute(
+            "ALTER TABLE transcriptions ADD COLUMN llm_provider TEXT",
+            [],
+        )?;
     }
     if !existing.iter().any(|c| c == "llm_model") {
         conn.execute("ALTER TABLE transcriptions ADD COLUMN llm_model TEXT", [])?;
