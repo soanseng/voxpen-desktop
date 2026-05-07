@@ -20,12 +20,26 @@ pub async fn generate(
     provider: &str,
     custom_base_url: &str,
 ) -> Result<String, AppError> {
-    let base_url = if provider == "custom" && !custom_base_url.is_empty() {
-        custom_base_url
+    let base_url = if provider == "custom" {
+        let custom_base_url = custom_base_url.trim();
+        if custom_base_url.is_empty() {
+            return Err(AppError::Command(
+                "custom command provider base URL not configured".to_string(),
+            ));
+        }
+        normalize_base_url(custom_base_url)
     } else {
-        groq::base_url_for_provider(provider)
+        groq::base_url_for_provider(provider).to_string()
     };
-    generate_with_base_url(command, active_app, config, provider, base_url).await
+    generate_with_base_url(command, active_app, config, provider, &base_url).await
+}
+
+fn normalize_base_url(base_url: &str) -> String {
+    if base_url.ends_with('/') {
+        base_url.to_string()
+    } else {
+        format!("{base_url}/")
+    }
 }
 
 async fn generate_with_base_url(
@@ -141,16 +155,35 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = super::generate_with_base_url(
+        let result = super::generate(
             "draft a PR summary",
             None,
             &test_config("custom-key"),
             "custom",
-            &format!("{}/", server.uri()),
+            &server.uri(),
         )
         .await;
 
         assert_eq!(result.unwrap(), "Custom provider output");
+    }
+
+    #[tokio::test]
+    async fn should_reject_custom_provider_without_base_url() {
+        let result = super::generate(
+            "draft a PR summary",
+            None,
+            &test_config("custom-key"),
+            "custom",
+            "   ",
+        )
+        .await;
+
+        match result {
+            Err(AppError::Command(msg)) => {
+                assert_eq!(msg, "custom command provider base URL not configured")
+            }
+            other => panic!("expected Command error, got {other:?}"),
+        }
     }
 
     #[tokio::test]
