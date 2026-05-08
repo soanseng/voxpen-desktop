@@ -110,7 +110,7 @@ export const defaultSettings: Settings = {
   voice_commands_enabled: false,
   hotkey_edit: "CommandOrControl+Shift+E",
   listen_command_enabled: false,
-  hotkey_listen_command: "CommandOrControl+Shift+L",
+  hotkey_listen_command: "CommandOrControl+Alt+Space",
   listen_command_provider: "openai",
   listen_command_model: "gpt-5.2",
   listen_command_custom_base_url: "",

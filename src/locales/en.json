@@ -211,7 +211,7 @@
   "listenCommandEnabledHint": "Hold a separate hotkey, speak an instruction, and paste the generated result. It does not run commands or edit files.",
   "hotkeyListenCommand": "Listen Command Hotkey",
   "hotkeyListenCommandHint": "Combo shortcut only. Press and hold to record a spoken instruction.",
-  "hotkeyListenCommandPreset": "Ctrl+Shift+L",
+  "hotkeyListenCommandPreset": "Ctrl+Alt+Space",
   "listenCommandProvider": "Command Provider",
   "listenCommandProviderHint": "The command LLM can differ from your speech-to-text and refinement providers.",
   "listenCommandModel": "Command Model",

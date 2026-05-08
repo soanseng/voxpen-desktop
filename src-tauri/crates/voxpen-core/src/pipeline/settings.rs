@@ -138,7 +138,7 @@ fn default_hotkey_toggle() -> String {
 }
 
 fn default_hotkey_listen_command() -> String {
-    "CommandOrControl+Shift+L".to_string()
+    "CommandOrControl+Alt+Space".to_string()
 }
 
 fn default_listen_command_provider() -> String {
@@ -398,7 +398,7 @@ mod tests {
     fn should_default_listen_command_to_disabled_with_combo_hotkey() {
         let s = Settings::default();
         assert!(!s.listen_command_enabled);
-        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Shift+L");
+        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Alt+Space");
         assert_eq!(s.listen_command_provider, "openai");
         assert_eq!(s.listen_command_model, "gpt-5.2");
         assert_eq!(s.listen_command_custom_base_url, "");
@@ -432,7 +432,7 @@ mod tests {
         let s: Settings = serde_json::from_str(json).unwrap();
 
         assert!(!s.listen_command_enabled);
-        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Shift+L");
+        assert_eq!(s.hotkey_listen_command, "CommandOrControl+Alt+Space");
         assert_eq!(s.listen_command_provider, "openai");
         assert_eq!(s.listen_command_model, "gpt-5.2");
         assert_eq!(s.listen_command_custom_base_url, "");

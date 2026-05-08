@@ -137,6 +137,14 @@ fn build_tray_menu(
         cfg.settings.translation_enabled,
         None::<&str>,
     )?;
+    let command_mode_item = CheckMenuItem::with_id(
+        app,
+        "command_mode_toggle",
+        "Command Mode",
+        true,
+        cfg.settings.listen_command_enabled,
+        None::<&str>,
+    )?;
 
     // Microphone submenu
     let default_mic = CheckMenuItem::with_id(
@@ -174,6 +182,7 @@ fn build_tray_menu(
             &lang_submenu,
             &tone_submenu,
             &translation_item,
+            &command_mode_item,
             &mic_submenu,
             &sep1,
             &update_item,
@@ -468,6 +477,40 @@ pub fn run() {
                                     }
 
                                     // Emit settings-changed so frontend stays in sync
+                                    let _ = app.emit("settings-changed", &settings_clone);
+                                });
+                            }
+                            "command_mode_toggle" => {
+                                let app = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let state: tauri::State<'_, AppState> = app.state();
+                                    let mut s = state.settings.lock().await;
+                                    s.listen_command_enabled = !s.listen_command_enabled;
+                                    let settings_clone = s.clone();
+                                    drop(s);
+
+                                    let registration_result = {
+                                        let mut mgr = state.hotkey_manager.lock().await;
+                                        mgr.register_all(
+                                            &app,
+                                            &settings_clone.hotkey_ptt,
+                                            &settings_clone.hotkey_toggle,
+                                            &settings_clone.hotkey_edit,
+                                            settings_clone.listen_command_enabled,
+                                            &settings_clone.hotkey_listen_command,
+                                        )
+                                    };
+                                    if let Err(e) = registration_result {
+                                        eprintln!("failed to register command mode hotkey: {e}");
+                                    }
+
+                                    if let Ok(store) = app.store("settings.json") {
+                                        if let Ok(value) = serde_json::to_value(&settings_clone) {
+                                            store.set("settings", value);
+                                            let _ = store.save();
+                                        }
+                                    }
+
                                     let _ = app.emit("settings-changed", &settings_clone);
                                 });
                             }

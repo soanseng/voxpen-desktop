@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "../types/settings";
 import { defaultSettings } from "../types/settings";
 import { getSettings, saveSettings } from "../lib/tauri";
@@ -41,6 +42,21 @@ export function useSettings(): UseSettingsResult {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<Settings>("settings-changed", (event) => {
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      pendingSettings.current = event.payload;
+      setSettings(event.payload);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   }, []);
 

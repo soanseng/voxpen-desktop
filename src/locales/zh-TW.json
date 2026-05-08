@@ -211,7 +211,7 @@
   "listenCommandEnabledHint": "按住獨立快捷鍵，說出指令，並貼上生成結果。不會執行命令或直接修改檔案。",
   "hotkeyListenCommand": "聽我指令快捷鍵",
   "hotkeyListenCommandHint": "僅支援組合快捷鍵。按住錄製語音指令。",
-  "hotkeyListenCommandPreset": "Ctrl+Shift+L",
+  "hotkeyListenCommandPreset": "Ctrl+Alt+Space",
   "listenCommandProvider": "指令供應商",
   "listenCommandProviderHint": "指令 LLM 可和語音轉文字、文字潤飾使用不同供應商。",
   "listenCommandModel": "指令模型",

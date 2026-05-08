@@ -48,6 +48,37 @@ function getModelsForProvider(provider: string): ModelOption[] {
   }
 }
 
+function ToggleSwitch({
+  checked,
+  onChange,
+  id,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  id: string;
+}) {
+  return (
+    <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
+      <input
+        id={id}
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <div
+        className={
+          "h-6 w-11 rounded-full bg-gray-300 transition-colors " +
+          "after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 " +
+          "after:rounded-full after:bg-white after:transition-transform " +
+          "peer-checked:bg-blue-500 peer-checked:after:translate-x-5 " +
+          "dark:bg-gray-600 dark:peer-checked:bg-blue-500"
+        }
+      />
+    </label>
+  );
+}
+
 export default function ListenCommandSection({
   settings,
   onUpdate,
@@ -106,6 +137,22 @@ export default function ListenCommandSection({
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {t("listenCommandDescription")}
         </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t("listenCommandEnabled")}
+          </label>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            {t("listenCommandEnabledHint")}
+          </p>
+        </div>
+        <ToggleSwitch
+          id="listen-command-section-enabled"
+          checked={settings.listen_command_enabled}
+          onChange={(v) => onUpdate("listen_command_enabled", v)}
+        />
       </div>
 
       <div className={disabled ? "space-y-6 opacity-40" : "space-y-6"}>

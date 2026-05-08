@@ -207,7 +207,7 @@ function HotkeyPicker({
               type="button"
               onClick={() => {
                 const shortcut = kind === "listen_command"
-                  ? "CommandOrControl+Shift+L"
+                  ? "CommandOrControl+Alt+Space"
                   : "CommandOrControl+Shift+V";
                 setPending(shortcut);
                 void save(shortcut);
