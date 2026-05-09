@@ -1,41 +1,40 @@
-name: Release
+name: Release Linux Packages
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload Linux assets to, e.g. v0.9.6'
+        required: true
+        default: 'v0.9.6'
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-linux-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build (${{ matrix.label }})
+  build-linux:
+    name: Build Linux packages
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-latest
-            args: '--target x86_64-pc-windows-msvc --bundles nsis'
-            rust_target: x86_64-pc-windows-msvc
-            label: Windows-x64
-          - platform: ubuntu-22.04
-            args: '--bundles appimage deb'
-            rust_target: ''
-            label: Linux-x64
-
-    runs-on: ${{ matrix.platform }}
 
     steps:
+      - name: Resolve release version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -45,7 +44,8 @@ jobs:
             librsvg2-dev \
             libasound2-dev \
             libxdo-dev \
-            patchelf
+            patchelf \
+            zstd
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -60,8 +60,6 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -71,7 +69,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri app
+      - name: Build Tauri Linux packages
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,125 +77,59 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           configPath: src-tauri/tauri.release.conf.json
-          args: ${{ matrix.args }}
+          args: '--bundles appimage deb'
 
-      - name: Copy native binary (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Build Arch package
+        run: scripts/package-arch.sh "$RELEASE_VERSION"
+
+      - name: Create release asset names
         run: |
-          cp src-tauri/target/release/voxpen-desktop src-tauri/target/release/bundle/voxpen-desktop
-          chmod +x src-tauri/target/release/bundle/voxpen-desktop
+          mkdir -p release-files
+          cp src-tauri/target/release/bundle/deb/*.deb \
+            "release-files/VoxPen.Desktop_${RELEASE_VERSION}_amd64.deb"
+          cp src-tauri/target/release/bundle/appimage/*.AppImage \
+            "release-files/VoxPen.Desktop_${RELEASE_VERSION}_amd64.AppImage"
+          cp src-tauri/target/release/bundle/arch/*.pkg.tar.zst \
+            "release-files/VoxPen.Desktop_${RELEASE_VERSION}_x86_64.pkg.tar.zst"
+
+          for sig in src-tauri/target/release/bundle/appimage/*.sig; do
+            [ -f "$sig" ] || continue
+            cp "$sig" "release-files/VoxPen.Desktop_${RELEASE_VERSION}_amd64.AppImage.sig"
+          done
+
+          ls -la release-files/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.label }}
-          path: |
-            src-tauri/target/**/release/bundle/**/*.exe
-            src-tauri/target/**/release/bundle/**/*.AppImage
-            src-tauri/target/**/release/bundle/**/*.deb
-            src-tauri/target/**/release/bundle/**/*.sig
-            src-tauri/target/**/release/bundle/**/*.json
-            src-tauri/target/**/release/bundle/voxpen-desktop
+          name: release-linux-${{ env.RELEASE_VERSION }}
+          path: release-files/*
           if-no-files-found: error
 
-  publish:
-    name: Publish release
-    needs: build
+  publish-linux:
+    name: Upload Linux assets to release
+    needs: build-linux
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
-      - name: Download all artifacts
+      - name: Resolve release tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: release-files
           merge-multiple: true
 
-      - name: Flatten release files
-        run: |
-          mkdir -p release-files
-          find artifacts -type f \( \
-            -name '*.exe' -o \
-            -name '*.AppImage' -o \
-            -name '*.deb' -o \
-            -name '*.sig' -o \
-            -name 'voxpen-desktop' \
-          \) -exec cp {} release-files/ \;
-          ls -la release-files/
+      - name: Show release files
+        run: ls -la release-files/
 
-      - name: Create fixed-name copies for website downloads
-        run: |
-          # Windows
-          EXE=$(ls release-files/*.exe 2>/dev/null | head -1)
-          [ -n "$EXE" ] && cp "$EXE" release-files/VoxPen.Desktop_x64-setup.exe
-          # Linux AppImage
-          APPIMAGE=$(ls release-files/*.AppImage 2>/dev/null | head -1)
-          [ -n "$APPIMAGE" ] && cp "$APPIMAGE" release-files/VoxPen.Desktop_amd64.AppImage
-          echo "Fixed-name copies:"
-          ls -la release-files/VoxPen.Desktop_* 2>/dev/null || echo "(none created yet)"
-
-      - name: Generate latest.json for Tauri updater
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          TAG="${GITHUB_REF_NAME}"
-          BASE_URL="https://github.com/soanseng/voxpen-desktop/releases/download/${TAG}"
-
-          # Find signature files
-          WINDOWS_SIG=""
-          LINUX_SIG=""
-
-          for f in release-files/*.exe.sig; do
-            [ -f "$f" ] && WINDOWS_SIG=$(cat "$f")
-          done
-          for f in release-files/*.AppImage.sig; do
-            [ -f "$f" ] && LINUX_SIG=$(cat "$f")
-          done
-
-          # Find artifact filenames
-          WINDOWS_FILE=$(ls release-files/*.exe 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-          LINUX_FILE=$(ls release-files/*.AppImage 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-
-          # Build latest.json
-          cat > release-files/latest.json << ENDJSON
-          {
-            "version": "${VERSION}",
-            "notes": "VoxPen Desktop ${TAG}",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "${WINDOWS_SIG}",
-                "url": "${BASE_URL}/${WINDOWS_FILE}"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "${BASE_URL}/${LINUX_FILE}"
-              }
-            }
-          }
-          ENDJSON
-
-          cat release-files/latest.json
-
-      - name: Create release
+      - name: Upload Linux assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: 'VoxPen Desktop ${{ github.ref_name }}'
-          body: |
-            ## Downloads / 下載
-
-            | Platform / 平台 | File / 檔案 | Notes / 說明 |
-            |----------|------|-------|
-            | **Windows x64** | `.exe` (NSIS installer) | 不需管理員權限 / No admin required |
-            | **Linux x64** | `.AppImage` / `.deb` | AppImage 適用大多數發行版 |
-            | **Linux x64 (Arch)** | `voxpen-desktop` (native binary) | 適用 Arch / 滾動更新發行版 |
-
-            ### ⚠️ Windows Security / Windows 安全提示
-            This app is **not code-signed**. Windows SmartScreen may show a warning.
-            Click **"More info"** → **"Run anyway"** to proceed.
-
-            ### 🍎 macOS
-            macOS builds are not yet available. Contributions welcome — see [README](https://github.com/soanseng/voxpen-desktop#contributing).
-          draft: false
-          prerelease: false
+          tag_name: ${{ env.RELEASE_TAG }}
           files: release-files/*
