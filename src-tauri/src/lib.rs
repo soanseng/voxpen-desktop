@@ -319,7 +319,6 @@ pub fn run() {
                 hotkey_manager: Arc::new(Mutex::new(hotkey::HotkeyManager::new())),
                 recording_started: Arc::new(AtomicBool::new(false)),
                 recording_timeout_handle: Arc::new(tokio::sync::Mutex::new(None)),
-                voice_edit_selection: Arc::new(tokio::sync::Mutex::new(None)),
                 auto_tone_override,
                 audio_ducker: audio_ducking::create_audio_ducker(),
                 license_manager: Arc::new(license_mgr),

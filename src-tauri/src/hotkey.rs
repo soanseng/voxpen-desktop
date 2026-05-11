@@ -1051,8 +1051,9 @@ fn handle_hotkey_event(
 
 /// Press/release handler for the Voice Edit hotkey.
 ///
-/// Press: simulate Ctrl+C / Cmd+C to capture selection → start recording.
-/// Release: stop recording → run STT + LLM edit pipeline → paste result.
+/// Press: start recording.
+/// Release: stop recording, copy the still-selected text, run STT + LLM edit
+/// pipeline, then paste the result over the original selection.
 fn handle_edit_hotkey_event(
     app: &AppHandle,
     state: &tauri::State<'_, AppState>,
@@ -1083,9 +1084,6 @@ fn handle_edit_hotkey_event(
             let controller = state.controller.clone();
             let recorder = state.recorder.clone();
             let recording_started = state.recording_started.clone();
-            let clipboard = state.clipboard.clone();
-            let keyboard = state.keyboard.clone();
-            let voice_edit_selection = state.voice_edit_selection.clone();
             let processing_flag = processing.clone();
             let app_for_err = app.clone();
             let audio_ducker = state.audio_ducker.clone();
@@ -1095,47 +1093,6 @@ fn handle_edit_hotkey_event(
             recording_started.store(false, Ordering::SeqCst);
 
             tauri::async_runtime::spawn(async move {
-                // 1. Simulate Ctrl+C / Cmd+C to copy the selection to clipboard
-                let kb = keyboard.clone();
-                if let Err(e) = tokio::task::spawn_blocking(move || kb.copy())
-                    .await
-                    .unwrap_or_else(|e| Err(voxpen_core::error::AppError::Paste(e.to_string())))
-                {
-                    let _ = app_for_err.emit(
-                        "pipeline-state",
-                        &PipelineState::Error {
-                            message: format!("Failed to copy selection: {e}"),
-                        },
-                    );
-                    processing_flag.store(false, Ordering::SeqCst);
-                    return;
-                }
-
-                // 2. Wait for OS to update clipboard after Ctrl+C / Cmd+C
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-                // 3. Read the selected text from clipboard
-                let cb = clipboard.clone();
-                let selected = match tokio::task::spawn_blocking(move || cb.get_text()).await {
-                    Ok(Ok(Some(text))) if !text.is_empty() => text,
-                    _ => {
-                        let _ = app_for_err.emit(
-                            "pipeline-state",
-                            &PipelineState::Error {
-                                message:
-                                    "No text selected. Please select text before using Voice Edit."
-                                        .to_string(),
-                            },
-                        );
-                        processing_flag.store(false, Ordering::SeqCst);
-                        return;
-                    }
-                };
-
-                // 4. Store the selected text for use by the release handler
-                *voice_edit_selection.lock().await = Some(selected);
-
-                // 5. Start the recording pipeline
                 let ctrl = controller.lock().await;
                 if let Err(e) = ctrl.on_start_recording() {
                     let _ = app_for_err.emit(
@@ -1185,7 +1142,6 @@ fn handle_edit_hotkey_event(
             let app_handle = app.clone();
             let recording_started = state.recording_started.clone();
             let processing_flag = processing.clone();
-            let voice_edit_selection = state.voice_edit_selection.clone();
             let timeout_handle = state.recording_timeout_handle.clone();
             // Capture focused window and active app for paste focus restore / terminal detection.
             #[cfg(target_os = "linux")]
@@ -1235,15 +1191,47 @@ fn handle_edit_hotkey_event(
                     }
                 };
 
-                // Retrieve selected text captured at press time
-                let selected_text = voice_edit_selection.lock().await.take().unwrap_or_default();
-                if selected_text.is_empty() {
-                    let ctrl = controller.lock().await;
-                    ctrl.reset();
-                    drop(ctrl);
-                    processing_flag.store(false, Ordering::SeqCst);
-                    return;
-                }
+                // Let shortcut modifiers settle before issuing Copy. On Windows
+                // combo shortcuts stop on Press, so the user may still be
+                // releasing Ctrl/Shift while this task starts.
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                let capture_clipboard = clipboard.clone();
+                let capture_keyboard = keyboard.clone();
+                let selected_text = match tokio::task::spawn_blocking(move || {
+                    voxpen_core::input::paste::capture_selected_text(
+                        capture_clipboard.as_ref(),
+                        capture_keyboard.as_ref(),
+                    )
+                })
+                .await
+                {
+                    Ok(Ok(Some(text))) => text,
+                    Ok(Ok(None)) => {
+                        let ctrl = controller.lock().await;
+                        ctrl.emit_error(
+                            "No text selected. Please select text before using Voice Edit."
+                                .to_string(),
+                        );
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    Ok(Err(e)) => {
+                        let ctrl = controller.lock().await;
+                        ctrl.emit_error(format!("Failed to copy selection: {e}"));
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    Err(e) => {
+                        let ctrl = controller.lock().await;
+                        ctrl.emit_error(format!("Failed to copy selection: {e}"));
+                        drop(ctrl);
+                        processing_flag.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                };
 
                 do_voice_edit_stop(
                     app_handle,

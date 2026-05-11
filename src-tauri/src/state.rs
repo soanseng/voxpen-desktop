@@ -255,10 +255,6 @@ pub struct AppState {
     /// Handle for the auto-stop timeout task. Aborted on manual stop.
     /// `None` when not recording.
     pub recording_timeout_handle: Arc<tokio::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
-    /// Captured selected text for voice-edit mode.
-    /// Set at edit hotkey press time (after Ctrl+C), consumed at release.
-    /// `None` when not in voice-edit mode.
-    pub voice_edit_selection: Arc<tokio::sync::Mutex<Option<String>>>,
     /// Per-session tone preset override set by the auto-tone rule engine.
     /// Set at hotkey-press time when an AppToneRule matches the active app.
     /// Cleared after the pipeline completes. None = use settings.tone_preset.

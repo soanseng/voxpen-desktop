@@ -1,5 +1,6 @@
 use std::thread;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::AppError;
 use crate::input::clipboard::ClipboardManager;
@@ -87,11 +88,52 @@ pub fn paste_text(
     paste_result
 }
 
+/// Copy the currently selected text without permanently changing the clipboard.
+///
+/// The sentinel avoids treating stale clipboard contents as a selection when
+/// the focused app ignores Copy because nothing is selected.
+pub fn capture_selected_text(
+    clipboard: &dyn ClipboardManager,
+    keys: &dyn KeySimulator,
+) -> Result<Option<String>, AppError> {
+    let original = clipboard.get_text().unwrap_or(None);
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let sentinel = format!("__VOXPEN_SELECTION_SENTINEL_{nonce}__");
+
+    clipboard.set_text(&sentinel)?;
+    thread::sleep(PRE_PASTE_DELAY);
+
+    let copy_result = keys.copy();
+    thread::sleep(POST_PASTE_DELAY);
+
+    let copied = match copy_result {
+        Ok(()) => clipboard.get_text().unwrap_or(None),
+        Err(e) => {
+            restore_text_clipboard(clipboard, original.as_deref());
+            return Err(e);
+        }
+    };
+
+    restore_text_clipboard(clipboard, original.as_deref());
+
+    Ok(copied
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty() && text != &sentinel))
+}
+
+fn restore_text_clipboard(clipboard: &dyn ClipboardManager, original: Option<&str>) {
+    let text = original.unwrap_or("");
+    let _ = clipboard.set_text(text);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::input::clipboard::MockClipboardManager;
-    use mockall::predicate::eq;
+    use mockall::predicate::{eq, function};
 
     #[test]
     fn should_save_and_restore_clipboard() {
@@ -131,10 +173,7 @@ mod tests {
         let mut keys = MockKeySimulator::new();
 
         // No original clipboard content
-        clipboard
-            .expect_get_text()
-            .times(1)
-            .returning(|| Ok(None));
+        clipboard.expect_get_text().times(1).returning(|| Ok(None));
 
         // Write transcription
         clipboard
@@ -194,19 +233,118 @@ mod tests {
     }
 
     #[test]
-    fn should_propagate_paste_failure() {
+    fn should_capture_selection_and_restore_original_clipboard() {
         let mut clipboard = MockClipboardManager::new();
         let mut keys = MockKeySimulator::new();
 
         clipboard
             .expect_get_text()
             .times(1)
-            .returning(|| Ok(None));
-
+            .returning(|| Ok(Some("original clipboard".to_string())));
         clipboard
             .expect_set_text()
+            .with(function(|text: &str| {
+                text.starts_with("__VOXPEN_SELECTION_SENTINEL_")
+            }))
             .times(1)
             .returning(|_| Ok(()));
+        keys.expect_copy().times(1).returning(|| Ok(()));
+        clipboard
+            .expect_get_text()
+            .times(1)
+            .returning(|| Ok(Some("selected text".to_string())));
+        clipboard
+            .expect_set_text()
+            .with(eq("original clipboard"))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let result = capture_selected_text(&clipboard, &keys).unwrap();
+
+        assert_eq!(result, Some("selected text".to_string()));
+    }
+
+    #[test]
+    fn should_return_none_when_copy_does_not_replace_sentinel() {
+        use std::sync::{Arc, Mutex};
+
+        let mut clipboard = MockClipboardManager::new();
+        let mut keys = MockKeySimulator::new();
+        let sentinel = Arc::new(Mutex::new(String::new()));
+
+        clipboard
+            .expect_get_text()
+            .times(1)
+            .returning(|| Ok(Some("original clipboard".to_string())));
+        let sentinel_for_set = sentinel.clone();
+        clipboard
+            .expect_set_text()
+            .with(function(|text: &str| {
+                text.starts_with("__VOXPEN_SELECTION_SENTINEL_")
+            }))
+            .times(1)
+            .returning(move |text| {
+                *sentinel_for_set.lock().unwrap_or_else(|e| e.into_inner()) = text.to_string();
+                Ok(())
+            });
+        keys.expect_copy().times(1).returning(|| Ok(()));
+        let sentinel_for_get = sentinel.clone();
+        clipboard.expect_get_text().times(1).returning(move || {
+            Ok(Some(
+                sentinel_for_get
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            ))
+        });
+        clipboard
+            .expect_set_text()
+            .with(eq("original clipboard"))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let result = capture_selected_text(&clipboard, &keys).unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn should_clear_clipboard_after_capture_when_original_was_not_text() {
+        let mut clipboard = MockClipboardManager::new();
+        let mut keys = MockKeySimulator::new();
+
+        clipboard.expect_get_text().times(1).returning(|| Ok(None));
+        clipboard
+            .expect_set_text()
+            .with(function(|text: &str| {
+                text.starts_with("__VOXPEN_SELECTION_SENTINEL_")
+            }))
+            .times(1)
+            .returning(|_| Ok(()));
+        keys.expect_copy().times(1).returning(|| Ok(()));
+        clipboard
+            .expect_get_text()
+            .times(1)
+            .returning(|| Ok(Some("selected text".to_string())));
+        clipboard
+            .expect_set_text()
+            .with(eq(""))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let result = capture_selected_text(&clipboard, &keys).unwrap();
+
+        assert_eq!(result, Some("selected text".to_string()));
+    }
+
+    #[test]
+    fn should_propagate_paste_failure() {
+        let mut clipboard = MockClipboardManager::new();
+        let mut keys = MockKeySimulator::new();
+
+        clipboard.expect_get_text().times(1).returning(|| Ok(None));
+
+        clipboard.expect_set_text().times(1).returning(|_| Ok(()));
 
         // Paste fails
         keys.expect_paste()
