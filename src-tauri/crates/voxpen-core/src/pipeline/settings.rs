@@ -146,13 +146,11 @@ fn default_hotkey_listen_command() -> String {
 }
 
 fn default_listen_command_provider() -> String {
-    "openai".to_string()
+    "groq".to_string()
 }
 
 fn default_listen_command_model() -> String {
-    // OpenAI model list checked 2026-05-07:
-    // https://platform.openai.com/docs/models
-    "gpt-5.2".to_string()
+    crate::api::groq::DEFAULT_LLM_MODEL.to_string()
 }
 
 fn default_max_recording_secs() -> u32 {
@@ -404,8 +402,8 @@ mod tests {
         let s = Settings::default();
         assert!(!s.listen_command_enabled);
         assert_eq!(s.hotkey_listen_command, "CommandOrControl+Alt+Space");
-        assert_eq!(s.listen_command_provider, "openai");
-        assert_eq!(s.listen_command_model, "gpt-5.2");
+        assert_eq!(s.listen_command_provider, "groq");
+        assert_eq!(s.listen_command_model, "openai/gpt-oss-120b");
         assert_eq!(s.listen_command_custom_base_url, "");
     }
 
@@ -438,8 +436,8 @@ mod tests {
 
         assert!(!s.listen_command_enabled);
         assert_eq!(s.hotkey_listen_command, "CommandOrControl+Alt+Space");
-        assert_eq!(s.listen_command_provider, "openai");
-        assert_eq!(s.listen_command_model, "gpt-5.2");
+        assert_eq!(s.listen_command_provider, "groq");
+        assert_eq!(s.listen_command_model, "openai/gpt-oss-120b");
         assert_eq!(s.listen_command_custom_base_url, "");
     }
 

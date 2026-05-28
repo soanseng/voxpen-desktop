@@ -1738,9 +1738,9 @@ async fn do_listen_command_stop(
         let s = settings.lock().await;
         (
             s.stt_language.clone(),
-            s.listen_command_provider.clone(),
+            s.refinement_provider.clone(),
             s.listen_command_model.clone(),
-            s.listen_command_custom_base_url.clone(),
+            s.custom_base_url.clone(),
             s.auto_paste,
         )
     };

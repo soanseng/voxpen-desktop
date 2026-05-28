@@ -21,7 +21,7 @@ const REFINEMENT_PROVIDERS = [
   { value: "groq", label: "Groq" },
   { value: "openai", label: "OpenAI" },
   { value: "openrouter", label: "OpenRouter" },
-  { value: "custom", label: "Custom / Ollama" },
+  { value: "custom", label: "Custom / LiteLLM / Ollama" },
 ];
 
 const TRANSLATION_TARGETS: { value: Settings["stt_language"]; labelKey: string }[] = [
