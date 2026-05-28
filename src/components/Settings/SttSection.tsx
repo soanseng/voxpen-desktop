@@ -5,6 +5,7 @@ import {
   checkMicrophone,
   getApiKeyStatus,
   saveApiKey,
+  testSpeechProvider,
 } from "../../lib/tauri";
 
 interface SttSectionProps {
@@ -54,6 +55,10 @@ function getModelsForProvider(provider: string) {
   }
 }
 
+function apiKeyProviderForStt(provider: string) {
+  return provider === "custom" ? "stt_custom" : provider;
+}
+
 const selectClass =
   "w-full max-w-xs rounded-lg border border-gray-300 bg-white " +
   "px-3 py-2 text-sm text-gray-900 " +
@@ -69,6 +74,8 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
     "idle",
   );
   const [keyStatus, setKeyStatus] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
   const [mic, setMic] = useState<{ status: "checking" | "ok" | "error"; detail: string }>({
     status: "checking",
     detail: "",
@@ -77,6 +84,7 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
   const providers = getSttProviders();
   const models = getModelsForProvider(settings.stt_provider);
   const languages = getLanguageOptions(t);
+  const apiKeyProvider = apiKeyProviderForStt(settings.stt_provider);
 
   const recheckMic = useCallback(() => {
     setMic({ status: "checking", detail: "" });
@@ -90,8 +98,8 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
 
   // Load key status on mount and when provider changes
   useEffect(() => {
-    getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => setKeyStatus(null));
-  }, [settings.stt_provider]);
+    getApiKeyStatus(apiKeyProvider).then(setKeyStatus).catch(() => setKeyStatus(null));
+  }, [apiKeyProvider]);
 
   useEffect(() => {
     if (models.length > 0 && !models.some((model) => model.value === settings.stt_model)) {
@@ -104,10 +112,10 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      await saveApiKey(settings.stt_provider, apiKey.trim());
+      await saveApiKey(apiKeyProvider, apiKey.trim());
       setSaveStatus("saved");
       setApiKey("");
-      getApiKeyStatus(settings.stt_provider).then(setKeyStatus).catch(() => {});
+      getApiKeyStatus(apiKeyProvider).then(setKeyStatus).catch(() => {});
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       setSaveStatus("error");
@@ -117,11 +125,31 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
     }
   }
 
+  async function handleTestProvider() {
+    setTestStatus("testing");
+    setTestMessage("");
+    try {
+      if (apiKey.trim()) {
+        await saveApiKey(apiKeyProvider, apiKey.trim());
+        setApiKey("");
+        getApiKeyStatus(apiKeyProvider).then(setKeyStatus).catch(() => {});
+      }
+      const message = await testSpeechProvider(settings);
+      setTestStatus("ok");
+      setTestMessage(message);
+    } catch (err) {
+      setTestStatus("error");
+      setTestMessage(String(err));
+    }
+  }
+
   function handleProviderChange(provider: string) {
     onUpdate("stt_provider", provider);
     const newModels = getModelsForProvider(provider);
     if (newModels.length > 0) {
       onUpdate("stt_model", newModels[0].value);
+    } else if (provider === "custom") {
+      onUpdate("stt_model", "Systran/faster-whisper-large-v3");
     }
   }
 
@@ -189,108 +217,161 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
         </select>
       </div>
 
-      {/* API Key — hide when custom (no key needed for local servers) */}
-      {settings.stt_provider !== "custom" && (
-        <div className="space-y-2">
-          <label
-            htmlFor="stt-api-key"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            {t("apiKey")}
-          </label>
-          <div className="flex max-w-md items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                id="stt-api-key"
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={t("apiKeyPlaceholder")}
-                className={
-                  "w-full rounded-lg border border-gray-300 bg-white " +
-                  "px-3 py-2 pr-10 text-sm text-gray-900 " +
-                  "placeholder:text-gray-400 " +
-                  "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
-                  "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
-                  "dark:placeholder:text-gray-500"
-                }
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className={
-                  "absolute right-2 top-1/2 -translate-y-1/2 " +
-                  "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                }
-                aria-label={showKey ? "Hide API key" : "Show API key"}
-              >
-                {showKey ? (
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
-                )}
-              </button>
-            </div>
+      {/* API Key */}
+      <div className="space-y-2">
+        <label
+          htmlFor="stt-api-key"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          {t("apiKey")}
+        </label>
+        <div className="flex max-w-md items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              id="stt-api-key"
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={t("apiKeyPlaceholder")}
+              className={
+                "w-full rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 pr-10 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
             <button
               type="button"
-              onClick={() => void handleSaveKey()}
-              disabled={saving || !apiKey.trim()}
+              onClick={() => setShowKey(!showKey)}
               className={
-                "rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white " +
-                "transition-colors hover:bg-blue-600 " +
-                "disabled:cursor-not-allowed disabled:opacity-50 " +
-                "dark:bg-blue-600 dark:hover:bg-blue-700"
+                "absolute right-2 top-1/2 -translate-y-1/2 " +
+                "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               }
+              aria-label={showKey ? "Hide API key" : "Show API key"}
             >
-              {saving ? t("saving") : t("save")}
+              {showKey ? (
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  />
+                </svg>
+              )}
             </button>
           </div>
-          {saveStatus === "saved" && (
-            <p className="text-xs text-green-600 dark:text-green-400">
-              {t("saved")}
+          <button
+            type="button"
+            onClick={() => void handleSaveKey()}
+            disabled={saving || !apiKey.trim()}
+            className={
+              "rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white " +
+              "transition-colors hover:bg-blue-600 " +
+              "disabled:cursor-not-allowed disabled:opacity-50 " +
+              "dark:bg-blue-600 dark:hover:bg-blue-700"
+            }
+          >
+            {saving ? t("saving") : t("save")}
+          </button>
+        </div>
+        {saveStatus === "saved" && (
+          <p className="text-xs text-green-600 dark:text-green-400">
+            {t("saved")}
+          </p>
+        )}
+        {saveStatus === "error" && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            {t("saveFailed")}
+          </p>
+        )}
+        {saveStatus === "idle" && (
+          <p className={`text-xs ${keyStatus ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
+            {keyStatus
+              ? t("apiKeyConfigured", { masked: keyStatus })
+              : t("apiKeyNotConfigured")}
+          </p>
+        )}
+      </div>
+
+      {/* Custom STT server */}
+      {settings.stt_provider === "custom" && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label
+              htmlFor="stt-custom-base-url"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              {t("baseUrl")}
+            </label>
+            <input
+              id="stt-custom-base-url"
+              type="text"
+              value={settings.stt_custom_base_url}
+              onChange={(e) => onUpdate("stt_custom_base_url", e.target.value)}
+              placeholder="http://100.102.183.27:8001/"
+              className={
+                "w-full max-w-md rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {t("baseUrlHint")}
             </p>
-          )}
-          {saveStatus === "error" && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              {t("saveFailed")}
-            </p>
-          )}
-          {saveStatus === "idle" && (
-            <p className={`text-xs ${keyStatus ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
-              {keyStatus
-                ? t("apiKeyConfigured", { masked: keyStatus })
-                : t("apiKeyNotConfigured")}
-            </p>
-          )}
+          </div>
+          <div className="space-y-2">
+            <label
+              htmlFor="stt-custom-model"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              {t("model")}
+            </label>
+            <input
+              id="stt-custom-model"
+              type="text"
+              value={settings.stt_model}
+              onChange={(e) => onUpdate("stt_model", e.target.value)}
+              placeholder="Systran/faster-whisper-large-v3"
+              className={
+                "w-full max-w-md rounded-lg border border-gray-300 bg-white " +
+                "px-3 py-2 text-sm text-gray-900 " +
+                "placeholder:text-gray-400 " +
+                "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 " +
+                "dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 " +
+                "dark:placeholder:text-gray-500"
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -344,6 +425,32 @@ export default function SttSection({ settings, onUpdate }: SttSectionProps) {
           </select>
         </div>
       )}
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => void handleTestProvider()}
+          disabled={testStatus === "testing"}
+          className={
+            "rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium " +
+            "text-gray-700 transition-colors hover:bg-gray-50 " +
+            "disabled:cursor-not-allowed disabled:opacity-50 " +
+            "dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+          }
+        >
+          {testStatus === "testing" ? t("testingProvider") : t("testProvider")}
+        </button>
+        {testStatus === "ok" && (
+          <p className="text-xs text-green-600 dark:text-green-400">
+            {t("providerTestOk", { detail: testMessage })}
+          </p>
+        )}
+        {testStatus === "error" && (
+          <p className="max-w-xl text-xs text-red-600 dark:text-red-400">
+            {t("providerTestFailed", { error: testMessage })}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

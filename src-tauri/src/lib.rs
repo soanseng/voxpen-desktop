@@ -663,6 +663,8 @@ pub fn run() {
             commands::get_api_key_status,
             commands::check_microphone,
             commands::test_api_key,
+            commands::test_speech_provider,
+            commands::test_refinement_provider,
             commands::get_history,
             commands::search_history,
             commands::delete_history_entry,

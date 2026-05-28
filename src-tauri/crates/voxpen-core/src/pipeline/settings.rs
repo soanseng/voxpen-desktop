@@ -62,6 +62,10 @@ pub struct Settings {
     /// Tone preset for refinement output style (Casual, Professional, Email, Note, Social, Custom)
     #[serde(default)]
     pub tone_preset: TonePreset,
+    /// Custom API base URL for the STT "custom" provider.
+    /// Empty string falls back to `custom_base_url` for backwards compatibility.
+    #[serde(default)]
+    pub stt_custom_base_url: String,
     /// Custom API base URL for the "custom" provider (e.g., http://localhost:11434/ for Ollama).
     /// Empty string means not configured.
     #[serde(default)]
@@ -175,6 +179,7 @@ impl Default for Settings {
             refinement_model: crate::api::groq::DEFAULT_LLM_MODEL.to_string(),
             refinement_prompt: String::new(),
             tone_preset: TonePreset::default(),
+            stt_custom_base_url: String::new(),
             custom_base_url: String::new(),
             theme: "system".to_string(),
             ui_language: "en".to_string(),

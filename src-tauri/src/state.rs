@@ -88,7 +88,7 @@ impl SttProvider for GroqSttProvider {
             }
 
             // Cloud STT path
-            let api_key = get_api_key(&app_handle, &s.stt_provider)?;
+            let api_key = get_stt_api_key(&app_handle, &s.stt_provider)?;
             let config = SttConfig {
                 api_key,
                 model: s.stt_model.clone(),
@@ -97,10 +97,17 @@ impl SttProvider for GroqSttProvider {
                 prompt_override: None,
             };
             let provider = s.stt_provider.clone();
+            let stt_custom_base_url = s.stt_custom_base_url.clone();
             let custom_base_url = s.custom_base_url.clone();
             drop(s);
-            let base_url = if provider == "custom" && !custom_base_url.is_empty() {
-                custom_base_url
+            let base_url = if provider == "custom"
+                && (!stt_custom_base_url.is_empty() || !custom_base_url.is_empty())
+            {
+                if !stt_custom_base_url.is_empty() {
+                    stt_custom_base_url
+                } else {
+                    custom_base_url
+                }
             } else {
                 groq::base_url_for_provider(&provider).to_string()
             };
@@ -195,6 +202,14 @@ pub fn get_api_key_from_handle(app: &AppHandle, provider: &str) -> Result<String
     get_api_key(app, provider)
 }
 
+/// Resolve the API key for STT providers.
+///
+/// The STT custom provider uses its own secret key (`stt_custom_api_key`) so a
+/// local Speaches token does not overwrite an existing custom LLM/Ollama key.
+pub fn get_stt_api_key_from_handle(app: &AppHandle, provider: &str) -> Result<String, AppError> {
+    get_stt_api_key(app, provider)
+}
+
 /// Check if a provider can work without an API key.
 ///
 /// Returns `true` for the `"custom"` provider name and for URL-like provider
@@ -237,6 +252,16 @@ fn get_api_key(app: &AppHandle, provider: &str) -> Result<String, AppError> {
     }
 
     Err(AppError::ApiKeyMissing(provider.to_string()))
+}
+
+fn get_stt_api_key(app: &AppHandle, provider: &str) -> Result<String, AppError> {
+    if provider == "custom" {
+        if let Ok(key) = get_api_key(app, "stt_custom") {
+            return Ok(key);
+        }
+    }
+
+    get_api_key(app, provider)
 }
 
 /// Shared application state managed by Tauri.

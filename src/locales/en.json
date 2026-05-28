@@ -122,6 +122,10 @@
   "customModelHint": "Type any model ID to override the preset list.",
   "baseUrl": "Base URL",
   "baseUrlHint": "API endpoint URL (e.g., http://localhost:11434/ for Ollama)",
+  "testProvider": "Test provider",
+  "testingProvider": "Testing...",
+  "providerTestOk": "Provider works. {{detail}}",
+  "providerTestFailed": "Provider test failed: {{error}}",
   "dictionary": "Dictionary",
   "dictionaryDescription": "Add custom terms to improve voice recognition and text refinement.",
   "dict": {

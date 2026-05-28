@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppToneRule, Settings } from "../../types/settings";
-import { getActiveAppName, getApiKeyStatus, getDefaultRefinementPrompt, saveApiKey } from "../../lib/tauri";
+import { getActiveAppName, getApiKeyStatus, getDefaultRefinementPrompt, saveApiKey, testRefinementProvider } from "../../lib/tauri";
 
 interface RefinementSectionProps {
   settings: Settings;
@@ -226,13 +226,17 @@ export default function RefinementSection({
     "idle",
   );
   const [keyStatus, setKeyStatus] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
 
   const [defaultPrompt, setDefaultPrompt] = useState("");
   const [promptResetMsg, setPromptResetMsg] = useState(false);
 
   const models = getModelsForProvider(settings.refinement_provider);
   const disabled = !settings.refinement_enabled;
-  const sameProvider = settings.refinement_provider === settings.stt_provider;
+  const sameProvider =
+    settings.refinement_provider === settings.stt_provider &&
+    settings.refinement_provider !== "custom";
 
   // Load key status on mount and when provider changes
   useEffect(() => {
@@ -254,6 +258,24 @@ export default function RefinementSection({
       setTimeout(() => setSaveStatus("idle"), 3000);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestProvider() {
+    setTestStatus("testing");
+    setTestMessage("");
+    try {
+      if (!sameProvider && apiKey.trim()) {
+        await saveApiKey(settings.refinement_provider, apiKey.trim());
+        setApiKey("");
+        getApiKeyStatus(settings.refinement_provider).then(setKeyStatus).catch(() => {});
+      }
+      const message = await testRefinementProvider(settings);
+      setTestStatus("ok");
+      setTestMessage(message);
+    } catch (err) {
+      setTestStatus("error");
+      setTestMessage(String(err));
     }
   }
 
@@ -670,6 +692,32 @@ export default function RefinementSection({
           </div>
         </div>
       )}
+
+      <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>
+        <button
+          type="button"
+          onClick={() => void handleTestProvider()}
+          disabled={disabled || testStatus === "testing"}
+          className={
+            "rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium " +
+            "text-gray-700 transition-colors hover:bg-gray-50 " +
+            "disabled:cursor-not-allowed disabled:opacity-50 " +
+            "dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+          }
+        >
+          {testStatus === "testing" ? t("testingProvider") : t("testProvider")}
+        </button>
+        {testStatus === "ok" && (
+          <p className="max-w-xl text-xs text-green-600 dark:text-green-400">
+            {t("providerTestOk", { detail: testMessage })}
+          </p>
+        )}
+        {testStatus === "error" && (
+          <p className="max-w-xl text-xs text-red-600 dark:text-red-400">
+            {t("providerTestFailed", { error: testMessage })}
+          </p>
+        )}
+      </div>
 
       {/* System Prompt — only editable when tone is Custom */}
       <div className={`space-y-2 ${disabled ? "opacity-40" : ""}`}>

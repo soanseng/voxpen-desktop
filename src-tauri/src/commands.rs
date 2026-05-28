@@ -28,6 +28,19 @@ fn config_from_settings(settings: &Settings) -> PipelineConfig {
     }
 }
 
+fn stt_base_url_for_settings(settings: &Settings) -> String {
+    if settings.stt_provider == "custom" {
+        if !settings.stt_custom_base_url.trim().is_empty() {
+            return settings.stt_custom_base_url.clone();
+        }
+        if !settings.custom_base_url.trim().is_empty() {
+            return settings.custom_base_url.clone();
+        }
+    }
+
+    voxpen_core::api::groq::base_url_for_provider(&settings.stt_provider).to_string()
+}
+
 /// Open a URL in the system's default browser.
 ///
 /// Tauri's webview CSP blocks `window.open()` for external URLs,
@@ -290,6 +303,80 @@ pub async fn test_api_key(provider: String, key: String) -> Result<bool, String>
     }
 }
 
+/// Test the current Speech provider/base URL/model with a tiny WAV request.
+#[tauri::command]
+pub async fn test_speech_provider(
+    app: tauri::AppHandle,
+    settings: Settings,
+) -> Result<String, String> {
+    use voxpen_core::api::groq::SttConfig;
+
+    let api_key = crate::state::get_stt_api_key_from_handle(&app, &settings.stt_provider)
+        .map_err(|e| e.to_string())?;
+    let config = SttConfig {
+        api_key,
+        model: settings.stt_model.clone(),
+        language: settings.stt_language.clone(),
+        response_format: "json".to_string(),
+        prompt_override: None,
+    };
+    let silent_pcm: Vec<i16> = vec![0; 16_000];
+    let wav_data = voxpen_core::audio::encoder::pcm_to_wav(&silent_pcm);
+    let base_url = stt_base_url_for_settings(&settings);
+
+    voxpen_core::api::groq::transcribe_file_with_segments_base_url(
+        &config,
+        &wav_data,
+        "voxpen-test.wav",
+        "audio/wav",
+        &settings.stt_provider,
+        &base_url,
+    )
+    .await
+    .map(|_| "Speech provider responded.".to_string())
+    .map_err(|e| e.to_string())
+}
+
+/// Test the current Refinement provider/base URL/model with a short edit request.
+#[tauri::command]
+pub async fn test_refinement_provider(
+    app: tauri::AppHandle,
+    settings: Settings,
+) -> Result<String, String> {
+    use voxpen_core::api::groq::{self, ChatConfig};
+    use voxpen_core::pipeline::refine;
+    use voxpen_core::pipeline::state::Language;
+
+    let api_key = crate::state::get_api_key_from_handle(&app, &settings.refinement_provider)
+        .map_err(|e| e.to_string())?;
+    let config = ChatConfig {
+        api_key,
+        model: settings.refinement_model.clone(),
+        temperature: groq::LLM_TEMPERATURE,
+        max_tokens: 128,
+    };
+
+    let text = refine::refine(
+        "今天天氣很好我想去公圜散步",
+        &config,
+        &Language::Chinese,
+        &[],
+        &settings.refinement_prompt,
+        &settings.tone_preset,
+        &settings.refinement_provider,
+        &settings.custom_base_url,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if text.trim().is_empty() {
+        return Err("Provider returned an empty response.".to_string());
+    }
+
+    Ok(text)
+}
+
 /// Get transcription history with pagination.
 #[tauri::command]
 pub async fn get_history(
@@ -550,8 +637,8 @@ pub async fn transcribe_file(
     // Build STT config from settings
     let s = state.settings.lock().await;
     let stt_provider = s.stt_provider.clone();
-    let api_key =
-        crate::state::get_api_key_from_handle(&app, &stt_provider).map_err(|e| e.to_string())?;
+    let api_key = crate::state::get_stt_api_key_from_handle(&app, &stt_provider)
+        .map_err(|e| e.to_string())?;
     let config = SttConfig {
         api_key,
         model: s.stt_model.clone(),
@@ -565,12 +652,12 @@ pub async fn transcribe_file(
     let custom_prompt = s.refinement_prompt.clone();
     let tone_preset = s.tone_preset.clone();
     let custom_base_url = s.custom_base_url.clone();
+    let stt_base_url = stt_base_url_for_settings(&s);
     let language = s.stt_language.clone();
     drop(s);
 
     // Transcribe: for WAV > 25MB use chunking, otherwise single-call
     let (text, srt_content) = if ext == "wav" && file_data.len() > 25 * 1024 * 1024 {
-        use voxpen_core::api::groq::transcribe_file_with_segments;
         use voxpen_core::audio::chunker::{chunk_wav, wav_duration_seconds};
         use voxpen_core::pipeline::chunked_transcribe::merge_segments;
         use voxpen_core::srt::format_srt;
@@ -580,12 +667,13 @@ pub async fn transcribe_file(
 
         for chunk in &chunks {
             let duration = wav_duration_seconds(chunk).map_err(|e| e.to_string())?;
-            let verbose = transcribe_file_with_segments(
+            let verbose = groq::transcribe_file_with_segments_base_url(
                 &config,
                 chunk,
                 "chunk.wav",
                 "audio/wav",
                 &stt_provider,
+                &stt_base_url,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -604,13 +692,18 @@ pub async fn transcribe_file(
             filename,
         ));
     } else {
-        use voxpen_core::api::groq::transcribe_file_with_segments;
         use voxpen_core::srt::format_srt;
 
-        let verbose =
-            transcribe_file_with_segments(&config, &file_data, &filename, mime, &stt_provider)
-                .await
-                .map_err(|e| e.to_string())?;
+        let verbose = groq::transcribe_file_with_segments_base_url(
+            &config,
+            &file_data,
+            &filename,
+            mime,
+            &stt_provider,
+            &stt_base_url,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         let srt = format_srt(&verbose.segments);
         (verbose.text, srt)
     };
@@ -720,8 +813,8 @@ pub async fn retry_transcription(
 
     let s = state.settings.lock().await;
     let stt_provider = s.stt_provider.clone();
-    let api_key =
-        crate::state::get_api_key_from_handle(&app, &stt_provider).map_err(|e| e.to_string())?;
+    let api_key = crate::state::get_stt_api_key_from_handle(&app, &stt_provider)
+        .map_err(|e| e.to_string())?;
     let stt_config = SttConfig {
         api_key,
         model: s.stt_model.clone(),
@@ -735,17 +828,19 @@ pub async fn retry_transcription(
     let custom_prompt = s.refinement_prompt.clone();
     let tone_preset = s.tone_preset.clone();
     let custom_base_url = s.custom_base_url.clone();
+    let stt_base_url = stt_base_url_for_settings(&s);
     let language = s.stt_language.clone();
     drop(s);
 
-    let text = match transcribe_retry_wav(&stt_config, &file_data, &stt_provider).await {
-        Ok(text) => text,
-        Err(e) => {
-            let message = e.to_string();
-            let _ = state.history.update_failed(&id, &stt_provider, &message);
-            return Err(message);
-        }
-    };
+    let text =
+        match transcribe_retry_wav(&stt_config, &file_data, &stt_provider, &stt_base_url).await {
+            Ok(text) => text,
+            Err(e) => {
+                let message = e.to_string();
+                let _ = state.history.update_failed(&id, &stt_provider, &message);
+                return Err(message);
+            }
+        };
 
     let refined = if refinement_enabled {
         match crate::state::get_api_key_from_handle(&app, &refinement_provider) {
@@ -804,22 +899,35 @@ async fn transcribe_retry_wav(
     config: &voxpen_core::api::groq::SttConfig,
     file_data: &[u8],
     provider: &str,
+    base_url: &str,
 ) -> Result<String, voxpen_core::error::AppError> {
-    use voxpen_core::api::groq::transcribe_file_with_segments;
+    use voxpen_core::api::groq::transcribe_file_with_segments_base_url;
 
     if file_data.len() <= 25 * 1024 * 1024 {
-        let verbose =
-            transcribe_file_with_segments(config, file_data, "retry.wav", "audio/wav", provider)
-                .await?;
+        let verbose = transcribe_file_with_segments_base_url(
+            config,
+            file_data,
+            "retry.wav",
+            "audio/wav",
+            provider,
+            base_url,
+        )
+        .await?;
         return Ok(verbose.text);
     }
 
     let chunks = voxpen_core::audio::chunker::chunk_wav(file_data)?;
     let mut texts = Vec::with_capacity(chunks.len());
     for chunk in chunks {
-        let verbose =
-            transcribe_file_with_segments(config, &chunk, "retry.wav", "audio/wav", provider)
-                .await?;
+        let verbose = transcribe_file_with_segments_base_url(
+            config,
+            &chunk,
+            "retry.wav",
+            "audio/wav",
+            provider,
+            base_url,
+        )
+        .await?;
         let text = verbose.text.trim();
         if !text.is_empty() {
             texts.push(text.to_string());

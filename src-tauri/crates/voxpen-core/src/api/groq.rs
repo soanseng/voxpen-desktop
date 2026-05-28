@@ -106,6 +106,38 @@ fn transcription_path(provider: &str) -> &'static str {
     }
 }
 
+fn api_url(base_url: &str, path: &str) -> String {
+    let base = base_url.trim().trim_end_matches('/');
+
+    if let Some(rest) = path.strip_prefix("openai/v1/") {
+        if base.ends_with("/openai/v1") {
+            return format!("{base}/{rest}");
+        }
+    }
+
+    if let Some(rest) = path.strip_prefix("v1/") {
+        if base.ends_with("/v1") {
+            return format!("{base}/{rest}");
+        }
+    }
+
+    format!("{base}/{path}")
+}
+
+fn extra_body_for_provider(provider: &str, model: &str) -> Option<serde_json::Value> {
+    let model = model.to_lowercase();
+    if provider == "custom" && model.contains("qwen") {
+        return Some(serde_json::json!({
+            "enable_thinking": false,
+            "chat_template_kwargs": {
+                "enable_thinking": false
+            }
+        }));
+    }
+
+    None
+}
+
 fn transcription_response_format(config: &SttConfig, provider: &str) -> String {
     if provider == "openai"
         && matches!(
@@ -236,7 +268,7 @@ pub(crate) async fn transcribe_file_with_base_url(
     form = form.text("prompt", prompt.to_string());
 
     let path = transcription_path(provider);
-    let url = format!("{base_url}{path}");
+    let url = api_url(base_url, path);
 
     let response = client
         .post(&url)
@@ -285,6 +317,21 @@ pub async fn transcribe_file_with_segments(
     .await
 }
 
+/// Transcribe a file and return full verbose_json response with an explicit API base URL.
+pub async fn transcribe_file_with_segments_base_url(
+    config: &SttConfig,
+    file_data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    provider: &str,
+    base_url: &str,
+) -> Result<WhisperVerboseResponse, AppError> {
+    transcribe_file_with_segments_internal(
+        config, file_data, filename, mime_type, provider, base_url,
+    )
+    .await
+}
+
 /// Internal: with configurable base URL for testing.
 pub(crate) async fn transcribe_file_with_segments_internal(
     config: &SttConfig,
@@ -324,7 +371,7 @@ pub(crate) async fn transcribe_file_with_segments_internal(
     form = form.text("prompt", prompt.to_string());
 
     let path = transcription_path(provider);
-    let url = format!("{base_url}{path}");
+    let url = api_url(base_url, path);
 
     let response = client
         .post(&url)
@@ -368,7 +415,7 @@ pub(crate) async fn transcribe_with_base_url(
         .build()
         .map_err(AppError::Network)?;
 
-    let url = format!("{}{}", base_url, transcription_path(provider));
+    let url = api_url(base_url, transcription_path(provider));
 
     for attempt in 1..=STT_RETRY_ATTEMPTS {
         let file_part = multipart::Part::bytes(wav_data.to_vec())
@@ -472,6 +519,10 @@ struct ChatRequest {
     /// (e.g. Qwen3-32B). `"hidden"` returns only the final answer.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_format: Option<String>,
+    /// LiteLLM-specific escape hatch for OpenAI-compatible local models.
+    /// Qwen thinking models are much faster for refinement with thinking off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extra_body: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -545,6 +596,7 @@ pub(crate) async fn chat_completion_with_provider(
         temperature: config.temperature,
         max_tokens: config.max_tokens,
         reasoning_format,
+        extra_body: extra_body_for_provider(provider, &config.model),
     };
 
     // Groq's OpenAI-compatible endpoint has an extra "openai/" prefix
@@ -553,7 +605,7 @@ pub(crate) async fn chat_completion_with_provider(
     } else {
         "v1/chat/completions"
     };
-    let url = format!("{base_url}{path}");
+    let url = api_url(base_url, path);
 
     let mut req = client.post(&url).bearer_auth(&config.api_key).json(&body);
 
@@ -1223,6 +1275,32 @@ mod tests {
             base_url_for_provider("https://my-server.example.com/"),
             "https://my-server.example.com/"
         );
+    }
+
+    #[test]
+    fn should_join_base_url_without_duplicate_v1() {
+        assert_eq!(
+            api_url("http://100.102.183.27:8001/v1/", "v1/audio/transcriptions"),
+            "http://100.102.183.27:8001/v1/audio/transcriptions"
+        );
+        assert_eq!(
+            api_url("http://100.102.183.27:8001/", "v1/audio/transcriptions"),
+            "http://100.102.183.27:8001/v1/audio/transcriptions"
+        );
+        assert_eq!(
+            api_url(" http://100.102.183.27:8001/ ", "v1/audio/transcriptions"),
+            "http://100.102.183.27:8001/v1/audio/transcriptions"
+        );
+    }
+
+    #[test]
+    fn should_disable_qwen_thinking_for_custom_litellm() {
+        let extra = extra_body_for_provider("custom", "qwen36-fast").unwrap();
+
+        assert_eq!(extra["enable_thinking"], false);
+        assert_eq!(extra["chat_template_kwargs"]["enable_thinking"], false);
+        assert!(extra_body_for_provider("openai", "qwen36-fast").is_none());
+        assert!(extra_body_for_provider("custom", "llama3.1").is_none());
     }
 
     // ── strip_thinking_tags tests ─────────────────────────────────────

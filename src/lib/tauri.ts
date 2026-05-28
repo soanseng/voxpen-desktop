@@ -39,6 +39,14 @@ export async function testApiKey(
   return invoke<boolean>("test_api_key", { provider, key });
 }
 
+export async function testSpeechProvider(settings: Settings): Promise<string> {
+  return invoke<string>("test_speech_provider", { settings });
+}
+
+export async function testRefinementProvider(settings: Settings): Promise<string> {
+  return invoke<string>("test_refinement_provider", { settings });
+}
+
 export async function getHistory(
   limit: number,
   offset: number,
