@@ -3,6 +3,7 @@ pub mod controller;
 pub mod guard;
 pub mod prompts;
 pub mod refine;
+pub mod segment_refine;
 pub mod settings;
 pub mod state;
 pub mod task_command;

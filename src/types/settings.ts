@@ -85,6 +85,8 @@ export interface FileTranscriptionResult {
   text: string;
   refined: string | null;
   srt: string;
+  /** SRT with refined cue text; timestamps match `srt`. Null when refinement is off/failed. */
+  refined_srt: string | null;
 }
 
 export const defaultSettings: Settings = {

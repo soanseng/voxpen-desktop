@@ -574,6 +574,9 @@ pub struct FileTranscriptionResult {
     pub text: String,
     pub refined: Option<String>,
     pub srt: String,
+    /// SRT with per-segment refined cue text (timestamps unchanged).
+    /// Present when refinement is enabled and segment refine succeeds.
+    pub refined_srt: Option<String>,
 }
 
 /// Supported audio MIME types for file transcription.
@@ -657,10 +660,9 @@ pub async fn transcribe_file(
     drop(s);
 
     // Transcribe: for WAV > 25MB use chunking, otherwise single-call
-    let (text, srt_content) = if ext == "wav" && file_data.len() > 25 * 1024 * 1024 {
+    let (text, segments) = if ext == "wav" && file_data.len() > 25 * 1024 * 1024 {
         use voxpen_core::audio::chunker::{chunk_wav, wav_duration_seconds};
         use voxpen_core::pipeline::chunked_transcribe::merge_segments;
-        use voxpen_core::srt::format_srt;
 
         let chunks = chunk_wav(&file_data).map_err(|e| e.to_string())?;
         let mut chunk_results = Vec::new();
@@ -681,8 +683,7 @@ pub async fn transcribe_file(
         }
 
         let merged = merge_segments(&chunk_results);
-        let srt = format_srt(&merged.segments);
-        (merged.text, srt)
+        (merged.text, merged.segments)
     } else if file_data.len() > 25 * 1024 * 1024 {
         return Err(format!(
             "File too large ({:.0} MB). Only PCM WAV files over 25 MB can be auto-chunked.\n\n\
@@ -692,8 +693,6 @@ pub async fn transcribe_file(
             filename,
         ));
     } else {
-        use voxpen_core::srt::format_srt;
-
         let verbose = groq::transcribe_file_with_segments_base_url(
             &config,
             &file_data,
@@ -704,12 +703,18 @@ pub async fn transcribe_file(
         )
         .await
         .map_err(|e| e.to_string())?;
-        let srt = format_srt(&verbose.segments);
-        (verbose.text, srt)
+        (verbose.text, verbose.segments)
     };
 
-    // Optional LLM refinement
-    let refined = if refinement_enabled {
+    use voxpen_core::srt::format_srt;
+    let srt_content = format_srt(&segments);
+
+    // Optional LLM refinement:
+    // - Full-text refine → polished TXT / UI refined field
+    // - Per-segment refine → refined SRT (timestamps unchanged)
+    let (refined, refined_srt) = if refinement_enabled {
+        use voxpen_core::pipeline::segment_refine;
+
         let llm_key = crate::state::get_api_key_from_handle(&app, &refinement_provider)
             .map_err(|e| e.to_string())?;
         let chat_config = ChatConfig {
@@ -718,7 +723,8 @@ pub async fn transcribe_file(
             temperature: groq::LLM_TEMPERATURE,
             max_tokens: groq::LLM_MAX_TOKENS,
         };
-        match refine::refine(
+
+        let refined = match refine::refine(
             &text,
             &chat_config,
             &language,
@@ -736,16 +742,42 @@ pub async fn transcribe_file(
                 eprintln!("refinement failed for file transcription: {e}");
                 None
             }
-        }
+        };
+
+        let refined_srt = if segments.is_empty() {
+            None
+        } else {
+            match segment_refine::refine_segments(
+                &segments,
+                &chat_config,
+                &language,
+                &[],
+                &custom_prompt,
+                &tone_preset,
+                &refinement_provider,
+                &custom_base_url,
+                None,
+            )
+            .await
+            {
+                Ok(refined_segs) => Some(format_srt(&refined_segs)),
+                Err(e) => {
+                    eprintln!("segment refinement failed for file transcription: {e}");
+                    None
+                }
+            }
+        };
+
+        (refined, refined_srt)
     } else {
-        None
+        (None, None)
     };
 
     // Record per-category usage
     let _ = state
         .license_manager
         .record_usage(UsageCategory::FileTranscription);
-    if refined.is_some() {
+    if refined.is_some() || refined_srt.is_some() {
         let _ = state
             .license_manager
             .record_usage(UsageCategory::Refinement);
@@ -779,6 +811,7 @@ pub async fn transcribe_file(
         text,
         refined,
         srt: srt_content,
+        refined_srt,
     })
 }
 
@@ -944,6 +977,104 @@ async fn transcribe_retry_wav(
 #[tauri::command]
 pub async fn write_text_file(file_path: String, content: String) -> Result<(), String> {
     std::fs::write(&file_path, content).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Existing SRT refinement (no re-transcription)
+// ---------------------------------------------------------------------------
+
+/// Refine an existing SRT file: parse cues → per-segment LLM refine → new SRT.
+///
+/// Uses the Refinement usage quota (not FileTranscription). Always runs segment
+/// refine regardless of the global refinement toggle — the user explicitly
+/// requested this action. Timestamps are preserved.
+#[tauri::command]
+pub async fn refine_srt_file(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+) -> Result<FileTranscriptionResult, String> {
+    use voxpen_core::api::groq::{self, ChatConfig};
+    use voxpen_core::licensing::UsageStatus;
+    use voxpen_core::pipeline::segment_refine;
+    use voxpen_core::srt::{format_srt, parse_srt, segments_to_text};
+
+    // Check Refinement quota
+    let refine_status = state
+        .license_manager
+        .check_category(UsageCategory::Refinement);
+    if refine_status == UsageStatus::Exhausted {
+        return Err(
+            "Daily refinement limit reached. Upgrade to Pro for unlimited access.".to_string(),
+        );
+    }
+
+    let path = std::path::Path::new(&file_path);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if ext != "srt" {
+        return Err(format!("Unsupported format: .{ext}. Expected a .srt file."));
+    }
+
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read SRT file: {e}"))?;
+    if content.len() > 5 * 1024 * 1024 {
+        return Err("SRT file too large (max 5 MB).".to_string());
+    }
+
+    let segments = parse_srt(&content).map_err(|e| format!("Invalid SRT: {e}"))?;
+    let srt_content = format_srt(&segments);
+    let text = segments_to_text(&segments);
+
+    let s = state.settings.lock().await;
+    let refinement_provider = s.refinement_provider.clone();
+    let refinement_model = s.refinement_model.clone();
+    let custom_prompt = s.refinement_prompt.clone();
+    let tone_preset = s.tone_preset.clone();
+    let custom_base_url = s.custom_base_url.clone();
+    let language = s.stt_language.clone();
+    drop(s);
+
+    let llm_key = crate::state::get_api_key_from_handle(&app, &refinement_provider)
+        .map_err(|e| e.to_string())?;
+    let chat_config = ChatConfig {
+        api_key: llm_key,
+        model: refinement_model,
+        temperature: groq::LLM_TEMPERATURE,
+        max_tokens: groq::LLM_MAX_TOKENS,
+    };
+
+    let refined_segments = segment_refine::refine_segments(
+        &segments,
+        &chat_config,
+        &language,
+        &[],
+        &custom_prompt,
+        &tone_preset,
+        &refinement_provider,
+        &custom_base_url,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let refined_srt = format_srt(&refined_segments);
+    let refined = segments_to_text(&refined_segments);
+
+    let _ = state
+        .license_manager
+        .record_usage(UsageCategory::Refinement);
+    let _ = app.emit("usage-updated", ());
+
+    Ok(FileTranscriptionResult {
+        text,
+        refined: Some(refined),
+        srt: srt_content,
+        refined_srt: Some(refined_srt),
+    })
 }
 
 // ---------------------------------------------------------------------------

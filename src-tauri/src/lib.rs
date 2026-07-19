@@ -686,6 +686,7 @@ pub fn run() {
             commands::get_usage_status,
             commands::get_license_tier,
             commands::transcribe_file,
+            commands::refine_srt_file,
             commands::write_text_file,
             commands::get_active_app_name,
         ])

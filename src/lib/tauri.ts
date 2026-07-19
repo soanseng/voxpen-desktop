@@ -156,6 +156,11 @@ export async function transcribeFile(filePath: string): Promise<FileTranscriptio
   return invoke<FileTranscriptionResult>("transcribe_file", { filePath });
 }
 
+/** Parse an existing SRT and refine cue text (timestamps preserved). */
+export async function refineSrtFile(filePath: string): Promise<FileTranscriptionResult> {
+  return invoke<FileTranscriptionResult>("refine_srt_file", { filePath });
+}
+
 export async function getActiveAppName(): Promise<string | null> {
   return invoke<string | null>("get_active_app_name");
 }

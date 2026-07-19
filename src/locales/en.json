@@ -198,10 +198,17 @@
     "copyResult": "Copy",
     "copiedResult": "Copied!",
     "exportSrt": "Export SRT",
+    "exportRefinedSrt": "Export Refined SRT",
     "exportTxt": "Export TXT",
+    "exportRefinedTxt": "Export Refined TXT",
     "exported": "Exported!",
     "transcribeAnother": "Transcribe Another",
-    "error": "Transcription failed: {{error}}"
+    "or": "or",
+    "selectSrt": "Refine existing SRT",
+    "selectSrtHint": "Clean up cue text with LLM — timestamps stay the same",
+    "refiningSrt": "Refining SRT...",
+    "srtSupported": "Please select a .srt subtitle file.",
+    "error": "Failed: {{error}}"
   },
   "translationEnabled": "Translation Mode",
   "translationEnabledHint": "Translate your dictation to another language. Requires LLM Refinement to be enabled.",

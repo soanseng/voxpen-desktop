@@ -198,10 +198,17 @@
     "copyResult": "複製",
     "copiedResult": "已複製！",
     "exportSrt": "匯出 SRT",
+    "exportRefinedSrt": "匯出潤飾 SRT",
     "exportTxt": "匯出 TXT",
+    "exportRefinedTxt": "匯出潤飾 TXT",
     "exported": "已匯出！",
     "transcribeAnother": "轉錄另一個檔案",
-    "error": "轉錄失敗：{{error}}"
+    "or": "或",
+    "selectSrt": "潤飾既有 SRT",
+    "selectSrtHint": "用 LLM 整理字幕文字 — 時間軸保持不變",
+    "refiningSrt": "正在潤飾 SRT...",
+    "srtSupported": "請選擇 .srt 字幕檔。",
+    "error": "失敗：{{error}}"
   },
   "translationEnabled": "翻譯模式",
   "translationEnabledHint": "將語音翻譯為另一種語言輸出。需啟用文字潤飾功能。",

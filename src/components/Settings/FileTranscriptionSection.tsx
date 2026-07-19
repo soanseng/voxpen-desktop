@@ -3,20 +3,24 @@ import { useTranslation } from "react-i18next";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { transcribeFile } from "../../lib/tauri";
+import { refineSrtFile, transcribeFile } from "../../lib/tauri";
 import type { FileTranscriptionResult } from "../../types/settings";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "flac", "m4a", "ogg", "webm"];
 
+type BusyMode = "transcribe" | "refineSrt" | null;
+
 export default function FileTranscriptionSection() {
   const { t } = useTranslation();
-  const [transcribing, setTranscribing] = useState(false);
+  const [busy, setBusy] = useState<BusyMode>(null);
   const [result, setResult] = useState<FileTranscriptionResult | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<"original" | "refined" | null>(null);
   const [exported, setExported] = useState<"srt" | "txt" | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
   const [dragOver, setDragOver] = useState(false);
+
+  const isBusy = busy !== null;
 
   async function startTranscription(filePath: string) {
     const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
@@ -28,7 +32,7 @@ export default function FileTranscriptionSection() {
     setSelectedFile(filePath);
     setError("");
     setResult(null);
-    setTranscribing(true);
+    setBusy("transcribe");
 
     try {
       const r = await transcribeFile(filePath);
@@ -36,30 +40,60 @@ export default function FileTranscriptionSection() {
     } catch (e) {
       setError(String(e));
     } finally {
-      setTranscribing(false);
+      setBusy(null);
+    }
+  }
+
+  async function startSrtRefine(filePath: string) {
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    if (ext !== "srt") {
+      setError(t("fileTranscribe.srtSupported"));
+      return;
+    }
+
+    setSelectedFile(filePath);
+    setError("");
+    setResult(null);
+    setBusy("refineSrt");
+
+    try {
+      const r = await refineSrtFile(filePath);
+      setResult(r);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
     }
   }
 
   useEffect(() => {
     const webview = getCurrentWebview();
     const unlisten = webview.onDragDropEvent((event) => {
-      if (transcribing || result) return;
+      if (isBusy || result) return;
       if (event.payload.type === "enter" || event.payload.type === "over") {
         setDragOver(true);
       } else if (event.payload.type === "drop") {
         setDragOver(false);
         const paths = event.payload.paths;
         if (paths.length > 0) {
-          startTranscription(paths[0]);
+          const path = paths[0];
+          const ext = path.split(".").pop()?.toLowerCase() ?? "";
+          if (ext === "srt") {
+            startSrtRefine(path);
+          } else {
+            startTranscription(path);
+          }
         }
       } else {
         setDragOver(false);
       }
     });
-    return () => { unlisten.then((f) => f()); };
-  }, [transcribing, result]);
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [isBusy, result]);
 
-  async function handleSelectFile() {
+  async function handleSelectAudio() {
     const file = await open({
       multiple: false,
       filters: [
@@ -73,6 +107,20 @@ export default function FileTranscriptionSection() {
     startTranscription(file);
   }
 
+  async function handleSelectSrt() {
+    const file = await open({
+      multiple: false,
+      filters: [
+        {
+          name: "SRT",
+          extensions: ["srt"],
+        },
+      ],
+    });
+    if (!file) return;
+    startSrtRefine(file);
+  }
+
   function handleCopy(text: string, which: "original" | "refined") {
     navigator.clipboard.writeText(text);
     setCopied(which);
@@ -81,7 +129,11 @@ export default function FileTranscriptionSection() {
 
   async function handleExport(format: "srt" | "txt") {
     if (!result) return;
-    const content = format === "srt" ? result.srt : (result.refined ?? result.text);
+    // Prefer refined output when available (TXT prose / SRT cue texts).
+    const content =
+      format === "srt"
+        ? (result.refined_srt ?? result.srt)
+        : (result.refined ?? result.text);
     const ext = format;
     const defaultName = selectedFile
       ? selectedFile.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, `.${ext}`) ?? `transcription.${ext}`
@@ -160,7 +212,7 @@ export default function FileTranscriptionSection() {
             </div>
           )}
 
-          {/* Export buttons */}
+          {/* Export buttons — SRT/TXT prefer refined content when refinement ran */}
           <div className="flex gap-2">
             {result.srt && (
               <button
@@ -168,7 +220,11 @@ export default function FileTranscriptionSection() {
                 onClick={() => handleExport("srt")}
                 className="flex-1 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
               >
-                {exported === "srt" ? t("fileTranscribe.exported") : t("fileTranscribe.exportSrt")}
+                {exported === "srt"
+                  ? t("fileTranscribe.exported")
+                  : result.refined_srt
+                    ? t("fileTranscribe.exportRefinedSrt")
+                    : t("fileTranscribe.exportSrt")}
               </button>
             )}
             <button
@@ -176,7 +232,11 @@ export default function FileTranscriptionSection() {
               onClick={() => handleExport("txt")}
               className="flex-1 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
             >
-              {exported === "txt" ? t("fileTranscribe.exported") : t("fileTranscribe.exportTxt")}
+              {exported === "txt"
+                ? t("fileTranscribe.exported")
+                : result.refined
+                  ? t("fileTranscribe.exportRefinedTxt")
+                  : t("fileTranscribe.exportTxt")}
             </button>
           </div>
 
@@ -193,15 +253,15 @@ export default function FileTranscriptionSection() {
         <div className="space-y-4">
           <button
             type="button"
-            onClick={handleSelectFile}
-            disabled={transcribing}
+            onClick={handleSelectAudio}
+            disabled={isBusy}
             className={`flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               dragOver
                 ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20"
                 : "border-gray-300 hover:border-blue-400 hover:bg-blue-50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
             }`}
           >
-            {transcribing ? (
+            {busy === "transcribe" ? (
               <>
                 <svg
                   className="mb-2 h-8 w-8 animate-spin text-blue-500"
@@ -270,6 +330,62 @@ export default function FileTranscriptionSection() {
                 </span>
                 <span className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                   {t("fileTranscribe.dragHint")}
+                </span>
+              </>
+            )}
+          </button>
+
+          <div className="relative flex items-center">
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700" />
+            <span className="mx-3 shrink-0 text-xs text-gray-400 dark:text-gray-500">
+              {t("fileTranscribe.or")}
+            </span>
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSelectSrt}
+            disabled={isBusy}
+            className="flex w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-4 text-center transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-blue-600 dark:hover:bg-blue-900/10"
+          >
+            {busy === "refineSrt" ? (
+              <>
+                <svg
+                  className="mb-2 h-6 w-6 animate-spin text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  {t("fileTranscribe.refiningSrt")}
+                </span>
+                {selectedFile && (
+                  <span className="mt-1 max-w-full truncate text-xs text-gray-400">
+                    {selectedFile.split(/[\\/]/).pop()}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {t("fileTranscribe.selectSrt")}
+                </span>
+                <span className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  {t("fileTranscribe.selectSrtHint")}
                 </span>
               </>
             )}
